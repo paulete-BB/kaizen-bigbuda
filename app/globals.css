@@ -1,26 +1,184 @@
 @import "tailwindcss";
 
-:root {
-  --background: #ffffff;
-  --foreground: #171717;
+/*
+ * Tokens del sistema de diseño de Kaizen Bigbuda (operación interna),
+ * importados desde el prototipo de Claude Design — mismos valores en las
+ * 7 pantallas exportadas (Dashboard, Calendario, Clientes, Cliente,
+ * Bitácora, BloqueMiercoles, RegistroSEO). Tema claro fijo, sin variante
+ * oscura todavía.
+ */
+@theme {
+  --font-sans: var(--font-onest), system-ui, sans-serif;
+
+  --color-canvas: #f3efe6;
+  --color-surface: #ffffff;
+  --color-ink: #1a1d21;
+  --color-muted: #5b6470;
+  --color-muted-2: #8a929e;
+  --color-faint: #a2a9b4;
+  --color-border: #e6e8ec;
+  --color-border-soft: #f0f1f4;
+  --color-border-soft-2: #f4f5f7;
+  --color-hover: #f0f1f4;
+  --color-hover-2: #fafbfc;
+
+  --color-accent: #a86f1c;
+  --color-accent-hover: #8a5a12;
+  --color-accent-soft: #f4e9d2;
+  --color-accent-soft-ink: #8a5a12;
+
+  --color-success: #16a34a;
+  --color-success-bg: #e7f6ec;
+  --color-warning: #b45309;
+  --color-warning-bg: #fdf0dd;
+  --color-warning-soft-bg: #fdf6e8;
+  --color-warning-border: #e0a417;
+  --color-danger: #dc2626;
+  --color-danger-bg: #fdeaea;
+  --color-danger-border: #f4d3d3;
+
+  --color-svc-seo: #6d5bd6;
+  --color-svc-google: #0d9488;
 }
 
-@theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
-}
+/*
+ * En @layer base para que las utilidades de Tailwind (que viven en sus
+ * propias capas) puedan ganar sobre estos resets — sin capa, `a { color }`
+ * gana por regla de cascada de capas sin importar la especificidad, y
+ * pisaría cosas como `text-white` en un <Link>.
+ */
+@layer base {
+  *,
+  *::before,
+  *::after {
+    box-sizing: border-box;
+  }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
+  html,
+  body {
+    margin: 0;
+    padding: 0;
+  }
+
+  body {
+    background: var(--color-canvas);
+    color: var(--color-ink);
+    -webkit-font-smoothing: antialiased;
+    font-variant-numeric: tabular-nums;
+  }
+
+  a {
+    color: var(--color-accent);
+    text-decoration: none;
+  }
+  a:hover {
+    color: var(--color-accent-hover);
+  }
+
+  input,
+  select,
+  textarea {
+    font-family: inherit;
+    font-variant-numeric: tabular-nums;
+  }
+  input:focus,
+  select:focus,
+  textarea:focus {
+    outline: 2px solid #e0c088;
+    outline-offset: -1px;
+  }
+
+  ::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+  }
+  ::-webkit-scrollbar-thumb {
+    background: #d4d8de;
+    border-radius: 8px;
+    border: 2px solid var(--color-canvas);
   }
 }
 
-body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+/* Patrones de interacción compartidos del sistema de diseño */
+.navlink:hover {
+  background: var(--color-hover);
+}
+.btn-primary:hover {
+  background: var(--color-accent-hover);
+}
+.ghost:hover {
+  background: var(--color-hover);
+}
+.qa:hover {
+  background: var(--color-hover);
+}
+.tl-item:hover {
+  background: var(--color-hover-2);
+}
+.preset:hover {
+  background: var(--color-accent-soft);
+  border-color: #e0c088;
+}
+.rowedit {
+  opacity: 0;
+  transition: opacity 0.12s;
+}
+.editrow:hover .rowedit {
+  opacity: 1;
+}
+.xbtn:hover {
+  background: var(--color-danger-bg);
+  color: var(--color-danger);
+}
+
+/* Sidebar colapsable (checkbox-only, sin JS) */
+#navchk {
+  display: none;
+}
+.sb {
+  transition: width 0.16s ease;
+}
+.navtoggle {
+  cursor: pointer;
+}
+.navtoggle:hover {
+  background: var(--color-hover);
+}
+body:has(#navchk:checked) .sb {
+  width: 68px !important;
+}
+body:has(#navchk:checked) .sb .navlink,
+body:has(#navchk:checked) .sb .navtoggle {
+  font-size: 0 !important;
+  gap: 0 !important;
+  justify-content: center !important;
+  padding-left: 0 !important;
+  padding-right: 0 !important;
+}
+body:has(#navchk:checked) .sb .brandtext,
+body:has(#navchk:checked) .sb .usertext,
+body:has(#navchk:checked) .sb .userrow svg {
+  display: none !important;
+}
+body:has(#navchk:checked) .sb .brandrow {
+  justify-content: center !important;
+  padding-left: 0 !important;
+  padding-right: 0 !important;
+}
+body:has(#navchk:checked) .sb .userrow {
+  justify-content: center !important;
+  padding-left: 0 !important;
+  padding-right: 0 !important;
+}
+body:has(#navchk:checked) .sb .tgl-ic {
+  transform: rotate(180deg);
+}
+
+@media (max-width: 1080px) {
+  .svc-grid {
+    grid-template-columns: 1fr !important;
+  }
+  .col2 {
+    grid-template-columns: 1fr !important;
+  }
 }
