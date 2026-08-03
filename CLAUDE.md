@@ -1,3 +1,5 @@
+@AGENTS.md
+
 # BRIEF DE PROYECTO — Kaizen Bigbuda
 
 **Para:** Claude Code
