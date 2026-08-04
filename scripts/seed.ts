@@ -101,28 +101,28 @@ async function seedServices(
   responsables: Awaited<ReturnType<typeof seedUsers>>,
 ) {
   const [seoFiltrocentro] = await sql`
-    insert into services (client_id, tipo, fecha_inicio, periodo_meses, fecha_termino)
-    values (${clients.filtrocentro.id}, 'seo_aeo_geo', '2026-01-12', 12, '2027-01-12')
+    insert into services (client_id, tipo, fecha_inicio, periodo_meses, fecha_termino, responsable_id)
+    values (${clients.filtrocentro.id}, 'seo_aeo_geo', '2026-01-12', 12, '2027-01-12', ${responsables.marcel})
     returning id
   `;
   const [seoProvetec] = await sql`
-    insert into services (client_id, tipo, fecha_inicio, periodo_meses, fecha_termino, viernes_ordinal_asignado)
-    values (${clients.provetec.id}, 'seo_aeo_geo', '2026-03-12', 12, '2027-03-12', 3)
+    insert into services (client_id, tipo, fecha_inicio, periodo_meses, fecha_termino, viernes_ordinal_asignado, responsable_id)
+    values (${clients.provetec.id}, 'seo_aeo_geo', '2026-03-12', 12, '2027-03-12', 3, ${responsables.marcel})
     returning id
   `;
   const [googleProvetec] = await sql`
-    insert into services (client_id, tipo, fecha_inicio, presupuesto_mensual, moneda)
-    values (${clients.provetec.id}, 'google_ads', '2026-04-15', 900000, 'CLP')
+    insert into services (client_id, tipo, fecha_inicio, presupuesto_mensual, moneda, responsable_id)
+    values (${clients.provetec.id}, 'google_ads', '2026-04-15', 900000, 'CLP', ${responsables.andres})
     returning id
   `;
   const [metaTecnyStand] = await sql`
-    insert into services (client_id, tipo, fecha_inicio, presupuesto_mensual, moneda)
-    values (${clients.tecnyStand.id}, 'meta_ads', '2026-05-01', 1200000, 'CLP')
+    insert into services (client_id, tipo, fecha_inicio, presupuesto_mensual, moneda, responsable_id)
+    values (${clients.tecnyStand.id}, 'meta_ads', '2026-05-01', 1200000, 'CLP', ${responsables.andres})
     returning id
   `;
   const [googleTecnyStand] = await sql`
-    insert into services (client_id, tipo, fecha_inicio, presupuesto_mensual, moneda)
-    values (${clients.tecnyStand.id}, 'google_ads', '2026-05-01', 800000, 'CLP')
+    insert into services (client_id, tipo, fecha_inicio, presupuesto_mensual, moneda, responsable_id)
+    values (${clients.tecnyStand.id}, 'google_ads', '2026-05-01', 800000, 'CLP', ${responsables.andres})
     returning id
   `;
 
