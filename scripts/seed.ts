@@ -210,48 +210,91 @@ async function seedLogEntries(clients: Awaited<ReturnType<typeof seedClients>>, 
   }
 }
 
+// Julio (mes ya transcurrido, para poblar historial/atrasadas) → agosto
+// (mes real actual, para "hoy/esta semana") → septiembre (mes de demo con
+// el feriado). El reloj real del sandbox está en agosto de 2026.
+const MESES_A_GENERAR: { year: number; month: number }[] = [
+  { year: 2026, month: 7 },
+  { year: 2026, month: 8 },
+  { year: DEMO_YEAR, month: DEMO_MONTH },
+];
+
 async function seedCalendario(
   servicios: Awaited<ReturnType<typeof seedServices>>,
   holidays: Holiday[],
   absences: Absence[],
 ) {
-  const { optimizaciones, asignacionesOrdinal, advertencias } = construirCalendarioMes({
-    serviciosSeo: servicios.serviciosSeo,
-    serviciosAds: servicios.serviciosAds,
-    holidays,
-    absences,
-    year: DEMO_YEAR,
-    month: DEMO_MONTH,
-  });
+  let serviciosSeo = servicios.serviciosSeo;
+  const idsPorMes = new Map<string, string[]>();
 
-  // Persistir los ordinales de viernes recién asignados (estables desde ahora).
-  for (const a of asignacionesOrdinal) {
-    await sql`update services set viernes_ordinal_asignado = ${a.ordinal} where id = ${a.serviceId}`;
-  }
+  for (const { year, month } of MESES_A_GENERAR) {
+    const { optimizaciones, asignacionesOrdinal, advertencias } = construirCalendarioMes({
+      serviciosSeo,
+      serviciosAds: servicios.serviciosAds,
+      holidays,
+      absences,
+      year,
+      month,
+    });
 
-  for (const o of optimizaciones) {
-    const [row] = await sql`
-      insert into optimizations (
-        client_id, service_id, tipo, fecha_programada, hora_programada,
-        responsable_id, estado, sync_status
-      ) values (
-        ${o.clientId}, ${o.serviceId}, ${o.tipo}, ${o.fechaProgramada}, ${o.horaProgramada ?? null},
-        ${o.responsableId ?? null}, 'programada', 'pendiente_sync'
-      ) returning id
-    `;
-    if (o.reprogramada) {
-      await sql`
-        insert into reschedules (optimization_id, fecha_original, fecha_nueva, motivo)
-        values (${row.id}, ${o.reprogramada.fechaOriginal}, ${o.fechaProgramada}, ${o.reprogramada.motivo})
-      `;
+    // Persistir los ordinales recién asignados y llevarlos al siguiente mes
+    // (estables: nunca se reasignan una vez fijados).
+    const ordinalPorServicio = new Map(asignacionesOrdinal.map((a) => [a.serviceId, a.ordinal]));
+    for (const a of asignacionesOrdinal) {
+      await sql`update services set viernes_ordinal_asignado = ${a.ordinal} where id = ${a.serviceId}`;
     }
+    serviciosSeo = serviciosSeo.map((s) => ({
+      ...s,
+      viernesOrdinalAsignado: ordinalPorServicio.get(s.id) ?? s.viernesOrdinalAsignado,
+    }));
+
+    const ids: string[] = [];
+    for (const o of optimizaciones) {
+      const [row] = await sql`
+        insert into optimizations (
+          client_id, service_id, tipo, fecha_programada, hora_programada,
+          responsable_id, estado, sync_status
+        ) values (
+          ${o.clientId}, ${o.serviceId}, ${o.tipo}, ${o.fechaProgramada}, ${o.horaProgramada ?? null},
+          ${o.responsableId ?? null}, 'programada', 'pendiente_sync'
+        ) returning id
+      `;
+      ids.push(row.id as string);
+      if (o.reprogramada) {
+        await sql`
+          insert into reschedules (optimization_id, fecha_original, fecha_nueva, motivo)
+          values (${row.id}, ${o.reprogramada.fechaOriginal}, ${o.fechaProgramada}, ${o.reprogramada.motivo})
+        `;
+      }
+    }
+    idsPorMes.set(`${year}-${month}`, ids);
+
+    console.log(`  ${year}-${String(month).padStart(2, "0")}: ${optimizaciones.length} optimizaciones` +
+      `, ${optimizaciones.filter((o) => o.reprogramada).length} reprogramadas por feriado` +
+      `, ${optimizaciones.filter((o) => o.conflictoAusencia).length} con conflicto de ausencia`);
+    if (advertencias.length) console.log("    advertencias:", advertencias);
   }
 
-  console.log(`  optimizaciones generadas: ${optimizaciones.length}`);
-  console.log(`  reprogramadas por feriado: ${optimizaciones.filter((o) => o.reprogramada).length}`);
-  console.log(`  conflictos de ausencia: ${optimizaciones.filter((o) => o.conflictoAusencia).length}`);
-  if (advertencias.length) {
-    console.log("  advertencias:", advertencias);
+  // Julio ya pasó: la mayoría queda "realizada" (con su registro), un par
+  // queda "programada" sin completar → hoy se ve real y atrasada.
+  const julioIds = idsPorMes.get("2026-7") ?? [];
+  const atrasadasIds = julioIds.slice(0, 2);
+  const realizadasIds = julioIds.slice(2);
+
+  if (realizadasIds.length) {
+    await sql`
+      update optimizations set
+        estado = 'realizada',
+        fecha_realizada = fecha_programada,
+        resumen = 'Optimización ejecutada según checklist estándar.',
+        proximos_pasos = 'Monitorear resultados del cambio en el próximo ciclo.',
+        informe_enviado_en = case when tipo = 'seo_aeo_geo' then fecha_programada else informe_enviado_en end,
+        sync_status = 'ok'
+      where id in ${sql(realizadasIds)}
+    `;
+  }
+  if (atrasadasIds.length) {
+    await sql`update optimizations set estado = 'programada' where id in ${sql(atrasadasIds)}`;
   }
 }
 
@@ -279,7 +322,7 @@ async function main() {
   await seedApprovals(clients);
   await seedLogEntries(clients, responsables);
 
-  console.log(`→ Calendario de ${DEMO_MONTH}/${DEMO_YEAR} (motor de scheduling, reglas A/B/D)…`);
+  console.log("→ Calendario jul–sep 2026 (motor de scheduling, reglas A/B/D)…");
   await seedCalendario(
     servicios,
     HOLIDAYS_2026,
