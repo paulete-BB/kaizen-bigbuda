@@ -1,23 +1,26 @@
 "use client";
 
 import { useState } from "react";
-import type { Descuento } from "@/lib/clientes/types";
-import { addMeses, diasHasta, fmtFecha, hoySantiago } from "@/lib/clientes/date-utils";
+import { useRouter } from "next/navigation";
+import type { DescuentoDetalle } from "@/lib/data/cliente-detalle";
+import { editarDescuento, guardarNuevoDescuento, terminarDescuento } from "@/lib/data/cliente-actions";
+import { addMeses, diasHasta, fmtFecha, hoySantiago } from "@/lib/dates";
 
 interface DescuentosPanelProps {
-  descuentos: Descuento[];
-  onLogCambio: (titulo: string, desc: string, tipo: string) => void;
+  clientId: string;
+  descuentos: DescuentoDetalle[];
 }
 
-export function DescuentosPanel({ descuentos: descuentosIniciales, onLogCambio }: DescuentosPanelProps) {
-  const [descuentos, setDescuentos] = useState(descuentosIniciales);
+export function DescuentosPanel({ clientId, descuentos }: DescuentosPanelProps) {
+  const router = useRouter();
   const [editingId, setEditingId] = useState<string | null>(null);
   const [draft, setDraft] = useState({ pct: "0", vence: "" });
   const [adding, setAdding] = useState(false);
   const [nuevo, setNuevo] = useState({ nombre: "", pct: "10", vence: "2026-12-31" });
+  const [pending, setPending] = useState(false);
   const hoy = hoySantiago();
 
-  function toggleEdit(d: Descuento) {
+  function toggleEdit(d: DescuentoDetalle) {
     if (editingId === d.id) {
       setEditingId(null);
       return;
@@ -26,36 +29,55 @@ export function DescuentosPanel({ descuentos: descuentosIniciales, onLogCambio }
     setDraft({ pct: String(d.pct), vence: d.vence });
   }
 
-  function save(d: Descuento) {
-    const pct = Number(draft.pct) || d.pct;
-    const vence = draft.vence;
-    const antes = d.vence;
-    setDescuentos((prev) => prev.map((x) => (x.id === d.id ? { ...x, pct, vence } : x)));
-    setEditingId(null);
-    onLogCambio(
-      `${d.nombre} actualizado`,
-      `Descuento −${pct}% · caducidad de ${fmtFecha(antes)} a ${fmtFecha(vence)}.`,
-      "Descuento",
-    );
+  async function save(d: DescuentoDetalle) {
+    setPending(true);
+    const fd = new FormData();
+    fd.set("discountId", d.id);
+    fd.set("clientId", clientId);
+    fd.set("nombre", d.nombre);
+    fd.set("pct", draft.pct);
+    fd.set("vence", draft.vence);
+    try {
+      await editarDescuento(fd);
+      setEditingId(null);
+      router.refresh();
+    } finally {
+      setPending(false);
+    }
   }
 
-  function remove(d: Descuento) {
-    setDescuentos((prev) => prev.filter((x) => x.id !== d.id));
-    setEditingId(null);
-    onLogCambio(`${d.nombre} terminado`, `Descuento −${d.pct}% cerrado antes de su caducidad.`, "Descuento");
+  async function remove(d: DescuentoDetalle) {
+    setPending(true);
+    const fd = new FormData();
+    fd.set("discountId", d.id);
+    fd.set("clientId", clientId);
+    fd.set("nombre", d.nombre);
+    fd.set("pct", String(d.pct));
+    try {
+      await terminarDescuento(fd);
+      setEditingId(null);
+      router.refresh();
+    } finally {
+      setPending(false);
+    }
   }
 
-  function saveNuevo() {
+  async function saveNuevo() {
     if (!nuevo.nombre.trim()) return;
-    const pct = Number(nuevo.pct) || 10;
-    setDescuentos((prev) => [...prev, { id: `d${Date.now()}`, nombre: nuevo.nombre.trim(), pct, vence: nuevo.vence }]);
-    setAdding(false);
-    onLogCambio(
-      `Descuento nuevo · ${nuevo.nombre.trim()}`,
-      `−${pct}% vigente hasta ${fmtFecha(nuevo.vence)}.`,
-      "Descuento",
-    );
-    setNuevo({ nombre: "", pct: "10", vence: "2026-12-31" });
+    setPending(true);
+    const fd = new FormData();
+    fd.set("clientId", clientId);
+    fd.set("nombre", nuevo.nombre.trim());
+    fd.set("pct", nuevo.pct);
+    fd.set("vence", nuevo.vence);
+    try {
+      await guardarNuevoDescuento(fd);
+      setAdding(false);
+      setNuevo({ nombre: "", pct: "10", vence: "2026-12-31" });
+      router.refresh();
+    } finally {
+      setPending(false);
+    }
   }
 
   return (
@@ -103,14 +125,16 @@ export function DescuentosPanel({ descuentos: descuentosIniciales, onLogCambio }
           </div>
           <button
             onClick={saveNuevo}
-            className="btn-primary rounded-lg border-none bg-accent px-3.5 py-2 font-sans text-[12.5px] font-semibold text-white"
+            disabled={pending}
+            className="btn-primary rounded-lg border-none bg-accent px-3.5 py-2 font-sans text-[12.5px] font-semibold text-white disabled:opacity-60"
           >
-            Guardar descuento
+            {pending ? "Guardando…" : "Guardar descuento"}
           </button>
         </div>
       )}
 
       <div className="px-[18px] py-1.5 pb-3">
+        {descuentos.length === 0 && <p className="py-6 text-center text-[12.5px] text-muted-2">Sin descuentos activos.</p>}
         {descuentos.map((d) => {
           const n = diasHasta(d.vence, hoy);
           const terminado = n < 0;
@@ -191,7 +215,8 @@ export function DescuentosPanel({ descuentos: descuentosIniciales, onLogCambio }
                   <div className="flex gap-1.5">
                     <button
                       onClick={() => save(d)}
-                      className="btn-primary rounded-lg border-none bg-accent px-3 py-2 font-sans text-[12px] font-semibold text-white"
+                      disabled={pending}
+                      className="btn-primary rounded-lg border-none bg-accent px-3 py-2 font-sans text-[12px] font-semibold text-white disabled:opacity-60"
                     >
                       Guardar
                     </button>
@@ -204,7 +229,8 @@ export function DescuentosPanel({ descuentos: descuentosIniciales, onLogCambio }
                     <div className="flex-1" />
                     <button
                       onClick={() => remove(d)}
-                      className="rounded-lg border border-danger-border bg-surface px-3 py-2 font-sans text-[12px] font-semibold text-danger"
+                      disabled={pending}
+                      className="rounded-lg border border-danger-border bg-surface px-3 py-2 font-sans text-[12px] font-semibold text-danger disabled:opacity-60"
                     >
                       Terminar ahora
                     </button>

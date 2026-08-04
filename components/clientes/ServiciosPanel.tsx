@@ -1,8 +1,10 @@
 "use client";
 
 import { useState } from "react";
-import type { Servicio } from "@/lib/clientes/types";
-import { addMeses, diasHasta, fmtFecha, hoySantiago, parseIso } from "@/lib/clientes/date-utils";
+import { useRouter } from "next/navigation";
+import type { ServicioDetalle } from "@/lib/data/cliente-detalle";
+import { actualizarVigenciaServicio } from "@/lib/data/cliente-actions";
+import { addMeses, diasHasta, fmtFecha, hoySantiago, parseIso } from "@/lib/dates";
 
 const MOTIVOS = [
   "Renovación acordada",
@@ -12,36 +14,38 @@ const MOTIVOS = [
 ];
 
 interface ServiciosPanelProps {
-  servicios: Servicio[];
+  clientId: string;
+  servicios: ServicioDetalle[];
   diasAvisoVencimiento?: number;
-  onLogCambio: (titulo: string, desc: string, tipo: string) => void;
 }
 
-export function ServiciosPanel({
-  servicios: serviciosIniciales,
-  diasAvisoVencimiento = 45,
-  onLogCambio,
-}: ServiciosPanelProps) {
-  const [servicios, setServicios] = useState(serviciosIniciales);
+export function ServiciosPanel({ clientId, servicios, diasAvisoVencimiento = 45 }: ServiciosPanelProps) {
+  const router = useRouter();
   const [editingId, setEditingId] = useState<string | null>(null);
   const [draft, setDraft] = useState({ fecha: "", motivo: MOTIVOS[0] });
+  const [pending, setPending] = useState(false);
   const hoy = hoySantiago();
 
-  function startEdit(s: Servicio) {
+  function startEdit(s: ServicioDetalle) {
     setEditingId(s.id);
-    setDraft({ fecha: s.vigencia, motivo: MOTIVOS[0] });
+    setDraft({ fecha: s.vigencia ?? "", motivo: MOTIVOS[0] });
   }
 
-  function save(s: Servicio) {
-    const antes = s.vigencia;
-    const { fecha, motivo } = draft;
-    setServicios((prev) => prev.map((x) => (x.id === s.id ? { ...x, vigencia: fecha } : x)));
-    setEditingId(null);
-    onLogCambio(
-      `Caducidad de ${s.nombre} actualizada`,
-      `${motivo} · de ${fmtFecha(antes)} a ${fmtFecha(fecha)}.`,
-      "Cambio de servicio",
-    );
+  async function save(s: ServicioDetalle) {
+    setPending(true);
+    const fd = new FormData();
+    fd.set("serviceId", s.id);
+    fd.set("clientId", clientId);
+    fd.set("nuevaFecha", draft.fecha);
+    fd.set("motivo", draft.motivo);
+    fd.set("nombreServicio", s.nombre);
+    try {
+      await actualizarVigenciaServicio(fd);
+      setEditingId(null);
+      router.refresh();
+    } finally {
+      setPending(false);
+    }
   }
 
   return (
@@ -57,6 +61,7 @@ export function ServiciosPanel({
 
       <div className="svc-grid grid grid-cols-2 gap-4">
         {servicios.map((s) => {
+          if (!s.vigencia) return null;
           const dias = diasHasta(s.vigencia, hoy);
           const total = diasHasta(s.vigencia, parseIso(s.inicio));
           const restPct = Math.max(4, Math.min(100, Math.round((dias / total) * 100)));
@@ -115,12 +120,18 @@ export function ServiciosPanel({
                     <span className="font-bold text-danger">{s.ritmoLabel}</span>
                   </div>
                   <div className="relative h-2 overflow-hidden rounded-md bg-border-soft">
-                    <div className="h-full rounded-md bg-danger" style={{ width: "77%" }} />
+                    <div
+                      className="h-full rounded-md bg-danger"
+                      style={{ width: `${Math.min(100, s.pacingPct ?? 0)}%` }}
+                    />
                   </div>
-                  <div className="mt-2 flex items-center justify-between text-[11px] text-muted">
-                    <span className="font-semibold text-danger">Gastado $693.000 (77%)</span>
-                    <span className="text-muted-2">mes 55%</span>
-                  </div>
+                  {s.gastoAcumulado != null && s.presupuestoMensual != null && (
+                    <div className="mt-2 flex items-center justify-between text-[11px] text-muted">
+                      <span className="font-semibold text-danger">
+                        Gastado ${Number(s.gastoAcumulado).toLocaleString("es-CL")} ({s.pacingPct}%)
+                      </span>
+                    </div>
+                  )}
                 </div>
               )}
 
@@ -146,7 +157,7 @@ export function ServiciosPanel({
                       <button
                         key={n}
                         className="preset rounded-lg border border-border bg-surface px-[11px] py-1.5 font-sans text-[12px] font-semibold text-ink"
-                        onClick={() => setDraft((d) => ({ ...d, fecha: addMeses(s.vigencia, n) }))}
+                        onClick={() => setDraft((d) => ({ ...d, fecha: addMeses(s.vigencia!, n) }))}
                       >
                         +{n} meses
                       </button>
@@ -180,9 +191,10 @@ export function ServiciosPanel({
                   <div className="flex items-center gap-2">
                     <button
                       onClick={() => save(s)}
-                      className="btn-primary rounded-lg border-none bg-accent px-3.5 py-2 font-sans text-[12.5px] font-semibold text-white"
+                      disabled={pending}
+                      className="btn-primary rounded-lg border-none bg-accent px-3.5 py-2 font-sans text-[12.5px] font-semibold text-white disabled:opacity-60"
                     >
-                      Guardar caducidad
+                      {pending ? "Guardando…" : "Guardar caducidad"}
                     </button>
                     <button
                       onClick={() => setEditingId(null)}
@@ -203,12 +215,6 @@ export function ServiciosPanel({
                       <path d="M3 9h18M8 2.5v4M16 2.5v4" />
                     </svg>
                     Editar caducidad
-                  </button>
-                  <button className="ghost flex items-center gap-1.5 rounded-lg border border-border bg-surface px-3 py-2 font-sans text-[12px] font-semibold text-ink">
-                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--color-muted)" strokeWidth="1.8">
-                      <path d="M12 5v14M5 12h14" />
-                    </svg>
-                    Tarea para próxima optimización
                   </button>
                 </div>
               )}

@@ -1,25 +1,14 @@
-const ITEMS: { label: string; estado: "recibido" | "solicitado" | "pendiente" }[] = [
-  { label: "Acceso a GA4", estado: "recibido" },
-  { label: "Acceso a Search Console", estado: "recibido" },
-  { label: "Verificación de píxel Meta", estado: "solicitado" },
-  { label: "Vinculación GA4 ↔ Google Ads", estado: "pendiente" },
-];
+import type { OnboardingResumen } from "@/lib/data/onboarding";
 
-const ESTADO_LABEL: Record<(typeof ITEMS)[number]["estado"], { label: string; color: string }> = {
+const ESTADO_LABEL: Record<string, { label: string; color: string }> = {
   recibido: { label: "Recibido", color: "var(--color-success)" },
+  completado: { label: "Recibido", color: "var(--color-success)" },
   solicitado: { label: "Solicitado", color: "var(--color-warning)" },
   pendiente: { label: "Pendiente", color: "var(--color-faint)" },
 };
 
-export function OnboardingPanel({
-  porcentaje = 85,
-  totalItems = 13,
-  completados = 11,
-}: {
-  porcentaje?: number;
-  totalItems?: number;
-  completados?: number;
-}) {
+export function OnboardingPanel({ resumen }: { resumen: OnboardingResumen }) {
+  const { porcentaje, totalItems, completados, items } = resumen;
   const dash = `${porcentaje} ${100 - porcentaje}`;
   const faltan = totalItems - completados;
 
@@ -53,16 +42,16 @@ export function OnboardingPanel({
             </div>
           </div>
           <div className="text-[12px] leading-[1.45] text-muted">
-            {completados} de {totalItems} ítems completados. Faltan {faltan} accesos por confirmar antes de la
-            1.ª optimización.
+            {completados} de {totalItems} ítems completados. {faltan > 0 ? `Faltan ${faltan} por confirmar.` : "Todo listo."}
           </div>
         </div>
         <div className="flex flex-col gap-2">
-          {ITEMS.map((item) => {
-            const estado = ESTADO_LABEL[item.estado];
+          {items.map((item, i) => {
+            const estado = ESTADO_LABEL[item.estado] ?? ESTADO_LABEL.pendiente;
+            const done = item.estado === "recibido" || item.estado === "completado";
             return (
-              <div key={item.label} className="flex items-center gap-2 text-[12.5px]">
-                {item.estado === "recibido" ? (
+              <div key={i} className="flex items-center gap-2 text-[12.5px]">
+                {done ? (
                   <span className="flex h-[18px] w-[18px] flex-none items-center justify-center rounded-[5px] bg-success">
                     <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="3">
                       <path d="M5 12l4 4 10-11" />
@@ -77,7 +66,7 @@ export function OnboardingPanel({
                     }}
                   />
                 )}
-                <span className="flex-1 text-muted">{item.label}</span>
+                <span className="flex-1 text-muted">{item.descripcion}</span>
                 <span className="text-[10.5px] font-semibold" style={{ color: estado.color }}>
                   {estado.label}
                 </span>

@@ -1,6 +1,3 @@
-"use client";
-
-import { useState } from "react";
 import Link from "next/link";
 import { Sidebar, type SidebarUsuario } from "@/components/layout/Sidebar";
 import { ClienteHeader } from "./ClienteHeader";
@@ -9,21 +6,24 @@ import { TareasPanel } from "./TareasPanel";
 import { BitacoraPanel } from "./BitacoraPanel";
 import { DescuentosPanel } from "./DescuentosPanel";
 import { OnboardingPanel } from "./OnboardingPanel";
-import type { ClienteDetalle, CambioBitacora } from "@/lib/clientes/types";
+import type { ClienteDetalleCompleto } from "@/lib/data/cliente-detalle";
+import type { BitacoraEntrada } from "@/lib/data/bitacora";
+import type { OnboardingResumen } from "@/lib/data/onboarding";
+import type { UsuarioResumen } from "@/lib/data/users";
 
 export function ClienteView({
   cliente,
   usuario,
+  bitacora,
+  onboarding,
+  responsables,
 }: {
-  cliente: ClienteDetalle;
+  cliente: ClienteDetalleCompleto;
   usuario: SidebarUsuario;
+  bitacora: BitacoraEntrada[];
+  onboarding: OnboardingResumen;
+  responsables: UsuarioResumen[];
 }) {
-  const [cambios, setCambios] = useState<CambioBitacora[]>([]);
-
-  function logCambio(titulo: string, desc: string, tipo: string) {
-    setCambios((prev) => [{ id: `c${Date.now()}`, titulo, desc, tipo, cuando: "hace un momento" }, ...prev]);
-  }
-
   return (
     <div className="flex min-h-screen w-full">
       <Sidebar active="clientes" usuario={usuario} />
@@ -63,21 +63,21 @@ export function ClienteView({
         <div className="flex w-full max-w-[1360px] flex-col gap-5 px-[26px] pb-10 pt-[22px]">
           <ClienteHeader cliente={cliente} />
 
-          <ServiciosPanel servicios={cliente.servicios} onLogCambio={logCambio} />
+          <ServiciosPanel clientId={cliente.id} servicios={cliente.servicios} />
 
           <div className="col2 grid items-start gap-5" style={{ gridTemplateColumns: "minmax(0,1.5fr) minmax(0,1fr)" }}>
             <div className="flex flex-col gap-5">
               <TareasPanel
+                clientId={cliente.id}
                 tareas={cliente.tareas}
-                clienteId={cliente.id}
                 proximaOptimizacion={cliente.proximaOptimizacion}
-                onLogCambio={logCambio}
+                responsables={responsables}
               />
-              <BitacoraPanel cambios={cambios} clienteId={cliente.id} />
+              <BitacoraPanel entradas={bitacora} clienteId={cliente.id} />
             </div>
             <div className="flex flex-col gap-5">
-              <DescuentosPanel descuentos={cliente.descuentos} onLogCambio={logCambio} />
-              <OnboardingPanel />
+              <DescuentosPanel clientId={cliente.id} descuentos={cliente.descuentos} />
+              <OnboardingPanel resumen={onboarding} />
             </div>
           </div>
         </div>

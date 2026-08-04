@@ -1,13 +1,13 @@
 import Link from "next/link";
-import type { ClienteDetalle } from "@/lib/clientes/types";
+import type { ClienteDetalleCompleto } from "@/lib/data/cliente-detalle";
 
-const ESTADO_LABEL: Record<ClienteDetalle["estado"], string> = {
+const ESTADO_LABEL: Record<ClienteDetalleCompleto["estado"], string> = {
   activo: "Activo",
   pausado: "Pausado",
   finalizado: "Finalizado",
 };
 
-export function ClienteHeader({ cliente }: { cliente: ClienteDetalle }) {
+export function ClienteHeader({ cliente }: { cliente: ClienteDetalleCompleto }) {
   return (
     <section className="flex items-start gap-5 rounded-[14px] border border-border bg-surface p-[22px_24px]">
       <div
@@ -27,7 +27,14 @@ export function ClienteHeader({ cliente }: { cliente: ClienteDetalle }) {
           )}
         </div>
         <div className="mt-1 text-[13px] text-muted-2">
-          {cliente.empresa} · {cliente.industria} · <a href={`https://${cliente.sitioWeb}`}>{cliente.sitioWeb}</a>
+          {cliente.empresa}
+          {cliente.industria ? ` · ${cliente.industria}` : ""}
+          {cliente.sitioWeb ? (
+            <>
+              {" · "}
+              <a href={`https://${cliente.sitioWeb}`}>{cliente.sitioWeb}</a>
+            </>
+          ) : null}
         </div>
         <div className="mt-3.5 flex flex-wrap items-center gap-[22px] text-[12.5px] text-muted">
           <span className="flex items-center gap-1.5">

@@ -111,18 +111,18 @@ async function seedServices(
     returning id
   `;
   const [googleProvetec] = await sql`
-    insert into services (client_id, tipo, fecha_inicio, presupuesto_mensual, moneda, responsable_id)
-    values (${clients.provetec.id}, 'google_ads', '2026-04-15', 900000, 'CLP', ${responsables.andres})
+    insert into services (client_id, tipo, fecha_inicio, periodo_meses, fecha_termino, presupuesto_mensual, moneda, responsable_id)
+    values (${clients.provetec.id}, 'google_ads', '2026-04-15', 12, '2027-04-15', 900000, 'CLP', ${responsables.andres})
     returning id
   `;
   const [metaTecnyStand] = await sql`
-    insert into services (client_id, tipo, fecha_inicio, presupuesto_mensual, moneda, responsable_id)
-    values (${clients.tecnyStand.id}, 'meta_ads', '2026-05-01', 1200000, 'CLP', ${responsables.andres})
+    insert into services (client_id, tipo, fecha_inicio, periodo_meses, fecha_termino, presupuesto_mensual, moneda, responsable_id)
+    values (${clients.tecnyStand.id}, 'meta_ads', '2026-05-01', 6, '2026-11-01', 1200000, 'CLP', ${responsables.andres})
     returning id
   `;
   const [googleTecnyStand] = await sql`
-    insert into services (client_id, tipo, fecha_inicio, presupuesto_mensual, moneda, responsable_id)
-    values (${clients.tecnyStand.id}, 'google_ads', '2026-05-01', 800000, 'CLP', ${responsables.andres})
+    insert into services (client_id, tipo, fecha_inicio, periodo_meses, fecha_termino, presupuesto_mensual, moneda, responsable_id)
+    values (${clients.tecnyStand.id}, 'google_ads', '2026-05-01', 6, '2026-11-01', 800000, 'CLP', ${responsables.andres})
     returning id
   `;
 
@@ -192,20 +192,26 @@ async function seedApprovals(clients: Awaited<ReturnType<typeof seedClients>>) {
 async function seedLogEntries(clients: Awaited<ReturnType<typeof seedClients>>, responsables: Awaited<ReturnType<typeof seedUsers>>) {
   const entradas = [
     {
-      contenido: "## [2026-07-22] Optimización Google Ads\nRedistribución de presupuesto por sobregasto (+22%). Se acotó campaña Search.",
+      titulo: "Optimización Google Ads",
+      tipo: "Optimización",
+      contenido: "Redistribución de presupuesto por sobregasto (+22%). Se acotó campaña Search.",
+      fecha: "2026-07-22",
       sync: "pendiente_sync" as const,
       creadoPor: responsables.andres,
     },
     {
-      contenido: "## [2026-07-17] Optimización SEO · AEO · GEO\nFAQs y datos estructurados nuevos, mejora de títulos, ficha GEO actualizada.\n**Informe:** enviado el 2026-07-17",
+      titulo: "Optimización SEO · AEO · GEO",
+      tipo: "Optimización",
+      contenido: "FAQs y datos estructurados nuevos, mejora de títulos, ficha GEO actualizada. Informe enviado el 2026-07-17.",
+      fecha: "2026-07-17",
       sync: "ok" as const,
       creadoPor: responsables.marcel,
     },
   ];
   for (const e of entradas) {
     await sql`
-      insert into log_entries (client_id, contenido, sync_status, creado_por)
-      values (${clients.provetec.id}, ${e.contenido}, ${e.sync}, ${e.creadoPor})
+      insert into log_entries (client_id, titulo, tipo, contenido, sync_status, creado_por, creado_en)
+      values (${clients.provetec.id}, ${e.titulo}, ${e.tipo}, ${e.contenido}, ${e.sync}, ${e.creadoPor}, ${e.fecha}::date)
     `;
   }
 }
