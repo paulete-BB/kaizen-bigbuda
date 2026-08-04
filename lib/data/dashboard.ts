@@ -164,7 +164,7 @@ export async function getDashboardData(): Promise<DashboardData> {
     hoyIso,
     cumplimiento: {
       pct: actual.pct,
-      variacionPts: actual.pct - anterior.pct,
+      variacionPts: actual.total > 0 ? actual.pct - anterior.pct : 0,
       aTiempo: actual.aTiempo,
       atrasadas: actual.atrasadas,
       total: actual.total,
