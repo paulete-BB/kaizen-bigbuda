@@ -10,6 +10,45 @@
 
 ---
 
+## Estado actual
+
+**Construido (Fase 1 completa, corriendo contra Postgres local):**
+
+- Modelo de datos de la §4.2 en `supabase/migrations/` (~19 tablas, enums,
+  vistas `services_view`/`discounts_view`) + `scripts/migrate.ts` (runner
+  idempotente) y `scripts/seed.ts` (3 clientes de prueba: Filtrocentro,
+  Provetec Mining, Tecny Stand; feriados de Chile 2026; calendario jul-sep
+  2026 generado con el motor real).
+- Auth propia por email con roles `admin`/`miembro` (bcrypt + cookie de
+  sesión firmada) — `lib/auth/`.
+- Motor de scheduling puro (`lib/scheduling/`, 17 tests vitest en verde):
+  reglas A (viernes SEO, máx. 2/viernes, estable mes a mes), B (bloque Ads
+  miércoles 16:00, Meta/Google como ítems separados) y D (reprogramación por
+  feriado, detección de conflicto por ausencia).
+- 6 pantallas conectadas a datos reales (sin mocks): Dashboard, Calendario
+  (drag & drop), Clientes, ficha de Cliente, BloqueMiercoles, RegistroSEO,
+  Bitácora.
+- Punto de integración preparado para ClickUp (`lib/clickup/stub.ts`,
+  Fase 2) — todavía no llama a la API real.
+
+**Supabase real:** hay un proyecto Supabase creado
+(`guibqxslwpcpkvjwzrbi.supabase.co`). Sus credenciales (`NEXT_PUBLIC_SUPABASE_URL`,
+`NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY`) están en `.env.local` (gitignored,
+nunca subidas al repo) y el cliente `supabase-js`/`@supabase/ssr` ya está
+instalado con helpers en `utils/supabase/{server,client,middleware}.ts` —
+pero **sin conexión verificada**: la política de red de este entorno remoto
+bloquea salida a `*.supabase.co` (403 en el proxy saliente), así que ni la
+app ni la terminal de esta sesión pueden alcanzar el proyecto todavía. La
+app sigue funcionando contra el Postgres local vía `DATABASE_URL` (sin
+cambios de auth ni de capa de datos).
+
+**Próximo paso:** una vez habilitado el acceso de red a `*.supabase.co` en
+la configuración del entorno, correr la migración SQL (`npm run db:migrate`)
+contra el Postgres real del proyecto Supabase y validar la Fase 1 completa
+sobre esa base (reseed, smoke test de las 8 rutas).
+
+---
+
 ## 1. Contexto
 
 Bigbuda es una agencia de marketing digital (Santiago · Toronto) con múltiples líneas de servicio. Esta plataforma es **exclusivamente para el equipo de marketing**, que gestiona solo dos de ellas:
