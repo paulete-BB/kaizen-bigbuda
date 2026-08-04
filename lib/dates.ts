@@ -57,3 +57,18 @@ export function addDaysIso(iso: string, delta: number): string {
   d.setDate(d.getDate() + delta);
   return toIso(d);
 }
+
+/** Grilla mensual completa (lunes a domingo), incluyendo días de meses adyacentes. */
+export function buildMonthGrid(year: number, month: number): string[] {
+  const first = new Date(year, month - 1, 1);
+  const firstWeekday = (first.getDay() + 6) % 7; // lunes = 0
+  const daysInMonth = new Date(year, month, 0).getDate();
+  const totalCells = Math.ceil((firstWeekday + daysInMonth) / 7) * 7;
+  const start = new Date(year, month - 1, 1 - firstWeekday);
+  return Array.from({ length: totalCells }, (_, i) => {
+    const d = new Date(start);
+    d.setDate(start.getDate() + i);
+    return toIso(d);
+  });
+}
+
