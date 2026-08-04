@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import { Sidebar } from "@/components/layout/Sidebar";
+import { Sidebar, type SidebarUsuario } from "@/components/layout/Sidebar";
 import { ClienteHeader } from "./ClienteHeader";
 import { ServiciosPanel } from "./ServiciosPanel";
 import { TareasPanel } from "./TareasPanel";
@@ -11,7 +11,13 @@ import { DescuentosPanel } from "./DescuentosPanel";
 import { OnboardingPanel } from "./OnboardingPanel";
 import type { ClienteDetalle, CambioBitacora } from "@/lib/clientes/types";
 
-export function ClienteView({ cliente }: { cliente: ClienteDetalle }) {
+export function ClienteView({
+  cliente,
+  usuario,
+}: {
+  cliente: ClienteDetalle;
+  usuario: SidebarUsuario;
+}) {
   const [cambios, setCambios] = useState<CambioBitacora[]>([]);
 
   function logCambio(titulo: string, desc: string, tipo: string) {
@@ -20,7 +26,7 @@ export function ClienteView({ cliente }: { cliente: ClienteDetalle }) {
 
   return (
     <div className="flex min-h-screen w-full">
-      <Sidebar active="clientes" />
+      <Sidebar active="clientes" usuario={usuario} />
 
       <main className="flex min-w-0 flex-1 flex-col">
         <header className="sticky top-0 z-[5] flex h-16 flex-none items-center gap-2.5 border-b border-border bg-surface px-[26px]">

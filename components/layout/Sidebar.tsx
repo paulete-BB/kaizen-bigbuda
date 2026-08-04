@@ -1,6 +1,13 @@
 import Link from "next/link";
+import { logout } from "@/lib/auth/actions";
 
 type NavKey = "dashboard" | "calendario" | "clientes";
+
+export interface SidebarUsuario {
+  nombre: string;
+  iniciales: string;
+  rolLabel: string;
+}
 
 const NAV_ITEMS: { key: NavKey; label: string; href: string }[] = [
   { key: "dashboard", label: "Dashboard", href: "/dashboard" },
@@ -67,7 +74,7 @@ const PLACEHOLDER_ITEMS: { label: string; icon: React.ReactNode }[] = [
   },
 ];
 
-export function Sidebar({ active }: { active: NavKey | null }) {
+export function Sidebar({ active, usuario }: { active: NavKey | null; usuario: SidebarUsuario }) {
   return (
     <aside
       className="sb flex flex-none flex-col border-r border-border bg-surface"
@@ -147,17 +154,26 @@ export function Sidebar({ active }: { active: NavKey | null }) {
       <div className="border-t border-border-soft" style={{ padding: 12 }}>
         <div className="userrow flex items-center gap-2.5 rounded-[9px]" style={{ padding: "8px 10px" }}>
           <div className="flex h-8 w-8 flex-none items-center justify-center rounded-full bg-accent text-[12.5px] font-semibold text-white">
-            MA
+            {usuario.iniciales}
           </div>
           <div className="usertext min-w-0 flex-1 leading-[1.2]">
             <div className="overflow-hidden text-ellipsis whitespace-nowrap text-[12.5px] font-semibold">
-              Marcel
+              {usuario.nombre}
             </div>
-            <div className="text-[11px] text-muted-2">CEO · Posicionamiento</div>
+            <div className="text-[11px] text-muted-2">{usuario.rolLabel}</div>
           </div>
-          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="var(--color-muted-2)" strokeWidth="1.8">
-            <path d="M6 9l6 6 6-6" />
-          </svg>
+          <form action={logout}>
+            <button
+              type="submit"
+              title="Cerrar sesión"
+              className="flex h-6 w-6 items-center justify-center rounded-md border-none bg-transparent"
+            >
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="var(--color-muted-2)" strokeWidth="1.8">
+                <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
+                <path d="M16 17l5-5-5-5M21 12H9" />
+              </svg>
+            </button>
+          </form>
         </div>
       </div>
     </aside>

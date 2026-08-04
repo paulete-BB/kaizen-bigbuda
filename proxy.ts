@@ -1,9 +1,23 @@
 import { NextResponse, type NextRequest } from "next/server";
+import { SESSION_COOKIE, verifySessionToken } from "@/lib/auth/session";
 
-// TODO(auth): reemplazado en el bloque de auth (lib/auth/session.ts) por la
-// verificación real de la cookie de sesión. Passthrough temporal para no
-// romper el build mientras se construye el motor de scheduling.
-export async function proxy(_request: NextRequest) {
+const PUBLIC_PATHS = ["/login"];
+
+export async function proxy(request: NextRequest) {
+  const { pathname } = request.nextUrl;
+  if (PUBLIC_PATHS.some((p) => pathname === p || pathname.startsWith(`${p}/`))) {
+    return NextResponse.next();
+  }
+
+  const token = request.cookies.get(SESSION_COOKIE)?.value;
+  const session = token ? verifySessionToken(token) : null;
+  if (!session) {
+    const loginUrl = request.nextUrl.clone();
+    loginUrl.pathname = "/login";
+    loginUrl.search = "";
+    return NextResponse.redirect(loginUrl);
+  }
+
   return NextResponse.next();
 }
 
