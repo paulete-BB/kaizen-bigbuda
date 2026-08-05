@@ -67,7 +67,12 @@ export function ClienteView({
         <div className="flex w-full max-w-[1360px] flex-col gap-5 px-[26px] pb-10 pt-[22px]">
           <ClienteHeader cliente={cliente} />
 
-          <ServiciosPanel clientId={cliente.id} servicios={cliente.servicios} />
+          <ServiciosPanel
+            clientId={cliente.id}
+            servicios={cliente.servicios}
+            serviciosTiposExistentes={cliente.serviciosTiposExistentes}
+            responsables={responsables}
+          />
 
           <div className="col2 grid items-start gap-5" style={{ gridTemplateColumns: "minmax(0,1.5fr) minmax(0,1fr)" }}>
             <div className="flex flex-col gap-5">

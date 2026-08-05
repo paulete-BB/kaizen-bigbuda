@@ -2,9 +2,10 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import type { ServicioDetalle } from "@/lib/data/cliente-detalle";
-import { actualizarVigenciaServicio } from "@/lib/data/cliente-actions";
+import type { ServicioDetalle, ServicioTipo } from "@/lib/data/cliente-detalle";
+import { actualizarVigenciaServicio, agregarServicio, pausarServicio, reactivarServicio } from "@/lib/data/cliente-actions";
 import { addMeses, diasHasta, fmtFecha, hoySantiago, parseIso } from "@/lib/dates";
+import type { UsuarioResumen } from "@/lib/data/users";
 
 const MOTIVOS = [
   "Renovación acordada",
@@ -13,18 +14,45 @@ const MOTIVOS = [
   "Corrección de fecha",
 ];
 
+const TIPOS: { tipo: ServicioTipo; label: string; ads: boolean }[] = [
+  { tipo: "seo_aeo_geo", label: "SEO · AEO · GEO", ads: false },
+  { tipo: "meta_ads", label: "Meta Ads", ads: true },
+  { tipo: "google_ads", label: "Google Ads", ads: true },
+];
+
 interface ServiciosPanelProps {
   clientId: string;
   servicios: ServicioDetalle[];
+  serviciosTiposExistentes: ServicioTipo[];
+  responsables: UsuarioResumen[];
   diasAvisoVencimiento?: number;
 }
 
-export function ServiciosPanel({ clientId, servicios, diasAvisoVencimiento = 45 }: ServiciosPanelProps) {
+export function ServiciosPanel({
+  clientId,
+  servicios,
+  serviciosTiposExistentes,
+  responsables,
+  diasAvisoVencimiento = 45,
+}: ServiciosPanelProps) {
   const router = useRouter();
   const [editingId, setEditingId] = useState<string | null>(null);
   const [draft, setDraft] = useState({ fecha: "", motivo: MOTIVOS[0] });
   const [pending, setPending] = useState(false);
+  const [pendingServiceId, setPendingServiceId] = useState<string | null>(null);
   const hoy = hoySantiago();
+
+  const [adding, setAdding] = useState(false);
+  const disponibles = TIPOS.filter((t) => !serviciosTiposExistentes.includes(t.tipo));
+  const [nuevo, setNuevo] = useState({
+    tipo: disponibles[0]?.tipo ?? "seo_aeo_geo",
+    fechaInicio: hoySantiago().toISOString().slice(0, 10),
+    periodoMeses: "",
+    presupuesto: "",
+    moneda: "CLP",
+    responsableId: "",
+  });
+  const [nuevoError, setNuevoError] = useState<string | null>(null);
 
   function startEdit(s: ServicioDetalle) {
     setEditingId(s.id);
@@ -48,16 +76,161 @@ export function ServiciosPanel({ clientId, servicios, diasAvisoVencimiento = 45 
     }
   }
 
+  async function togglePausa(s: ServicioDetalle) {
+    setPendingServiceId(s.id);
+    const fd = new FormData();
+    fd.set("serviceId", s.id);
+    fd.set("clientId", clientId);
+    fd.set("nombreServicio", s.nombre);
+    try {
+      await (s.pausado ? reactivarServicio(fd) : pausarServicio(fd));
+      router.refresh();
+    } finally {
+      setPendingServiceId(null);
+    }
+  }
+
+  async function guardarNuevo() {
+    setNuevoError(null);
+    setPending(true);
+    const fd = new FormData();
+    fd.set("clientId", clientId);
+    fd.set("tipo", nuevo.tipo);
+    fd.set("fechaInicio", nuevo.fechaInicio);
+    if (nuevo.periodoMeses) fd.set("periodoMeses", nuevo.periodoMeses);
+    if (nuevo.responsableId) fd.set("responsableId", nuevo.responsableId);
+    if (nuevo.presupuesto) fd.set("presupuesto", nuevo.presupuesto);
+    fd.set("moneda", nuevo.moneda);
+    try {
+      const res = await agregarServicio(fd);
+      if (!res.ok) {
+        setNuevoError(res.error ?? "No se pudo agregar el servicio.");
+        return;
+      }
+      setAdding(false);
+      router.refresh();
+    } finally {
+      setPending(false);
+    }
+  }
+
+  const nuevoEsAds = TIPOS.find((t) => t.tipo === nuevo.tipo)?.ads ?? false;
+
   return (
     <div>
       <div className="mb-[11px] flex items-baseline justify-between">
         <div className="text-[12px] font-bold uppercase text-faint [letter-spacing:.04em]">
-          Servicios activos
+          Servicios
         </div>
-        <div className="text-[11.5px] text-muted-2">
-          Caducidades editables · los cambios quedan en la bitácora
+        <div className="flex items-center gap-3">
+          <div className="text-[11.5px] text-muted-2">Caducidades editables · los cambios quedan en la bitácora</div>
+          {disponibles.length > 0 && (
+            <button
+              onClick={() => setAdding((v) => !v)}
+              className="border-none bg-transparent font-sans text-[12px] font-semibold text-accent"
+            >
+              {adding ? "Cancelar" : "+ Agregar servicio"}
+            </button>
+          )}
         </div>
       </div>
+
+      {adding && (
+        <div className="mb-4 flex flex-col gap-2.5 rounded-[14px] border border-border bg-[#fdfbf7] p-[15px]">
+          {nuevoError && (
+            <div className="rounded-lg border border-danger-border bg-danger-bg px-3 py-2 text-[12px] font-semibold text-danger">{nuevoError}</div>
+          )}
+          <div className="flex flex-wrap gap-2.5">
+            <label className="flex min-w-[160px] flex-1 flex-col gap-1.5">
+              <span className="text-[11px] font-semibold text-muted-2">Servicio</span>
+              <select
+                value={nuevo.tipo}
+                onChange={(e) => setNuevo((n) => ({ ...n, tipo: e.target.value as ServicioTipo }))}
+                className="rounded-lg border border-border bg-surface px-2.5 py-2 text-[12px] text-ink"
+              >
+                {disponibles.map((t) => (
+                  <option key={t.tipo} value={t.tipo}>
+                    {t.label}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className="flex min-w-[140px] flex-1 flex-col gap-1.5">
+              <span className="text-[11px] font-semibold text-muted-2">Fecha de inicio</span>
+              <input
+                type="date"
+                value={nuevo.fechaInicio}
+                onChange={(e) => setNuevo((n) => ({ ...n, fechaInicio: e.target.value }))}
+                className="rounded-lg border border-border bg-surface px-2.5 py-2 text-[12px] text-ink"
+              />
+            </label>
+            <label className="flex min-w-[140px] flex-1 flex-col gap-1.5">
+              <span className="text-[11px] font-semibold text-muted-2">Período contratado</span>
+              <select
+                value={nuevo.periodoMeses}
+                onChange={(e) => setNuevo((n) => ({ ...n, periodoMeses: e.target.value }))}
+                className="rounded-lg border border-border bg-surface px-2.5 py-2 text-[12px] text-ink"
+              >
+                <option value="">Indefinido</option>
+                <option value="3">3 meses</option>
+                <option value="6">6 meses</option>
+                <option value="12">12 meses</option>
+              </select>
+            </label>
+          </div>
+          <div className="flex flex-wrap gap-2.5">
+            {nuevoEsAds && (
+              <>
+                <label className="flex min-w-[140px] flex-1 flex-col gap-1.5">
+                  <span className="text-[11px] font-semibold text-muted-2">Presupuesto mensual</span>
+                  <input
+                    type="number"
+                    min={0}
+                    value={nuevo.presupuesto}
+                    onChange={(e) => setNuevo((n) => ({ ...n, presupuesto: e.target.value }))}
+                    className="rounded-lg border border-border bg-surface px-2.5 py-2 text-[12px] text-ink"
+                  />
+                </label>
+                <label className="flex w-[90px] flex-none flex-col gap-1.5">
+                  <span className="text-[11px] font-semibold text-muted-2">Moneda</span>
+                  <select
+                    value={nuevo.moneda}
+                    onChange={(e) => setNuevo((n) => ({ ...n, moneda: e.target.value }))}
+                    className="rounded-lg border border-border bg-surface px-2.5 py-2 text-[12px] text-ink"
+                  >
+                    <option value="CLP">CLP</option>
+                    <option value="USD">USD</option>
+                  </select>
+                </label>
+              </>
+            )}
+            <label className="flex min-w-[160px] flex-1 flex-col gap-1.5">
+              <span className="text-[11px] font-semibold text-muted-2">Responsable</span>
+              <select
+                value={nuevo.responsableId}
+                onChange={(e) => setNuevo((n) => ({ ...n, responsableId: e.target.value }))}
+                className="rounded-lg border border-border bg-surface px-2.5 py-2 text-[12px] text-ink"
+              >
+                <option value="">Sin asignar</option>
+                {responsables.map((r) => (
+                  <option key={r.id} value={r.id}>
+                    {r.nombre}
+                  </option>
+                ))}
+              </select>
+            </label>
+          </div>
+          <div>
+            <button
+              onClick={guardarNuevo}
+              disabled={pending}
+              className="btn-primary rounded-lg border-none bg-accent px-3.5 py-2 font-sans text-[12.5px] font-semibold text-white disabled:opacity-60"
+            >
+              {pending ? "Agregando…" : "Agregar servicio"}
+            </button>
+          </div>
+        </div>
+      )}
 
       <div className="svc-grid grid grid-cols-2 gap-4">
         {servicios.map((s) => {
@@ -70,9 +243,9 @@ export function ServiciosPanel({ clientId, servicios, diasAvisoVencimiento = 45 
             : dias != null && dias <= diasAvisoVencimiento
               ? "var(--color-warning)"
               : "var(--color-success)";
-          const estadoLabel = vencido ? "Vencido" : s.ritmo ? "Ritmo alto" : "Activo";
-          const estadoFg = vencido ? "var(--color-danger)" : s.ritmo ? "var(--color-warning)" : "var(--color-success)";
-          const estadoBg = vencido ? "var(--color-danger-bg)" : s.ritmo ? "var(--color-warning-bg)" : "var(--color-success-bg)";
+          const estadoLabel = s.pausado ? "Pausado" : vencido ? "Vencido" : s.ritmo ? "Ritmo alto" : "Activo";
+          const estadoFg = s.pausado ? "var(--color-muted-2)" : vencido ? "var(--color-danger)" : s.ritmo ? "var(--color-warning)" : "var(--color-success)";
+          const estadoBg = s.pausado ? "var(--color-border-soft)" : vencido ? "var(--color-danger-bg)" : s.ritmo ? "var(--color-warning-bg)" : "var(--color-success-bg)";
           const editing = editingId === s.id;
 
           const metas: { label: string; value: string; color?: string }[] = [
@@ -86,7 +259,7 @@ export function ServiciosPanel({ clientId, servicios, diasAvisoVencimiento = 45 
             <div
               key={s.id}
               className="flex flex-col rounded-[14px] border border-border bg-surface p-[18px]"
-              style={{ borderTop: `3px solid ${s.color}` }}
+              style={{ borderTop: `3px solid ${s.color}`, opacity: s.pausado ? 0.65 : 1 }}
             >
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2">
@@ -209,15 +382,24 @@ export function ServiciosPanel({ clientId, servicios, diasAvisoVencimiento = 45 
                 </div>
               ) : (
                 <div className="mt-3.5 flex gap-2">
+                  {!s.pausado && (
+                    <button
+                      onClick={() => startEdit(s)}
+                      className="ghost flex items-center gap-1.5 rounded-lg border border-border bg-surface px-3 py-2 font-sans text-[12px] font-semibold text-ink"
+                    >
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--color-muted)" strokeWidth="1.8">
+                        <rect x="3" y="4.5" width="18" height="16" rx="2" />
+                        <path d="M3 9h18M8 2.5v4M16 2.5v4" />
+                      </svg>
+                      Editar caducidad
+                    </button>
+                  )}
                   <button
-                    onClick={() => startEdit(s)}
-                    className="ghost flex items-center gap-1.5 rounded-lg border border-border bg-surface px-3 py-2 font-sans text-[12px] font-semibold text-ink"
+                    onClick={() => togglePausa(s)}
+                    disabled={pendingServiceId === s.id}
+                    className="ghost flex items-center gap-1.5 rounded-lg border border-border bg-surface px-3 py-2 font-sans text-[12px] font-semibold text-muted disabled:opacity-60"
                   >
-                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--color-muted)" strokeWidth="1.8">
-                      <rect x="3" y="4.5" width="18" height="16" rx="2" />
-                      <path d="M3 9h18M8 2.5v4M16 2.5v4" />
-                    </svg>
-                    Editar caducidad
+                    {s.pausado ? "Reactivar servicio" : "Pausar servicio"}
                   </button>
                 </div>
               )}

@@ -30,6 +30,7 @@ export interface ServicioDetalle {
   pacingPct: number | null;
   gastoAcumulado: number | null;
   presupuestoMensual: number | null;
+  pausado: boolean;
 }
 
 export interface DescuentoDetalle {
@@ -62,6 +63,7 @@ export interface ClienteDetalleCompleto {
   logoIniciales: string;
   proximaOptimizacion: string;
   servicios: ServicioDetalle[];
+  serviciosTiposExistentes: ServicioTipo[];
   descuentos: DescuentoDetalle[];
   tareas: TareaDetalle[];
 }
@@ -102,13 +104,14 @@ export async function getClienteDetalle(id: string): Promise<ClienteDetalleCompl
         pacing_pct: number | null;
         gasto_acumulado: number | null;
         alerta_disparada: boolean | null;
+        pausado: boolean;
       }[]
     >`
       select s.id, s.tipo, s.fecha_inicio, s.fecha_termino, s.periodo_meses, s.viernes_ordinal_asignado,
-             s.presupuesto_mensual, s.moneda, b.pacing_pct, b.gasto_acumulado, b.alerta_disparada
+             s.presupuesto_mensual, s.moneda, b.pacing_pct, b.gasto_acumulado, b.alerta_disparada, s.pausado
       from services s
       left join budgets b on b.service_id = s.id and b.mes = ${mes} and b.anio = ${anio}
-      where s.client_id = ${id} and not s.pausado
+      where s.client_id = ${id}
       order by s.tipo
     `,
     sql<{ id: string; descripcion: string; valor: number; fecha_termino: string }[]>`
@@ -166,8 +169,10 @@ export async function getClienteDetalle(id: string): Promise<ClienteDetalleCompl
         pacingPct: s.pacing_pct,
         gastoAcumulado: s.gasto_acumulado,
         presupuestoMensual: s.presupuesto_mensual,
+        pausado: s.pausado,
       };
     }),
+    serviciosTiposExistentes: serviciosRows.map((s) => s.tipo),
     descuentos: descuentosRows.map((d) => ({ id: d.id, nombre: d.descripcion, pct: Number(d.valor), vence: d.fecha_termino })),
     tareas: tareasRows.map((t) => ({
       id: t.id,

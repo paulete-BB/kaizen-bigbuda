@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import type { DescuentoDetalle } from "@/lib/data/cliente-detalle";
-import { editarDescuento, guardarNuevoDescuento, terminarDescuento } from "@/lib/data/cliente-actions";
+import { editarDescuento, eliminarDescuento, guardarNuevoDescuento, terminarDescuento } from "@/lib/data/cliente-actions";
 import { addMeses, diasHasta, fmtFecha, hoySantiago } from "@/lib/dates";
 
 interface DescuentosPanelProps {
@@ -55,6 +55,22 @@ export function DescuentosPanel({ clientId, descuentos }: DescuentosPanelProps) 
     fd.set("pct", String(d.pct));
     try {
       await terminarDescuento(fd);
+      setEditingId(null);
+      router.refresh();
+    } finally {
+      setPending(false);
+    }
+  }
+
+  async function eliminar(d: DescuentoDetalle) {
+    if (!confirm(`¿Eliminar "${d.nombre}" del registro? Esta acción no se puede deshacer.`)) return;
+    setPending(true);
+    const fd = new FormData();
+    fd.set("discountId", d.id);
+    fd.set("clientId", clientId);
+    fd.set("nombre", d.nombre);
+    try {
+      await eliminarDescuento(fd);
       setEditingId(null);
       router.refresh();
     } finally {
@@ -233,6 +249,16 @@ export function DescuentosPanel({ clientId, descuentos }: DescuentosPanelProps) 
                       className="rounded-lg border border-danger-border bg-surface px-3 py-2 font-sans text-[12px] font-semibold text-danger disabled:opacity-60"
                     >
                       Terminar ahora
+                    </button>
+                    <button
+                      onClick={() => eliminar(d)}
+                      disabled={pending}
+                      title="Eliminar del registro"
+                      className="flex h-[34px] w-[34px] flex-none items-center justify-center rounded-lg border border-danger-border bg-surface text-danger disabled:opacity-60"
+                    >
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9">
+                        <path d="M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13" />
+                      </svg>
                     </button>
                   </div>
                 </div>

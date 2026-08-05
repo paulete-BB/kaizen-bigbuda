@@ -17,23 +17,14 @@ export interface OnboardingResumen {
 const DONE_STATES = new Set(["recibido", "completado"]);
 
 /**
- * Instancia (una sola vez, de forma perezosa) el checklist de onboarding
- * §3.8 para un cliente a partir de sus servicios activos, y devuelve el
- * resumen. Si el cliente ya tiene optimizaciones "realizada" se asume que
- * el onboarding ya avanzó — deja como máximo 2 ítems sin marcar (mismo
- * criterio que el diseño aprobado: "faltan accesos por confirmar").
+ * Devuelve el resumen del checklist de onboarding §3.8 de un cliente,
+ * instanciando primero cualquier plantilla que todavía no tenga su
+ * checklist_instance — de forma perezosa e idempotente **por plantilla**
+ * (no solo la primera vez para el cliente completo), para que agregar un
+ * servicio nuevo más adelante también le cree su propio checklist.
  */
 export async function getOnboardingCliente(clientId: string): Promise<OnboardingResumen> {
-  const existentes = await sql<{ instance_id: string }[]>`
-    select id as instance_id from checklist_instances
-    where client_id = ${clientId} and template_id in (
-      select id from checklist_templates where tipo = 'onboarding'
-    )
-  `;
-
-  if (existentes.length === 0) {
-    await instanciarOnboarding(clientId);
-  }
+  await instanciarOnboarding(clientId);
 
   const items = await sql<
     { id: string; descripcion: string; estado: OnboardingItem["estado"]; bloqueante: boolean }[]
@@ -72,8 +63,14 @@ async function instanciarOnboarding(clientId: string) {
       and (servicio_tipo is null or servicio_tipo = any(${serviciosActivos.map((s) => s.tipo)}))
   `;
 
+  const yaInstanciados = await sql<{ template_id: string }[]>`
+    select template_id from checklist_instances where client_id = ${clientId}
+  `;
+  const yaInstanciadosSet = new Set(yaInstanciados.map((r) => r.template_id));
+
   let pendientesDejados = 0;
   for (const tpl of templates) {
+    if (yaInstanciadosSet.has(tpl.id)) continue;
     const [instance] = await sql<{ id: string }[]>`
       insert into checklist_instances (template_id, client_id, estado)
       values (${tpl.id}, ${clientId}, 'en_progreso')

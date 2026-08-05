@@ -1,5 +1,10 @@
+"use client";
+
+import { useState } from "react";
+import { useRouter } from "next/navigation";
 import Link from "next/link";
 import type { ClienteDetalleCompleto } from "@/lib/data/cliente-detalle";
+import { editarCliente } from "@/lib/data/cliente-actions";
 
 const ESTADO_LABEL: Record<ClienteDetalleCompleto["estado"], string> = {
   activo: "Activo",
@@ -8,6 +13,108 @@ const ESTADO_LABEL: Record<ClienteDetalleCompleto["estado"], string> = {
 };
 
 export function ClienteHeader({ cliente }: { cliente: ClienteDetalleCompleto }) {
+  const router = useRouter();
+  const [editing, setEditing] = useState(false);
+  const [pending, setPending] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [draft, setDraft] = useState({
+    nombre: cliente.nombre,
+    empresa: cliente.empresa,
+    contactoNombre: cliente.contactoNombre,
+    contactoEmail: cliente.contactoEmail,
+    contactoTelefono: cliente.contactoTelefono ?? "",
+    sitioWeb: cliente.sitioWeb ?? "",
+    industria: cliente.industria ?? "",
+  });
+
+  function abrirEdicion() {
+    setDraft({
+      nombre: cliente.nombre,
+      empresa: cliente.empresa,
+      contactoNombre: cliente.contactoNombre,
+      contactoEmail: cliente.contactoEmail,
+      contactoTelefono: cliente.contactoTelefono ?? "",
+      sitioWeb: cliente.sitioWeb ?? "",
+      industria: cliente.industria ?? "",
+    });
+    setError(null);
+    setEditing(true);
+  }
+
+  async function guardar() {
+    setPending(true);
+    setError(null);
+    const fd = new FormData();
+    fd.set("clientId", cliente.id);
+    fd.set("nombre", draft.nombre);
+    fd.set("empresa", draft.empresa);
+    fd.set("contactoNombre", draft.contactoNombre);
+    fd.set("contactoEmail", draft.contactoEmail);
+    fd.set("contactoTelefono", draft.contactoTelefono);
+    fd.set("sitioWeb", draft.sitioWeb);
+    fd.set("industria", draft.industria);
+    try {
+      const res = await editarCliente(fd);
+      if (!res.ok) {
+        setError(res.error ?? "No se pudo guardar.");
+        return;
+      }
+      setEditing(false);
+      router.refresh();
+    } finally {
+      setPending(false);
+    }
+  }
+
+  if (editing) {
+    return (
+      <section className="flex flex-col gap-3 rounded-[14px] border border-border bg-surface p-[22px_24px]" style={{ borderTop: "3px solid var(--color-accent)" }}>
+        <div className="text-[13px] font-bold uppercase text-faint [letter-spacing:.03em]">Editar cliente</div>
+        {error && (
+          <div className="rounded-lg border border-danger-border bg-danger-bg px-3 py-2 text-[12px] font-semibold text-danger">{error}</div>
+        )}
+        <div className="grid grid-cols-2 gap-2.5">
+          <label className="flex flex-col gap-1.5">
+            <span className="text-[11.5px] font-semibold text-muted-2">Nombre</span>
+            <input value={draft.nombre} onChange={(e) => setDraft((d) => ({ ...d, nombre: e.target.value }))} className="rounded-lg border border-border bg-surface px-3 py-2 text-[12.5px] text-ink" />
+          </label>
+          <label className="flex flex-col gap-1.5">
+            <span className="text-[11.5px] font-semibold text-muted-2">Empresa</span>
+            <input value={draft.empresa} onChange={(e) => setDraft((d) => ({ ...d, empresa: e.target.value }))} className="rounded-lg border border-border bg-surface px-3 py-2 text-[12.5px] text-ink" />
+          </label>
+          <label className="flex flex-col gap-1.5">
+            <span className="text-[11.5px] font-semibold text-muted-2">Contacto</span>
+            <input value={draft.contactoNombre} onChange={(e) => setDraft((d) => ({ ...d, contactoNombre: e.target.value }))} className="rounded-lg border border-border bg-surface px-3 py-2 text-[12.5px] text-ink" />
+          </label>
+          <label className="flex flex-col gap-1.5">
+            <span className="text-[11.5px] font-semibold text-muted-2">Email del contacto</span>
+            <input type="email" value={draft.contactoEmail} onChange={(e) => setDraft((d) => ({ ...d, contactoEmail: e.target.value }))} className="rounded-lg border border-border bg-surface px-3 py-2 text-[12.5px] text-ink" />
+          </label>
+          <label className="flex flex-col gap-1.5">
+            <span className="text-[11.5px] font-semibold text-muted-2">Teléfono</span>
+            <input value={draft.contactoTelefono} onChange={(e) => setDraft((d) => ({ ...d, contactoTelefono: e.target.value }))} className="rounded-lg border border-border bg-surface px-3 py-2 text-[12.5px] text-ink" />
+          </label>
+          <label className="flex flex-col gap-1.5">
+            <span className="text-[11.5px] font-semibold text-muted-2">Sitio web</span>
+            <input value={draft.sitioWeb} onChange={(e) => setDraft((d) => ({ ...d, sitioWeb: e.target.value }))} className="rounded-lg border border-border bg-surface px-3 py-2 text-[12.5px] text-ink" />
+          </label>
+          <label className="col-span-2 flex flex-col gap-1.5">
+            <span className="text-[11.5px] font-semibold text-muted-2">Industria</span>
+            <input value={draft.industria} onChange={(e) => setDraft((d) => ({ ...d, industria: e.target.value }))} className="rounded-lg border border-border bg-surface px-3 py-2 text-[12.5px] text-ink" />
+          </label>
+        </div>
+        <div className="flex gap-2">
+          <button onClick={guardar} disabled={pending} className="btn-primary rounded-lg border-none bg-accent px-4 py-2.5 font-sans text-[12.5px] font-semibold text-white disabled:opacity-60">
+            {pending ? "Guardando…" : "Guardar cambios"}
+          </button>
+          <button onClick={() => setEditing(false)} className="ghost rounded-lg border border-border bg-surface px-4 py-2.5 font-sans text-[12.5px] font-semibold text-muted">
+            Cancelar
+          </button>
+        </div>
+      </section>
+    );
+  }
+
   return (
     <section className="flex items-start gap-5 rounded-[14px] border border-border bg-surface p-[22px_24px]">
       <div
@@ -60,6 +167,16 @@ export function ClienteHeader({ cliente }: { cliente: ClienteDetalleCompleto }) 
         </div>
       </div>
       <div className="flex flex-none flex-col gap-2">
+        <button
+          onClick={abrirEdicion}
+          className="qa flex items-center gap-2 rounded-[9px] border border-border bg-surface px-[13px] py-[9px] font-sans text-[12.5px] font-semibold text-ink"
+        >
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="var(--color-muted)" strokeWidth="1.8">
+            <path d="M4 20h4l10-10-4-4L4 16z" />
+            <path d="M13.5 5.5l4 4" />
+          </svg>
+          Editar cliente
+        </button>
         <button className="qa flex items-center gap-2 rounded-[9px] border border-border bg-surface px-[13px] py-[9px] font-sans text-[12.5px] font-semibold text-ink">
           <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="var(--color-muted)" strokeWidth="1.8">
             <path d="M6 3h8l4 4v14H6z" />
