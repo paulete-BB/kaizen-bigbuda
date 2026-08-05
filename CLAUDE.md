@@ -8,6 +8,53 @@
 
 ---
 
+## Estado actual
+
+**Construido (Fase 1 completa, corriendo contra Postgres local):**
+
+- Modelo de datos: `supabase/migrations/0001`-`0005` cubren lo necesario
+  para Fase 1 (§4.2 aplicado a clients/services/discounts/optimizations/
+  checklists/budgets/approvals/holidays/absences/reschedules/settings, con
+  vistas `services_view`/`discounts_view`); `0006_data_model_completo_4_2.sql`
+  agrega el resto del modelo de §4.2 completo — `metric_snapshots` (§3.14),
+  `reports` (§3.4), `prompts`/`prompt_versions` (§3.6, con búsqueda
+  full-text en español) y `retro_reports` (§3.13) — para que la base quede
+  con el esquema completo del brief desde ahora, aunque esas pantallas
+  todavía no se construyan hasta Fase 3/4. Aplicado y verificado dos veces
+  (idempotente) contra Postgres local vía `scripts/migrate.ts`.
+- Auth propia por email con roles `admin`/`miembro` (bcrypt + cookie de
+  sesión firmada) — `lib/auth/`.
+- Motor de scheduling puro (`lib/scheduling/`, 17 tests vitest en verde):
+  reglas A (viernes SEO, máx. 2/viernes, estable mes a mes), B (bloque Ads
+  miércoles 16:00, Meta/Google como ítems separados) y D (reprogramación por
+  feriado, detección de conflicto por ausencia).
+- 6 pantallas conectadas a datos reales (sin mocks): Dashboard, Calendario
+  (drag & drop), Clientes, ficha de Cliente, BloqueMiercoles, RegistroSEO,
+  Bitácora. Verificadas visualmente (login real + navegación) tras el merge:
+  Sidebar y tokens de diseño (`app/globals.css`, tema Kaizen Bigbuda:
+  canvas/ink/accent dorado/colores por servicio) renderizando correctamente.
+- Punto de integración preparado para ClickUp (`lib/clickup/stub.ts`,
+  Fase 2) — todavía no llama a la API real.
+
+**Supabase real:** proyecto creado (`guibqxslwpcpkvjwzrbi.supabase.co`).
+Credenciales (`NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY`)
+en `.env.local` (gitignored). **Conexión verificada end-to-end** desde esta
+sesión: GoTrue (`/auth/v1/health`) responde 200 y PostgREST autentica
+correctamente la publishable key (`scripts/verify-supabase.mjs`). El
+esquema completo de §4.2 (migraciones 0001-0006) está listo para correr en
+el SQL Editor de ese proyecto — todavía no se ha ejecutado ahí; la app
+sigue funcionando contra Postgres local vía `DATABASE_URL` (sin cambios de
+auth ni de capa de datos, cliente `supabase-js`/`@supabase/ssr` instalado
+pero no wireado a la app aún).
+
+**Próximo paso:** correr `supabase/migrations/0001` a `0006` en el SQL
+Editor del proyecto Supabase real (en ese orden), reseedear o migrar datos
+existentes, y luego migrar `DATABASE_URL`/auth de Postgres local a la
+connection string de Supabase (Settings → Database) para que la app hable
+con el proyecto real en vez del Postgres de desarrollo.
+
+---
+
 ## 1. Contexto
 
 Bigbuda es una agencia de marketing digital (Santiago · Toronto) con múltiples líneas de servicio. Esta plataforma es **exclusivamente para el equipo de marketing**, que gestiona solo dos de ellas:
