@@ -4,13 +4,13 @@
 **Rol esperado:** Ingeniero full-stack senior + arquitecto de procesos
 **Fecha:** Julio 2026
 **Nombre del producto:** Kaizen Bigbuda — plataforma interna de mejora continua del área de Marketing (usar este nombre en repo, base de datos, UI y documentación)
-**Versión:** 1.3 — nombre oficial del producto: Kaizen Bigbuda. v1.2 — agrega integración de datos GSC/GA4/Meta con pre-llenado de informes y pacing automático (3.14); v1.1 incluyó onboarding, pacing, checklists, feriados/ausencias, aprobaciones, offboarding y retrospectiva
+**Versión:** 1.4 — agrega 3.15: pestaña "Resultados" (dashboard en vivo con overlay de optimizaciones, Fase 3). v1.3 — nombre oficial del producto: Kaizen Bigbuda. v1.2 — agrega integración de datos GSC/GA4/Meta con pre-llenado de informes y pacing automático (3.14); v1.1 incluyó onboarding, pacing, checklists, feriados/ausencias, aprobaciones, offboarding y retrospectiva
 
 ---
 
 ## Estado actual
 
-**Construido (Fase 1 completa, corriendo contra Postgres local):**
+**Construido (Fase 1 casi cerrada):**
 
 - Modelo de datos: `supabase/migrations/0001`-`0005` cubren lo necesario
   para Fase 1 (§4.2 aplicado a clients/services/discounts/optimizations/
@@ -18,10 +18,8 @@
   vistas `services_view`/`discounts_view`); `0006_data_model_completo_4_2.sql`
   agrega el resto del modelo de §4.2 completo — `metric_snapshots` (§3.14),
   `reports` (§3.4), `prompts`/`prompt_versions` (§3.6, con búsqueda
-  full-text en español) y `retro_reports` (§3.13) — para que la base quede
-  con el esquema completo del brief desde ahora, aunque esas pantallas
-  todavía no se construyan hasta Fase 3/4. Aplicado y verificado dos veces
-  (idempotente) contra Postgres local vía `scripts/migrate.ts`.
+  full-text en español) y `retro_reports` (§3.13); `0007_meetings.sql`
+  agrega la tabla de reuniones (fuera del brief original, ver más abajo).
 - Auth propia por email con roles `admin`/`miembro` (bcrypt + cookie de
   sesión firmada) — `lib/auth/`.
 - Motor de scheduling puro (`lib/scheduling/`, 17 tests vitest en verde):
@@ -30,37 +28,50 @@
   feriado, detección de conflicto por ausencia).
 - 6 pantallas conectadas a datos reales (sin mocks): Dashboard, Calendario
   (drag & drop), Clientes, ficha de Cliente, BloqueMiercoles, RegistroSEO,
-  Bitácora. Verificadas visualmente (login real + navegación) tras el merge:
-  Sidebar y tokens de diseño (`app/globals.css`, tema Kaizen Bigbuda:
-  canvas/ink/accent dorado/colores por servicio) renderizando correctamente.
+  Bitácora. Sidebar y tokens de diseño (`app/globals.css`, tema Kaizen
+  Bigbuda: canvas/ink/accent dorado/colores por servicio).
+- **Alta de cliente + onboarding gating** (§3.8, adelantado desde Fase 2):
+  el formulario de alta (`NuevoClienteDrawer`) crea el cliente y sus
+  servicios iniciales sin programar ninguna optimización; el checklist de
+  onboarding se instancia solo al abrir la ficha (perezoso). Al marcar
+  completo el último ítem bloqueante, `activarPrimeraOptimizacionSiCorresponde`
+  (`lib/data/onboarding-actions.ts`) dispara el motor de scheduling real
+  (asigna viernes ordinal para SEO o el próximo miércoles para Ads) e
+  inserta la primera optimización — verificado con Playwright de punta a
+  punta contra Postgres local.
+- **Reuniones con cliente** (fuera del alcance del brief original,
+  agregado a pedido): tabla `meetings`, se agendan desde la ficha del
+  cliente, aparecen como chip en el calendario mensual junto a las
+  optimizaciones, y tienen su propia página (`/reuniones/[id]`) para dejar
+  notas de lo conversado y marcarlas como realizadas.
 - Punto de integración preparado para ClickUp (`lib/clickup/stub.ts`,
   Fase 2) — todavía no llama a la API real.
+- **Pendiente para cerrar Fase 1** (en curso ahora): CRUD completo — hoy
+  no se puede editar los datos de un cliente, agregar un servicio nuevo a
+  un cliente existente, pausar un servicio individual, ni eliminar
+  realmente un descuento (solo "cerrar antes de tiempo"). Después: control
+  de acceso por rol (hoy cualquier usuario autenticado puede finalizar
+  clientes/descuentos, no solo admin).
 
-**Supabase real:** proyecto (`guibqxslwpcpkvjwzrbi.supabase.co`) **con el
-esquema completo de §4.2 corriendo y datos de prueba cargados** — migrado
-desde esta sesión. Postgres directo (5432) y el pooler en modo transaction
-(6543) están bloqueados por la política de red saliente de este entorno
-(solo permite HTTPS/443); las migraciones `0001`-`0006` y el seed se
-aplicaron vía la **Management API de Supabase** (`POST
-/v1/projects/{ref}/database/query`, HTTPS, autenticada con un Personal
-Access Token de cuenta — no las API keys del proyecto) en vez de
-`scripts/migrate.ts`/`scripts/seed.ts` directos. Verificado leyendo las
-tablas por dos caminos: la Management API (conteos por tabla) y PostgREST
-con la secret key (igual que leerá la app en producción) — 3 clientes, 5
-servicios, 48 optimizaciones, etc., todo coincide con lo generado en local.
-`DATABASE_URL` en `.env.local` apunta a la connection string real
-(pooler `aws-1-us-west-2.pooler.supabase.com:6543`, modo transaction);
-`lib/db.ts` tiene `prepare:false` porque ese pooler no soporta prepared
-statements entre transacciones (si no, la app fallaría de forma
-intermitente al conectar por esa misma string). La app **todavía no se ha
-levantado contra esta base** (correr `npm run dev` con este `.env.local`
-sería la primera vez) — ver reporte de brecha de Fase 1 más abajo para lo
-que falta antes de considerar Fase 1 realmente cerrada.
+**Supabase real + deploy en vivo:** el esquema completo (migraciones
+`0001`-`0007`) y el seed de datos de prueba están aplicados contra el
+proyecto real (`guibqxslwpcpkvjwzrbi.supabase.co`) vía la Management API
+de Supabase (Postgres directo y el pooler transaction están bloqueados
+por la política de red saliente de *este entorno de desarrollo*, no de
+Supabase ni de producción). La contraseña de la base se reseteó a una
+puramente alfanumérica (también vía Management API) porque los caracteres
+especiales originales rompían el parseo del connection string en más de
+una plataforma. **La app está desplegada y funcionando en Vercel**
+(rama `main`, proyecto `kaizen-bigbuda`), con `DATABASE_URL` apuntando al
+pooler transaction (`aws-1-us-west-2.pooler.supabase.com:6543`, con
+`prepare:false` en `lib/db.ts` porque ese modo de pooler no soporta
+prepared statements entre transacciones) y un `AUTH_SECRET` propio de
+producción (distinto al de desarrollo local) — login verificado en vivo.
 
-**Próximo paso:** cerrar los gaps de Fase 1 listados en el reporte de
-brecha (crear cliente/servicio real con scheduling automático, CRUD
-completo, bloqueo de onboarding, control de acceso por rol) antes de
-avanzar a Fase 2.
+**Próximo paso:** cerrar el resto del CRUD de Fase 1 (editar cliente,
+agregar/pausar servicio, eliminar descuento real) y luego el control de
+acceso por rol, antes de avanzar a Fase 2. La sección 3.15 (pestaña
+"Resultados", agregada en v1.4 de este brief) es Fase 3 — no antes.
 
 ---
 
@@ -268,6 +279,16 @@ La agencia ya opera un dashboard de resultados (HTML estático en GitHub Pages, 
 - **Caché y resiliencia:** las métricas se cachean por cliente/período en la base de datos (snapshot con timestamp). Si una API falla al generar el informe, se usa el último snapshot con aviso visible de la fecha del dato. Reintentos con backoff, igual que la cola de ClickUp.
 - **Limitaciones conocidas a respetar (heredadas del dashboard):** el tráfico desde IAs subestima porque varias plataformas no envían Referer (cae como "direct"); AI Overviews no es filtrable en GSC API. Documentar estos matices como nota al pie automática en las secciones de métricas de IA del informe.
 
+### 3.15 Dashboard de resultados en vivo (pestaña "Resultados")
+
+Nueva sección de la app que absorbe el dashboard de resultados existente de la agencia (HTML estático en GitHub Pages, cuyo código sirve como referencia funcional de métricas, llamadas y vistas), reconstruido de forma nativa sobre la capa de datos de 3.14:
+
+- **Vista por cliente** con selector, mostrando en vivo: GSC (clics, impresiones, CTR, posición, top keywords), GA4 (tráfico orgánico, conversiones, tráfico desde IAs con la lista de dominios del dashboard original) y Meta (gasto, resultados, CPC, CTR, alcance) según los servicios activos del cliente. Rango de fechas configurable con comparación vs. período anterior.
+- **Overlay de optimizaciones sobre los gráficos:** las series temporales marcan con líneas/hitos verticales las fechas de cada optimización registrada en la bitácora del cliente (y el envío de informes), para evaluar visualmente el efecto de cada intervención. Es la funcionalidad diferencial de esta vista: conectar el trabajo realizado con la evolución de las métricas.
+- Usa la autenticación de backend con refresh tokens de 3.14 (sin expiración de sesión cada hora, a diferencia del dashboard original) y la configuración de IDs por cliente ya existente en la ficha (sin localStorage).
+- Los datos consultados alimentan también los `metric_snapshots`, generando histórico consultable (el dashboard original no persiste datos).
+- Implementación: parte de la **Fase 3** (comparte la capa de datos con el pre-llenado de informes). El dashboard antiguo se mantiene operativo hasta que esta pestaña lo reemplace; su retiro se decide tras un período de uso en paralelo.
+
 ## 4. Requisitos técnicos
 
 ### 4.1 Stack sugerido (ajustable si hay mejor criterio)
@@ -341,7 +362,7 @@ settings(clickup_workspace_id, clickup_default_list_id, dias_alerta_descuento,
 
 **Fase 2 — Integración ClickUp + operación:** panel de configuración, escritura de bitácora en Docs, creación de tareas/bloques de calendario, webhooks de estado, cola de sincronización con fallback. Además: **onboarding de clientes (3.8)** y **control de presupuesto/pacing (3.9)**.
 
-**Fase 3 — Informes + datos:** editor de borradores por secciones, plantilla visual bigbuda, export a PDF, registro de envío, duplicado mensual. **Integración GSC/GA4/Meta (3.14):** OAuth con refresh token, importador de configuración desde el dashboard existente, pre-llenado de métricas en borradores, pacing automático desde Meta API con fallback manual, caché de snapshots.
+**Fase 3 — Informes + datos:** editor de borradores por secciones, plantilla visual bigbuda, export a PDF, registro de envío, duplicado mensual, y pestaña "Resultados" con dashboard en vivo y overlay de optimizaciones (3.15). **Integración GSC/GA4/Meta (3.14):** OAuth con refresh token, importador de configuración desde el dashboard existente, pre-llenado de métricas en borradores, pacing automático desde Meta API con fallback manual, caché de snapshots.
 
 **Fase 4 — Prompts y mejora continua:** repositorio de prompts con versionado y variables (vinculados a checklists), **flujo de aprobaciones (3.11)**, **offboarding (3.12)**, **retrospectiva mensual del área (3.13)**, KPIs de operación, refinamiento de UX.
 
