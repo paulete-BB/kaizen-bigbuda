@@ -36,22 +36,31 @@
 - Punto de integración preparado para ClickUp (`lib/clickup/stub.ts`,
   Fase 2) — todavía no llama a la API real.
 
-**Supabase real:** proyecto creado (`guibqxslwpcpkvjwzrbi.supabase.co`).
-Credenciales (`NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY`)
-en `.env.local` (gitignored). **Conexión verificada end-to-end** desde esta
-sesión: GoTrue (`/auth/v1/health`) responde 200 y PostgREST autentica
-correctamente la publishable key (`scripts/verify-supabase.mjs`). El
-esquema completo de §4.2 (migraciones 0001-0006) está listo para correr en
-el SQL Editor de ese proyecto — todavía no se ha ejecutado ahí; la app
-sigue funcionando contra Postgres local vía `DATABASE_URL` (sin cambios de
-auth ni de capa de datos, cliente `supabase-js`/`@supabase/ssr` instalado
-pero no wireado a la app aún).
+**Supabase real:** proyecto (`guibqxslwpcpkvjwzrbi.supabase.co`) **con el
+esquema completo de §4.2 corriendo y datos de prueba cargados** — migrado
+desde esta sesión. Postgres directo (5432) y el pooler en modo transaction
+(6543) están bloqueados por la política de red saliente de este entorno
+(solo permite HTTPS/443); las migraciones `0001`-`0006` y el seed se
+aplicaron vía la **Management API de Supabase** (`POST
+/v1/projects/{ref}/database/query`, HTTPS, autenticada con un Personal
+Access Token de cuenta — no las API keys del proyecto) en vez de
+`scripts/migrate.ts`/`scripts/seed.ts` directos. Verificado leyendo las
+tablas por dos caminos: la Management API (conteos por tabla) y PostgREST
+con la secret key (igual que leerá la app en producción) — 3 clientes, 5
+servicios, 48 optimizaciones, etc., todo coincide con lo generado en local.
+`DATABASE_URL` en `.env.local` apunta a la connection string real
+(pooler `aws-1-us-west-2.pooler.supabase.com:6543`, modo transaction);
+`lib/db.ts` tiene `prepare:false` porque ese pooler no soporta prepared
+statements entre transacciones (si no, la app fallaría de forma
+intermitente al conectar por esa misma string). La app **todavía no se ha
+levantado contra esta base** (correr `npm run dev` con este `.env.local`
+sería la primera vez) — ver reporte de brecha de Fase 1 más abajo para lo
+que falta antes de considerar Fase 1 realmente cerrada.
 
-**Próximo paso:** correr `supabase/migrations/0001` a `0006` en el SQL
-Editor del proyecto Supabase real (en ese orden), reseedear o migrar datos
-existentes, y luego migrar `DATABASE_URL`/auth de Postgres local a la
-connection string de Supabase (Settings → Database) para que la app hable
-con el proyecto real en vez del Postgres de desarrollo.
+**Próximo paso:** cerrar los gaps de Fase 1 listados en el reporte de
+brecha (crear cliente/servicio real con scheduling automático, CRUD
+completo, bloqueo de onboarding, control de acceso por rol) antes de
+avanzar a Fase 2.
 
 ---
 
