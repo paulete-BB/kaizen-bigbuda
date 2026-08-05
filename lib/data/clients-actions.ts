@@ -109,10 +109,19 @@ export async function agregarDescuento(formData: FormData) {
   revalidatePath("/clientes");
 }
 
-export async function registrarSalidaCliente(formData: FormData) {
-  await requireUser();
+export interface RegistrarSalidaResultado {
+  ok: boolean;
+  error?: string;
+}
+
+export async function registrarSalidaCliente(formData: FormData): Promise<RegistrarSalidaResultado> {
+  const session = await requireUser();
   const clientId = String(formData.get("clientId") ?? "");
-  if (!clientId) return;
+  if (!clientId) return { ok: false, error: "Cliente inválido." };
+  if (session.rol !== "admin") {
+    return { ok: false, error: "Solo un administrador puede finalizar un cliente." };
+  }
   await sql`update clients set estado = 'finalizado' where id = ${clientId}`;
   revalidatePath("/clientes");
+  return { ok: true };
 }

@@ -104,13 +104,21 @@ export async function editarDescuento(formData: FormData) {
   revalidatePath(`/clientes/${clientId}`);
 }
 
-export async function terminarDescuento(formData: FormData) {
+export interface AccionDescuentoResultado {
+  ok: boolean;
+  error?: string;
+}
+
+export async function terminarDescuento(formData: FormData): Promise<AccionDescuentoResultado> {
   const session = await requireUser();
   const discountId = String(formData.get("discountId") ?? "");
   const clientId = String(formData.get("clientId") ?? "");
   const nombre = String(formData.get("nombre") ?? "");
   const pct = String(formData.get("pct") ?? "");
-  if (!discountId || !clientId) return;
+  if (!discountId || !clientId) return { ok: false, error: "Descuento inválido." };
+  if (session.rol !== "admin") {
+    return { ok: false, error: "Solo un administrador puede terminar un descuento antes de tiempo." };
+  }
 
   const hoy = new Date().toISOString().slice(0, 10);
   await sql`update discounts set fecha_termino = ${hoy} where id = ${discountId}`;
@@ -122,6 +130,7 @@ export async function terminarDescuento(formData: FormData) {
     creadoPor: session.userId,
   });
   revalidatePath(`/clientes/${clientId}`);
+  return { ok: true };
 }
 
 export async function agregarTareaCliente(formData: FormData) {
@@ -272,12 +281,15 @@ export async function reactivarServicio(formData: FormData) {
   revalidatePath(`/clientes/${clientId}`);
 }
 
-export async function eliminarDescuento(formData: FormData) {
+export async function eliminarDescuento(formData: FormData): Promise<AccionDescuentoResultado> {
   const session = await requireUser();
   const discountId = String(formData.get("discountId") ?? "");
   const clientId = String(formData.get("clientId") ?? "");
   const nombre = String(formData.get("nombre") ?? "");
-  if (!discountId || !clientId) return;
+  if (!discountId || !clientId) return { ok: false, error: "Descuento inválido." };
+  if (session.rol !== "admin") {
+    return { ok: false, error: "Solo un administrador puede eliminar un descuento." };
+  }
 
   await sql`delete from discounts where id = ${discountId}`;
   await registrarBitacora({
@@ -288,4 +300,5 @@ export async function eliminarDescuento(formData: FormData) {
     creadoPor: session.userId,
   });
   revalidatePath(`/clientes/${clientId}`);
+  return { ok: true };
 }

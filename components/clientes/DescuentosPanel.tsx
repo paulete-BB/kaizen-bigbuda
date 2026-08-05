@@ -18,6 +18,7 @@ export function DescuentosPanel({ clientId, descuentos }: DescuentosPanelProps) 
   const [adding, setAdding] = useState(false);
   const [nuevo, setNuevo] = useState({ nombre: "", pct: "10", vence: "2026-12-31" });
   const [pending, setPending] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const hoy = hoySantiago();
 
   function toggleEdit(d: DescuentoDetalle) {
@@ -48,13 +49,18 @@ export function DescuentosPanel({ clientId, descuentos }: DescuentosPanelProps) 
 
   async function remove(d: DescuentoDetalle) {
     setPending(true);
+    setError(null);
     const fd = new FormData();
     fd.set("discountId", d.id);
     fd.set("clientId", clientId);
     fd.set("nombre", d.nombre);
     fd.set("pct", String(d.pct));
     try {
-      await terminarDescuento(fd);
+      const res = await terminarDescuento(fd);
+      if (!res.ok) {
+        setError(res.error ?? "No se pudo terminar el descuento.");
+        return;
+      }
       setEditingId(null);
       router.refresh();
     } finally {
@@ -65,12 +71,17 @@ export function DescuentosPanel({ clientId, descuentos }: DescuentosPanelProps) 
   async function eliminar(d: DescuentoDetalle) {
     if (!confirm(`¿Eliminar "${d.nombre}" del registro? Esta acción no se puede deshacer.`)) return;
     setPending(true);
+    setError(null);
     const fd = new FormData();
     fd.set("discountId", d.id);
     fd.set("clientId", clientId);
     fd.set("nombre", d.nombre);
     try {
-      await eliminarDescuento(fd);
+      const res = await eliminarDescuento(fd);
+      if (!res.ok) {
+        setError(res.error ?? "No se pudo eliminar el descuento.");
+        return;
+      }
       setEditingId(null);
       router.refresh();
     } finally {
@@ -107,6 +118,10 @@ export function DescuentosPanel({ clientId, descuentos }: DescuentosPanelProps) 
           {adding ? "Cancelar" : "+ Agregar"}
         </button>
       </div>
+
+      {error && (
+        <div className="border-b border-danger-border bg-danger-bg px-[18px] py-2 text-[12px] font-semibold text-danger">{error}</div>
+      )}
 
       {adding && (
         <div className="flex flex-col gap-2.5 border-b border-border-soft bg-[#fdfbf7] px-[18px] py-[15px]">

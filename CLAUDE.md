@@ -46,12 +46,21 @@
   notas de lo conversado y marcarlas como realizadas.
 - Punto de integración preparado para ClickUp (`lib/clickup/stub.ts`,
   Fase 2) — todavía no llama a la API real.
-- **Pendiente para cerrar Fase 1** (en curso ahora): CRUD completo — hoy
-  no se puede editar los datos de un cliente, agregar un servicio nuevo a
-  un cliente existente, pausar un servicio individual, ni eliminar
-  realmente un descuento (solo "cerrar antes de tiempo"). Después: control
-  de acceso por rol (hoy cualquier usuario autenticado puede finalizar
-  clientes/descuentos, no solo admin).
+- **CRUD completo de clientes/servicios/descuentos (§3.1) — Fase 1
+  cerrada.** `editarCliente` (datos de contacto), `agregarServicio`
+  (activar un servicio nuevo en un cliente existente — corrige de paso
+  que `instanciarOnboarding` solo revisaba una vez por cliente, no por
+  plantilla, así que un servicio agregado después nunca recibía su
+  checklist), `pausarServicio`/`reactivarServicio` (soft-delete: se
+  prefirió sobre borrado duro por la auditoría de §4.3 — un servicio
+  pausado sigue visible en la ficha, antes desaparecía sin poder
+  reactivarlo), y `eliminarDescuento` (borrado real, distinto de
+  "terminar antes de tiempo"). **Control de acceso por rol**: finalizar
+  un cliente, terminar un descuento antes de tiempo y eliminar un
+  descuento ahora exigen `rol = admin` (antes cualquier `miembro`
+  autenticado podía hacerlo) — las acciones devuelven `{ok:false,error}`
+  y la UI muestra el motivo en vez de fallar en silencio. Verificado con
+  Playwright logueado como admin y como miembro.
 
 **Supabase real + deploy en vivo:** el esquema completo (migraciones
 `0001`-`0007`) y el seed de datos de prueba están aplicados contra el
@@ -62,16 +71,23 @@ Supabase ni de producción). La contraseña de la base se reseteó a una
 puramente alfanumérica (también vía Management API) porque los caracteres
 especiales originales rompían el parseo del connection string en más de
 una plataforma. **La app está desplegada y funcionando en Vercel**
-(rama `main`, proyecto `kaizen-bigbuda`), con `DATABASE_URL` apuntando al
-pooler transaction (`aws-1-us-west-2.pooler.supabase.com:6543`, con
+(proyecto `kaizen-bigbuda`), con `DATABASE_URL` apuntando al pooler
+transaction (`aws-1-us-west-2.pooler.supabase.com:6543`, con
 `prepare:false` en `lib/db.ts` porque ese modo de pooler no soporta
 prepared statements entre transacciones) y un `AUTH_SECRET` propio de
 producción (distinto al de desarrollo local) — login verificado en vivo.
+**`main` quedó desincronizado a propósito**: el CRUD completo y el
+control de acceso por rol viven en `claude/verify-supabase-connection-k8b430`
+pero no se mergearon a `main` (decisión explícita — el deploy en vivo de
+Vercel sigue mostrando la versión de antes del CRUD hasta que se pida el
+merge).
 
-**Próximo paso:** cerrar el resto del CRUD de Fase 1 (editar cliente,
-agregar/pausar servicio, eliminar descuento real) y luego el control de
-acceso por rol, antes de avanzar a Fase 2. La sección 3.15 (pestaña
-"Resultados", agregada en v1.4 de este brief) es Fase 3 — no antes.
+**Fase 1 funcionalmente cerrada.** Próximo paso: decidir con qué arrancar
+de Fase 2 (panel de configuración, integración real de ClickUp — bitácora
+a Docs + tareas/webhooks —, o completar lo que falta de presupuesto/pacing
+como crear una fila de `budgets` nueva para un servicio/mes sin una). La
+sección 3.15 (pestaña "Resultados", agregada en v1.4 de este brief) es
+Fase 3 — no antes.
 
 ---
 

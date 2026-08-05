@@ -28,22 +28,33 @@ export function AjusteDrawer({
   const [open, setOpen] = useState(false);
   const [tipo, setTipo] = useState<Tipo>("ext");
   const [pending, setPending] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const cfg = CFG[tipo];
 
   function abrir(t: Tipo) {
     setTipo(t);
+    setError(null);
     setOpen(true);
   }
 
   async function onSubmit(formData: FormData) {
     setPending(true);
+    setError(null);
     try {
-      if (tipo === "ext") await extenderServicio(formData);
-      else if (tipo === "desc") await agregarDescuento(formData);
-      else await registrarSalidaCliente(formData);
+      if (tipo === "ext") {
+        await extenderServicio(formData);
+      } else if (tipo === "desc") {
+        await agregarDescuento(formData);
+      } else {
+        const res = await registrarSalidaCliente(formData);
+        if (!res.ok) {
+          setError(res.error ?? "No se pudo registrar la salida.");
+          return;
+        }
+      }
+      setOpen(false);
     } finally {
       setPending(false);
-      setOpen(false);
     }
   }
 
@@ -81,6 +92,10 @@ export function AjusteDrawer({
               <div className="text-[16px] font-bold">{cfg.title}</div>
               <div className="text-[12.5px] text-muted-2">{cfg.sub}</div>
             </div>
+
+            {error && (
+              <div className="rounded-lg border border-danger-border bg-danger-bg px-3 py-2 text-[12px] font-semibold text-danger">{error}</div>
+            )}
 
             <form action={onSubmit} className="flex flex-col gap-3.5">
               {tipo === "ext" && (
