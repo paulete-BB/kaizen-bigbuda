@@ -15,6 +15,11 @@ declare global {
  */
 export const sql = globalThis.__kaizenSql ?? postgres(process.env.DATABASE_URL!, {
   max: 10,
+  // El pooler de Supabase en modo "transaction" (puerto 6543, pgbouncer) no
+  // soporta prepared statements entre transacciones — sin esto, las queries
+  // fallan de forma intermitente contra ese pooler (no afecta a Postgres
+  // directo/local, que no usa pooler).
+  prepare: false,
   types: {
     date: {
       to: 1082,
