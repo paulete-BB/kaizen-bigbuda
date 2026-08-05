@@ -6,9 +6,11 @@ import { TareasPanel } from "./TareasPanel";
 import { BitacoraPanel } from "./BitacoraPanel";
 import { DescuentosPanel } from "./DescuentosPanel";
 import { OnboardingPanel } from "./OnboardingPanel";
+import { ReunionesPanel } from "./ReunionesPanel";
 import type { ClienteDetalleCompleto } from "@/lib/data/cliente-detalle";
 import type { BitacoraEntrada } from "@/lib/data/bitacora";
 import type { OnboardingResumen } from "@/lib/data/onboarding";
+import type { Reunion } from "@/lib/data/meetings";
 import type { UsuarioResumen } from "@/lib/data/users";
 
 export function ClienteView({
@@ -16,12 +18,14 @@ export function ClienteView({
   usuario,
   bitacora,
   onboarding,
+  reuniones,
   responsables,
 }: {
   cliente: ClienteDetalleCompleto;
   usuario: SidebarUsuario;
   bitacora: BitacoraEntrada[];
   onboarding: OnboardingResumen;
+  reuniones: Reunion[];
   responsables: UsuarioResumen[];
 }) {
   return (
@@ -77,7 +81,8 @@ export function ClienteView({
             </div>
             <div className="flex flex-col gap-5">
               <DescuentosPanel clientId={cliente.id} descuentos={cliente.descuentos} />
-              <OnboardingPanel resumen={onboarding} />
+              <ReunionesPanel clientId={cliente.id} reuniones={reuniones} />
+              <OnboardingPanel clientId={cliente.id} resumen={onboarding} />
             </div>
           </div>
         </div>

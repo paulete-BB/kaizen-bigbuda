@@ -3,6 +3,7 @@ import { ClienteView } from "@/components/clientes/ClienteView";
 import { getClienteDetalle } from "@/lib/data/cliente-detalle";
 import { getBitacoraCliente } from "@/lib/data/bitacora";
 import { getOnboardingCliente } from "@/lib/data/onboarding";
+import { listReunionesCliente } from "@/lib/data/meetings";
 import { listResponsables } from "@/lib/data/users";
 import { requireUser } from "@/lib/auth/server";
 
@@ -13,9 +14,10 @@ export default async function ClientePage({ params }: { params: Promise<{ id: st
   const cliente = await getClienteDetalle(id);
   if (!cliente) notFound();
 
-  const [bitacora, onboarding, responsables] = await Promise.all([
+  const [bitacora, onboarding, reuniones, responsables] = await Promise.all([
     getBitacoraCliente(id),
     getOnboardingCliente(id),
+    listReunionesCliente(id),
     listResponsables(),
   ]);
 
@@ -24,6 +26,7 @@ export default async function ClientePage({ params }: { params: Promise<{ id: st
       cliente={cliente}
       bitacora={bitacora}
       onboarding={onboarding}
+      reuniones={reuniones}
       responsables={responsables}
       usuario={{
         nombre: session.nombre,

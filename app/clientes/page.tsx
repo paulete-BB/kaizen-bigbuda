@@ -1,13 +1,15 @@
 import { ClientesListView } from "@/components/clientes/ClientesListView";
 import { listAjustesRecientes, listClientesResumen, listServiciosActivosConCliente } from "@/lib/data/clients";
+import { listResponsables } from "@/lib/data/users";
 import { requireUser } from "@/lib/auth/server";
 
 export default async function ClientesPage() {
   const session = await requireUser();
-  const [clientes, servicios, ajustesRecientes] = await Promise.all([
+  const [clientes, servicios, ajustesRecientes, responsables] = await Promise.all([
     listClientesResumen(),
     listServiciosActivosConCliente(),
     listAjustesRecientes(),
+    listResponsables(),
   ]);
 
   return (
@@ -20,6 +22,7 @@ export default async function ClientesPage() {
       clientes={clientes}
       servicios={servicios}
       ajustesRecientes={ajustesRecientes}
+      responsables={responsables}
     />
   );
 }

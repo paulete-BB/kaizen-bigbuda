@@ -61,14 +61,13 @@ export function ServiciosPanel({ clientId, servicios, diasAvisoVencimiento = 45 
 
       <div className="svc-grid grid grid-cols-2 gap-4">
         {servicios.map((s) => {
-          if (!s.vigencia) return null;
-          const dias = diasHasta(s.vigencia, hoy);
-          const total = diasHasta(s.vigencia, parseIso(s.inicio));
-          const restPct = Math.max(4, Math.min(100, Math.round((dias / total) * 100)));
-          const vencido = dias < 0;
+          const dias = s.vigencia ? diasHasta(s.vigencia, hoy) : null;
+          const total = s.vigencia ? diasHasta(s.vigencia, parseIso(s.inicio)) : null;
+          const restPct = dias != null && total ? Math.max(4, Math.min(100, Math.round((dias / total) * 100))) : 0;
+          const vencido = dias != null && dias < 0;
           const fg = vencido
             ? "var(--color-danger)"
-            : dias <= diasAvisoVencimiento
+            : dias != null && dias <= diasAvisoVencimiento
               ? "var(--color-warning)"
               : "var(--color-success)";
           const estadoLabel = vencido ? "Vencido" : s.ritmo ? "Ritmo alto" : "Activo";
@@ -135,17 +134,21 @@ export function ServiciosPanel({ clientId, servicios, diasAvisoVencimiento = 45 
                 </div>
               )}
 
-              <div className="mt-4">
-                <div className="mb-1.5 flex items-center justify-between text-[11.5px]">
-                  <span className="text-muted-2">Vigencia hasta {fmtFecha(s.vigencia)}</span>
-                  <span className="font-bold" style={{ color: fg }}>
-                    {vencido ? `${Math.abs(dias)} días vencido` : `${dias} días`}
-                  </span>
+              {s.vigencia && dias != null ? (
+                <div className="mt-4">
+                  <div className="mb-1.5 flex items-center justify-between text-[11.5px]">
+                    <span className="text-muted-2">Vigencia hasta {fmtFecha(s.vigencia)}</span>
+                    <span className="font-bold" style={{ color: fg }}>
+                      {vencido ? `${Math.abs(dias)} días vencido` : `${dias} días`}
+                    </span>
+                  </div>
+                  <div className="h-1.5 overflow-hidden rounded-md bg-border-soft">
+                    <div className="h-full rounded-md" style={{ width: `${restPct}%`, background: fg }} />
+                  </div>
                 </div>
-                <div className="h-1.5 overflow-hidden rounded-md bg-border-soft">
-                  <div className="h-full rounded-md" style={{ width: `${restPct}%`, background: fg }} />
-                </div>
-              </div>
+              ) : (
+                <div className="mt-4 text-[11.5px] text-muted-2">Vigencia indefinida.</div>
+              )}
 
               {editing ? (
                 <div className="mt-[15px] flex flex-col gap-[11px] border-t border-dashed border-border pt-3.5">
@@ -157,7 +160,7 @@ export function ServiciosPanel({ clientId, servicios, diasAvisoVencimiento = 45 
                       <button
                         key={n}
                         className="preset rounded-lg border border-border bg-surface px-[11px] py-1.5 font-sans text-[12px] font-semibold text-ink"
-                        onClick={() => setDraft((d) => ({ ...d, fecha: addMeses(s.vigencia!, n) }))}
+                        onClick={() => setDraft((d) => ({ ...d, fecha: addMeses(s.vigencia ?? s.inicio, n) }))}
                       >
                         +{n} meses
                       </button>

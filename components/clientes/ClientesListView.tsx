@@ -1,7 +1,9 @@
 import Link from "next/link";
 import { Sidebar, type SidebarUsuario } from "@/components/layout/Sidebar";
 import { AjusteDrawer } from "./AjusteDrawer";
+import { NuevoClienteDrawer } from "./NuevoClienteDrawer";
 import { SERVICE_LABEL, type AjusteReciente, type ClienteResumen, type ServicioActivoOpcion } from "@/lib/data/clients";
+import type { UsuarioResumen } from "@/lib/data/users";
 import { fmtFecha } from "@/lib/dates";
 
 const CHIP_COLOR: Record<string, { fg: string; bg: string }> = {
@@ -21,11 +23,13 @@ export function ClientesListView({
   clientes,
   servicios,
   ajustesRecientes,
+  responsables,
 }: {
   usuario: SidebarUsuario;
   clientes: ClienteResumen[];
   servicios: ServicioActivoOpcion[];
   ajustesRecientes: AjusteReciente[];
+  responsables: UsuarioResumen[];
 }) {
   const conPosicionamiento = clientes.filter((c) => c.servicios.some((s) => s.tipo === "seo_aeo_geo")).length;
   const conAds = clientes.filter((c) => c.servicios.some((s) => s.tipo !== "seo_aeo_geo")).length;
@@ -43,9 +47,7 @@ export function ClientesListView({
             </div>
           </div>
           <div className="flex-1" />
-          <button className="btn-primary rounded-[9px] border-none bg-accent px-4 py-2.5 font-sans text-[13px] font-semibold text-white">
-            Nuevo cliente
-          </button>
+          <NuevoClienteDrawer responsables={responsables} />
         </header>
 
         <div className="grid gap-5 px-[26px] pb-10 pt-[22px]" style={{ gridTemplateColumns: "minmax(0,1.7fr) minmax(0,1fr)" }}>

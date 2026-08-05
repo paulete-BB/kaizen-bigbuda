@@ -1,4 +1,5 @@
 import { sql } from "@/lib/db";
+import { listReunionesDelMes, type ReunionCalendario } from "@/lib/data/meetings";
 
 export interface EventoCalendario {
   id: string;
@@ -23,7 +24,7 @@ export async function getMesCalendario(year: number, month: number) {
   const hastaDate = new Date(year, month, 0);
   const hasta = `${hastaDate.getFullYear()}-${String(hastaDate.getMonth() + 1).padStart(2, "0")}-${String(hastaDate.getDate()).padStart(2, "0")}`;
 
-  const [eventos, holidays] = await Promise.all([
+  const [eventos, holidays, reuniones] = await Promise.all([
     sql<
       {
         id: string;
@@ -49,6 +50,7 @@ export async function getMesCalendario(year: number, month: number) {
       order by o.fecha_programada, o.hora_programada nulls first
     `,
     sql<HolidayMes[]>`select fecha, nombre from holidays where fecha between ${desde} and ${hasta} order by fecha`,
+    listReunionesDelMes(desde, hasta),
   ]);
 
   const eventosMapeados: EventoCalendario[] = eventos.map((e) => ({
@@ -64,5 +66,7 @@ export async function getMesCalendario(year: number, month: number) {
     viernesOrdinal: e.viernes_ordinal_asignado,
   }));
 
-  return { eventos: eventosMapeados, holidays };
+  return { eventos: eventosMapeados, holidays, reuniones };
 }
+
+export type { ReunionCalendario };

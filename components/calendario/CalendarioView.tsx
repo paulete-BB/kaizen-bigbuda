@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { Sidebar, type SidebarUsuario } from "@/components/layout/Sidebar";
 import { MonthGrid } from "./MonthGrid";
-import type { EventoCalendario, HolidayMes } from "@/lib/data/calendario";
+import type { EventoCalendario, HolidayMes, ReunionCalendario } from "@/lib/data/calendario";
 
 const MESES = [
   "Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio",
@@ -18,12 +18,14 @@ export function CalendarioView({
   month,
   eventos,
   holidays,
+  reuniones,
 }: {
   usuario: SidebarUsuario;
   year: number;
   month: number;
   eventos: EventoCalendario[];
   holidays: HolidayMes[];
+  reuniones: ReunionCalendario[];
 }) {
   const prevYear = month === 1 ? year - 1 : year;
   const prevMonth = month === 1 ? 12 : month - 1;
@@ -64,10 +66,14 @@ export function CalendarioView({
               <span className="h-2.5 w-2.5 rounded-sm" style={{ background: "#0d9488" }} />
               Ads (Meta + Google) — miércoles 16:00
             </span>
+            <span className="flex items-center gap-1.5">
+              <span className="h-2.5 w-2.5 rounded-sm" style={{ background: "var(--color-faint)" }} />
+              Reuniones agendadas
+            </span>
             <span className="text-muted-2">Arrastra un cliente SEO a otro viernes para reasignarlo de forma estable.</span>
           </div>
 
-          <MonthGrid year={year} month={month} eventos={eventos} holidays={holidays} />
+          <MonthGrid year={year} month={month} eventos={eventos} holidays={holidays} reuniones={reuniones} />
         </div>
       </main>
     </div>

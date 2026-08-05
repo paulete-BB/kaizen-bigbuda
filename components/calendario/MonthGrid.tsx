@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import type { EventoCalendario, HolidayMes } from "@/lib/data/calendario";
+import type { EventoCalendario, HolidayMes, ReunionCalendario } from "@/lib/data/calendario";
 import { reasignarViernesSeo } from "@/lib/data/calendario-actions";
 import { buildMonthGrid, toIso, hoySantiago } from "@/lib/dates";
 import { fridaysOfMonth } from "@/lib/scheduling/dates";
@@ -21,11 +21,13 @@ export function MonthGrid({
   month,
   eventos,
   holidays,
+  reuniones,
 }: {
   year: number;
   month: number;
   eventos: EventoCalendario[];
   holidays: HolidayMes[];
+  reuniones: ReunionCalendario[];
 }) {
   const router = useRouter();
   const [error, setError] = useState<string | null>(null);
@@ -39,6 +41,12 @@ export function MonthGrid({
     const arr = eventosPorFecha.get(e.fecha) ?? [];
     arr.push(e);
     eventosPorFecha.set(e.fecha, arr);
+  }
+  const reunionesPorFecha = new Map<string, ReunionCalendario[]>();
+  for (const r of reuniones) {
+    const arr = reunionesPorFecha.get(r.fecha) ?? [];
+    arr.push(r);
+    reunionesPorFecha.set(r.fecha, arr);
   }
   const fridays = fridaysOfMonth(year, month);
 
@@ -76,6 +84,7 @@ export function MonthGrid({
           const esViernes = fridays.includes(fecha);
           const seoDia = eventosDia.filter((e) => e.tipo === "seo_aeo_geo");
           const adsDia = eventosDia.filter((e) => e.tipo !== "seo_aeo_geo");
+          const reunionesDia = reunionesPorFecha.get(fecha) ?? [];
           const dayNum = Number(fecha.slice(8, 10));
 
           return (
@@ -114,6 +123,18 @@ export function MonthGrid({
                   style={{ background: "#efecfb", color: "#6d5bd6", cursor: enMes ? "grab" : "default" }}
                 >
                   {e.clienteNombre}
+                </Link>
+              ))}
+
+              {reunionesDia.map((r) => (
+                <Link
+                  key={r.id}
+                  href={`/reuniones/${r.id}`}
+                  title={`${r.clienteNombre} · ${r.titulo}`}
+                  className="truncate rounded-md px-1.5 py-1 text-[10.5px] font-semibold"
+                  style={{ background: "var(--color-border-soft)", color: "var(--color-muted)" }}
+                >
+                  {r.clienteNombre} · {r.titulo}
                 </Link>
               ))}
 

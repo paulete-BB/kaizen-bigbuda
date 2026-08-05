@@ -14,7 +14,7 @@ export default async function CalendarioPage({
   const year = params.year ? Number(params.year) : hoy.getFullYear();
   const month = params.month ? Number(params.month) : hoy.getMonth() + 1;
 
-  const { eventos, holidays } = await getMesCalendario(year, month);
+  const { eventos, holidays, reuniones } = await getMesCalendario(year, month);
 
   return (
     <CalendarioView
@@ -27,6 +27,7 @@ export default async function CalendarioPage({
       month={month}
       eventos={eventos}
       holidays={holidays}
+      reuniones={reuniones}
     />
   );
 }

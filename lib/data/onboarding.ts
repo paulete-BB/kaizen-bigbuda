@@ -1,8 +1,10 @@
 import { sql } from "@/lib/db";
 
 export interface OnboardingItem {
+  id: string;
   descripcion: string;
   estado: "pendiente" | "solicitado" | "recibido" | "completado";
+  bloqueante: boolean;
 }
 
 export interface OnboardingResumen {
@@ -33,10 +35,13 @@ export async function getOnboardingCliente(clientId: string): Promise<Onboarding
     await instanciarOnboarding(clientId);
   }
 
-  const items = await sql<{ descripcion: string; estado: OnboardingItem["estado"] }[]>`
-    select ci.descripcion, ci.estado
+  const items = await sql<
+    { id: string; descripcion: string; estado: OnboardingItem["estado"]; bloqueante: boolean }[]
+  >`
+    select ci.id, ci.descripcion, ci.estado, coalesce(cit.bloqueante, false) as bloqueante
     from checklist_items ci
     join checklist_instances inst on inst.id = ci.instance_id
+    left join checklist_items_template cit on cit.template_id = inst.template_id and cit.orden = ci.orden
     where inst.client_id = ${clientId} and inst.template_id in (
       select id from checklist_templates where tipo = 'onboarding'
     )
