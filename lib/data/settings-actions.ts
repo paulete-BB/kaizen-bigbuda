@@ -17,6 +17,7 @@ export async function guardarAjustes(formData: FormData): Promise<GuardarAjustes
 
   const clickupWorkspaceId = String(formData.get("clickupWorkspaceId") ?? "").trim();
   const clickupDefaultListId = String(formData.get("clickupDefaultListId") ?? "").trim();
+  const clickupBitacoraDocId = String(formData.get("clickupBitacoraDocId") ?? "").trim();
   const diasAlertaDescuento = Number(formData.get("diasAlertaDescuento") ?? 15);
   const diasAlertaVencimientoServicio = Number(formData.get("diasAlertaVencimientoServicio") ?? 20);
   const umbralPacingPct = Number(formData.get("umbralPacingPct") ?? 15);
@@ -35,6 +36,7 @@ export async function guardarAjustes(formData: FormData): Promise<GuardarAjustes
     update settings set
       clickup_workspace_id = ${clickupWorkspaceId || null},
       clickup_default_list_id = ${clickupDefaultListId || null},
+      clickup_bitacora_doc_id = ${clickupBitacoraDocId || null},
       dias_alerta_descuento = ${diasAlertaDescuento},
       dias_alerta_vencimiento_servicio = ${diasAlertaVencimientoServicio},
       umbral_pacing_pct = ${umbralPacingPct},

@@ -44,8 +44,6 @@
   cliente, aparecen como chip en el calendario mensual junto a las
   optimizaciones, y tienen su propia página (`/reuniones/[id]`) para dejar
   notas de lo conversado y marcarlas como realizadas.
-- Punto de integración preparado para ClickUp (`lib/clickup/stub.ts`,
-  Fase 2) — todavía no llama a la API real.
 - **CRUD completo de clientes/servicios/descuentos (§3.1) — Fase 1
   cerrada.** `editarCliente` (datos de contacto), `agregarServicio`
   (activar un servicio nuevo en un cliente existente — corrige de paso
@@ -108,10 +106,36 @@ merge).
   local: un servicio (Provetec Mining · Google Ads, agosto sin fila de
   `budgets`) pasó de "—" a pacing calculado tras guardar, y una segunda
   edición del mismo mes actualizó la fila en vez de duplicarla.
+- **Bitácora real en ClickUp (§3.3)** — `lib/clickup/client.ts` reemplaza
+  el stub. Se conectó contra el workspace real de Bigbuda ("Bigbuda Inc",
+  token de API personal en `CLICKUP_API_TOKEN`) y se descubrió que la
+  estructura real no es "un Doc por cliente" como asumía el modelo
+  original: existe un único Doc compartido "Bitácoras de Clientes" con
+  una página por cliente, mantenida a mano por el equipo (ficha de
+  accesos, objetivos, reuniones). Para no arriesgar pisar ese contenido,
+  cada cliente recibe una página *dedicada* solo para lo que escribe la
+  app (`{cliente} · Bitácora Kaizen`), creada perezosamente en la primera
+  escritura y cacheada en el nuevo `clients.clickup_bitacora_page_id`
+  (migración `0008_clickup_bitacora.sql`); el Doc compartido se configura
+  una vez en `settings.clickup_bitacora_doc_id` (editable desde /ajustes,
+  ya no dice "todavía no se conecta"). Las escrituras usan
+  `content_edit_mode: "append"` de la API v3 (server-side, sin
+  read-modify-write). Se confirmó empíricamente que la API de ClickUp
+  devuelve 500 intermitentes incluso en lecturas simples, así que
+  `clickupFetch` reintenta con backoff (§4.3) antes de degradar a
+  `pendiente_sync`, igual que pedía el stub original. Corregido de paso
+  un bug real: `registrarBitacora` en `cliente-actions.ts` pasaba
+  `clienteNombre: ""` siempre (nunca el nombre real) — ahora resuelve el
+  cliente por `clientId` dentro del cliente de ClickUp. Verificado de
+  punta a punta (Postgres local + API real de ClickUp): creación de
+  página nueva, reutilización por nombre, caché del id, y append
+  correcto — sin tocar nunca la ficha manual del cliente. Falta: tareas
+  del calendario y webhooks de ClickUp (§3.5) siguen sin implementar; no
+  existe todavía el job de reintento de entradas `pendiente_sync`.
 
-**Próximo paso:** integración real de ClickUp (bitácora escribiendo en
-Docs, tareas/bloques de calendario, webhooks — hoy 100% stub en
-`lib/clickup/stub.ts`). La sección 3.15 (pestaña "Resultados", agregada en
+**Próximo paso:** el resto de la integración de ClickUp (tareas/bloques de
+calendario en la vista Calendario de ClickUp, webhooks de
+`taskStatusUpdated`, job de reintento de `pendiente_sync`). La sección 3.15 (pestaña "Resultados", agregada en
 v1.4 de este brief) es Fase 3 — no antes.
 
 ---

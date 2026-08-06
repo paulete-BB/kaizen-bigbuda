@@ -30,11 +30,11 @@ Implementado y con datos reales (sin mocks):
   reconectada a datos reales: Dashboard, Calendario (con drag & drop),
   Clientes, ficha de Cliente, BloqueMiercoles, RegistroSEO, Bitácora.
 
-Fuera de alcance de esta ronda (Fase 2-4 del brief): integraciones externas
-reales (ClickUp, GSC, GA4, Meta — quedan como puntos preparados en
-`lib/clickup/stub.ts`), repositorio de prompts, flujo de aprobaciones
-completo, offboarding completo, retrospectiva mensual, generador de
-informes/PDF.
+Fuera de alcance de esta ronda (Fase 2-4 del brief): tareas/bloques de
+calendario y webhooks de ClickUp, GSC/GA4/Meta, repositorio de prompts,
+flujo de aprobaciones completo, offboarding completo, retrospectiva
+mensual, generador de informes/PDF. La bitácora (§3.3) sí escribe en el
+Doc real — ver `lib/clickup/client.ts`.
 
 ## Desarrollo local
 
@@ -90,7 +90,7 @@ lib/
   scheduling/                Motor de scheduling (puro, con tests)
   data/                      Queries + Server Actions por entidad
   auth/                      Sesión, hashing, Server Actions de login
-  clickup/stub.ts            Punto de integración preparado (Fase 2)
+  clickup/client.ts          Bitácora real (§3.3) — tareas/webhooks aún pendientes
   db.ts, dates.ts            Cliente Postgres y utilidades de fecha compartidas
 scripts/
   migrate.ts                 Aplica supabase/migrations/*.sql (idempotente)

@@ -4,7 +4,7 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { sql } from "@/lib/db";
 import { requireUser } from "@/lib/auth/server";
-import { syncLogEntryToClickUp } from "@/lib/clickup/stub";
+import { syncLogEntryToClickUp } from "@/lib/clickup/client";
 
 export async function toggleChecklistItemSeo(formData: FormData) {
   await requireUser();
@@ -24,7 +24,6 @@ export async function guardarRegistroSeo(formData: FormData) {
   const optimizationId = String(formData.get("optimizationId") ?? "");
   const serviceId = String(formData.get("serviceId") ?? "");
   const clientId = String(formData.get("clientId") ?? "");
-  const clienteNombre = String(formData.get("clienteNombre") ?? "");
   const resumen = String(formData.get("resumen") ?? "");
   const hallazgos = String(formData.get("hallazgos") ?? "");
   const proximosPasos = String(formData.get("proximosPasos") ?? "");
@@ -57,7 +56,7 @@ export async function guardarRegistroSeo(formData: FormData) {
     .join("\n");
 
   const sync = await syncLogEntryToClickUp({
-    clienteNombre,
+    clientId,
     fecha: new Date().toISOString().slice(0, 10),
     titulo: "Optimización SEO · AEO · GEO",
     tipo: "Optimización",

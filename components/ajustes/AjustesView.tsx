@@ -19,6 +19,7 @@ export function AjustesView({
   const [draft, setDraft] = useState({
     clickupWorkspaceId: settings.clickupWorkspaceId ?? "",
     clickupDefaultListId: settings.clickupDefaultListId ?? "",
+    clickupBitacoraDocId: settings.clickupBitacoraDocId ?? "",
     diasAlertaDescuento: String(settings.diasAlertaDescuento),
     diasAlertaVencimientoServicio: String(settings.diasAlertaVencimientoServicio),
     umbralPacingPct: String(settings.umbralPacingPct),
@@ -83,7 +84,8 @@ export function AjustesView({
           <div className="rounded-[14px] border border-border bg-surface p-5">
             <div className="mb-1 text-[13px] font-bold">ClickUp</div>
             <p className="mb-3.5 text-[11.5px] text-muted-2">
-              Punto de integración preparado para Fase 2 — todavía no se conecta a la API real de ClickUp.
+              La bitácora (§3.3) ya escribe en el Doc real. Las tareas/bloques de calendario (§3.5) siguen
+              pendientes de Fase 2.
             </p>
             <div className="flex flex-wrap gap-3">
               <label className="flex min-w-[220px] flex-1 flex-col gap-1.5">
@@ -93,6 +95,16 @@ export function AjustesView({
                   value={draft.clickupWorkspaceId}
                   onChange={(e) => set("clickupWorkspaceId", e.target.value)}
                   placeholder="Ej. 90131234567"
+                  className="rounded-lg border border-border bg-surface px-3 py-2 text-[12.5px] text-ink disabled:bg-hover-2 disabled:text-muted"
+                />
+              </label>
+              <label className="flex min-w-[220px] flex-1 flex-col gap-1.5">
+                <span className="text-[11.5px] font-semibold text-muted-2">Doc de bitácoras ("Bitácoras de Clientes")</span>
+                <input
+                  disabled={!esAdmin}
+                  value={draft.clickupBitacoraDocId}
+                  onChange={(e) => set("clickupBitacoraDocId", e.target.value)}
+                  placeholder="Ej. 8cmecjz-23934"
                   className="rounded-lg border border-border bg-surface px-3 py-2 text-[12.5px] text-ink disabled:bg-hover-2 disabled:text-muted"
                 />
               </label>

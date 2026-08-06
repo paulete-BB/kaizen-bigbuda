@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { sql } from "@/lib/db";
 import { requireUser } from "@/lib/auth/server";
-import { syncLogEntryToClickUp } from "@/lib/clickup/stub";
+import { syncLogEntryToClickUp } from "@/lib/clickup/client";
 import { addMeses, fmtFecha } from "@/lib/dates";
 import type { ServicioTipo } from "./cliente-detalle";
 
@@ -22,7 +22,7 @@ async function registrarBitacora(opts: {
   optimizationId?: string;
 }) {
   const sync = await syncLogEntryToClickUp({
-    clienteNombre: "",
+    clientId: opts.clientId,
     fecha: new Date().toISOString().slice(0, 10),
     titulo: opts.titulo,
     tipo: opts.tipo,
