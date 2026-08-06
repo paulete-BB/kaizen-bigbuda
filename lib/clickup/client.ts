@@ -145,6 +145,39 @@ export async function verificarConexionClickUp(): Promise<boolean> {
   }
 }
 
+/**
+ * Registro único del webhook `taskStatusUpdated` (§3.5) contra el workspace
+ * completo — cubre las dos carpetas de servicio y cualquier lista de
+ * fallback sin necesitar un webhook por lista. No se llama desde ningún
+ * flujo de la app: se corre una sola vez a mano (consola/script) después de
+ * que `/api/clickup/webhook` esté desplegado y accesible públicamente,
+ * porque ClickUp no acepta un endpoint que no responda. El `secret` que
+ * devuelve la API queda guardado en `settings` para verificar la firma de
+ * cada entrega (`lib/clickup/webhook.ts`) — no se puede generar de
+ * antemano, lo asigna ClickUp al crear el webhook.
+ */
+export async function registrarWebhookClickUp(endpointUrl: string): Promise<{ ok: boolean; webhookId?: string }> {
+  try {
+    const settings = await getSettings();
+    if (!settings.clickupWorkspaceId) return { ok: false };
+
+    const res = await clickupFetch(`${API_V2}/team/${settings.clickupWorkspaceId}/webhook`, {
+      method: "POST",
+      body: JSON.stringify({ endpoint: endpointUrl, events: ["taskStatusUpdated"] }),
+    });
+    const data = (await res.json()) as { id: string; webhook: { secret: string } };
+
+    await sql`
+      update settings set clickup_webhook_id = ${data.id}, clickup_webhook_secret = ${data.webhook.secret}
+      where id = 1
+    `;
+    return { ok: true, webhookId: data.id };
+  } catch (e) {
+    if (process.env.CLICKUP_DEBUG) console.error("registrarWebhookClickUp error:", e);
+    return { ok: false };
+  }
+}
+
 // ---------------------------------------------------------------------------
 // Tareas/bloques de calendario (§3.5)
 // ---------------------------------------------------------------------------

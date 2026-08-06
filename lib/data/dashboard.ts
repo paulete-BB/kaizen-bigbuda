@@ -34,6 +34,7 @@ export interface DashboardData {
     informesPendientes: AlertaItem[];
     descuentosPorVencer: AlertaItem[];
     syncPendiente: AlertaItem[];
+    completadasEnClickUp: AlertaItem[];
   };
 }
 
@@ -118,7 +119,7 @@ export async function getDashboardData(): Promise<DashboardData> {
     informeEnviado: !!e.informe_enviado_en,
   }));
 
-  const [atrasadasRows, pacingRows, aprobacionesRows, porVencerRows, informesRows, descuentosRows, syncRows] =
+  const [atrasadasRows, pacingRows, aprobacionesRows, porVencerRows, informesRows, descuentosRows, syncRows, completadasClickUpRows] =
     await Promise.all([
       sql<{ cliente_id: string; cliente_nombre: string; tipo: string; fecha_programada: string }[]>`
         select c.id as cliente_id, c.nombre as cliente_nombre, o.tipo, o.fecha_programada
@@ -157,6 +158,12 @@ export async function getDashboardData(): Promise<DashboardData> {
         from optimizations o join clients c on c.id = o.client_id
         where o.sync_status != 'ok'
         order by o.fecha_programada desc
+      `,
+      sql<{ cliente_id: string; cliente_nombre: string; tipo: string; clickup_completada_en: string }[]>`
+        select c.id as cliente_id, c.nombre as cliente_nombre, o.tipo, o.clickup_completada_en
+        from optimizations o join clients c on c.id = o.client_id
+        where o.clickup_completada_en is not null and o.estado != 'realizada'
+        order by o.clickup_completada_en desc
       `,
     ]);
 
@@ -225,6 +232,12 @@ export async function getDashboardData(): Promise<DashboardData> {
         clienteId: r.cliente_id,
         clienteNombre: r.cliente_nombre,
         detalle: `${TIPO_LABEL[r.tipo] ?? r.tipo} · ${fmtFecha(r.fecha_programada)}`,
+        href: `/clientes/${r.cliente_id}`,
+      })),
+      completadasEnClickUp: completadasClickUpRows.map((r) => ({
+        clienteId: r.cliente_id,
+        clienteNombre: r.cliente_nombre,
+        detalle: `${TIPO_LABEL[r.tipo] ?? r.tipo} · completada en ClickUp, falta registrar`,
         href: `/clientes/${r.cliente_id}`,
       })),
     },

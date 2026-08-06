@@ -170,10 +170,45 @@ merge).
   reprogramación automática por feriado/ausencia (regla D) tampoco existe
   persistida en producción — son gaps preexistentes, no de esta ronda.
 
-**Próximo paso:** webhooks de ClickUp (`taskStatusUpdated`, para reflejar
-en la plataforma cuando el equipo completa una tarea desde ClickUp) y el
-job de reintento de entradas `pendiente_sync`. La sección 3.15 (pestaña "Resultados", agregada en
-v1.4 de este brief) es Fase 3 — no antes.
+- **Webhook `taskStatusUpdated` de ClickUp (§3.5, sincronización
+  bidireccional)** — `app/api/clickup/webhook/route.ts` +
+  `lib/clickup/webhook.ts`. Verifica la firma real de ClickUp (header
+  `X-Signature`, HMAC-SHA256 en hex sobre el body crudo, confirmado contra
+  la documentación oficial — no asumido) con el secret que devuelve la API
+  al crear el webhook, guardado en `settings.clickup_webhook_secret`
+  (migración `0010_clickup_webhook.sql`; `registrarWebhookClickUp` en
+  `lib/clickup/client.ts` hace el registro una sola vez a mano, pendiente
+  de correr hasta que este código esté desplegado y el endpoint sea
+  alcanzable — ClickUp no acepta un endpoint que no responde). Al recibir
+  el evento, re-consulta la tarea en ClickUp en vez de confiar en el body
+  del webhook, porque el único indicador realmente terminal es
+  `status.type === "closed"` (confirmado contra listas reales del
+  workspace: "done" se usa también para estados no terminales como
+  "rechazado" o "en pausa", no alcanza como señal). No marca la
+  optimización como `realizada` sola —eso requiere el registro real con
+  resumen/hallazgos, que además dispara bitácora y siguiente
+  optimización—; guarda `optimizations.clickup_completada_en` y una nueva
+  categoría de alerta en el dashboard ("Completada en ClickUp, falta
+  registrar") para que el equipo no se olvide de pasar por el registro.
+  **Bug real encontrado y corregido en el camino:** `proxy.ts` (el
+  middleware de sesión) interceptaba *todas* las rutas salvo `/login`,
+  incluyendo `/api/clickup/webhook` — cualquier entrega real de ClickUp
+  (sin cookie de sesión, obviamente) habría rebotado con un 307 a `/login`
+  en vez de llegar al handler; nunca se habría notado sin probar con un
+  servidor real corriendo y una petición HTTP de verdad en vez de invocar
+  la función directamente. Agregado `SKIP_SESSION_AUTH_PATHS` para las
+  rutas que se autentican con su propio mecanismo en vez de cookie.
+  Verificado de punta a punta contra Postgres local + `next dev` real +
+  una tarea real de ClickUp: firma válida/inválida/ausente, tarea
+  cerrada/reabierta, tarea no asociada a ninguna optimización, y evento
+  distinto de `taskStatusUpdated` — los siete casos con el resultado
+  esperado.
+
+**Próximo paso:** correr `registrarWebhookClickUp` contra el workspace
+real una vez que este código esté en `main` y desplegado (requiere el
+endpoint público y alcanzable), y el job de reintento de entradas
+`pendiente_sync`. La sección 3.15 (pestaña "Resultados", agregada en v1.4
+de este brief) es Fase 3 — no antes.
 
 ---
 

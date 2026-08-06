@@ -3,9 +3,19 @@ import { SESSION_COOKIE, verifySessionToken } from "@/lib/auth/session";
 
 const PUBLIC_PATHS = ["/login"];
 
+// Rutas que no llevan cookie de sesión porque las llama un servidor externo,
+// no un navegador — se autentican con su propio mecanismo (firma HMAC en
+// /api/clickup/webhook, §3.5). Sin esto, cada entrega real de ClickUp
+// rebotaría contra /login (nunca manda la cookie) y el webhook no
+// funcionaría nunca fuera de esta prueba local.
+const SKIP_SESSION_AUTH_PATHS = ["/api/clickup/webhook"];
+
 export async function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl;
-  if (PUBLIC_PATHS.some((p) => pathname === p || pathname.startsWith(`${p}/`))) {
+  if (
+    PUBLIC_PATHS.some((p) => pathname === p || pathname.startsWith(`${p}/`)) ||
+    SKIP_SESSION_AUTH_PATHS.some((p) => pathname === p || pathname.startsWith(`${p}/`))
+  ) {
     return NextResponse.next();
   }
 

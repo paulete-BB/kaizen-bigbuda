@@ -31,7 +31,8 @@ export function AlertasPanel({ data }: { data: DashboardData }) {
     alertas.porVencer.length +
     alertas.informesPendientes.length +
     alertas.descuentosPorVencer.length +
-    alertas.syncPendiente.length;
+    alertas.syncPendiente.length +
+    alertas.completadasEnClickUp.length;
 
   return (
     <div
@@ -54,6 +55,7 @@ export function AlertasPanel({ data }: { data: DashboardData }) {
             <Categoria titulo="Informes pendientes de envío" items={alertas.informesPendientes} />
             <Categoria titulo="Descuentos por vencer" items={alertas.descuentosPorVencer} />
             <Categoria titulo="Pendientes de sync a ClickUp" items={alertas.syncPendiente} />
+            <Categoria titulo="Completadas en ClickUp, falta registrar" items={alertas.completadasEnClickUp} />
           </>
         )}
       </div>
