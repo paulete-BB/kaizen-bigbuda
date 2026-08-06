@@ -132,10 +132,47 @@ merge).
   correcto — sin tocar nunca la ficha manual del cliente. Falta: tareas
   del calendario y webhooks de ClickUp (§3.5) siguen sin implementar; no
   existe todavía el job de reintento de entradas `pendiente_sync`.
+- **Tareas/bloques de calendario en ClickUp (§3.5)** — `syncOptimizationTaskToClickUp`
+  en `lib/clickup/client.ts`. Otra vez la estructura real no coincidía con
+  el modelo original: no hay una sola lista global "Operaciones" por
+  cliente (`clients.clickup_list_id`, §4.2, nunca se pobló) sino una
+  carpeta por línea de servicio ("SEO + IA" / "Marketing (Ads)") con una
+  lista ya existente y en uso por cliente — un cliente con SEO y Ads tiene
+  dos listas distintas. Se resuelve por *servicio* (no por cliente):
+  busca la lista del cliente dentro de la carpeta que corresponda al tipo
+  de servicio y la cachea en el nuevo `services.clickup_list_id`
+  (migración `0009_clickup_tasks.sql`); si no encuentra una lista con el
+  nombre exacto del cliente (cliente nuevo sin lista en ClickUp todavía),
+  cae a `settings.clickup_default_list_id` sin cachear ese fallback (para
+  no perder la oportunidad de enganchar la lista real si se crea después).
+  Los IDs de ambas carpetas quedan seedeados en `settings` (confirmados
+  vía API, igual que el Doc de bitácoras). Tarea con `name`, `due_date`/
+  `start_date` (mediodía Chile para SEO, 16:00 para Ads — conversión de
+  tz vía Intl, no offset fijo, para no asumir reglas de DST que puedan
+  cambiar), `tags` (`optimizacion`, `seo`|`ads`, nombre del cliente),
+  `assignees` (mapeado desde el nuevo `users.clickup_user_id`, poblado en
+  la misma migración para los dos usuarios reales cuyo email coincide
+  exacto con ClickUp — Andrés queda sin mapear a propósito, su email no
+  coincide y no se quiso adivinar) y descripción con link a la ficha del
+  cliente (`NEXT_PUBLIC_APP_URL`, opcional). Si la optimización ya tiene
+  `clickup_task_id` actualiza esa tarea en vez de crear una duplicada —
+  enganchado en la creación de la primera optimización (onboarding), la
+  optimización siguiente al guardar el registro SEO, y el drag & drop del
+  calendario (`reasignarViernesSeo`, que ahora también actualiza la fecha
+  de la tarea). Verificado de punta a punta contra Postgres local + API
+  real: creación, reprogramación (actualiza la misma tarea, no duplica) y
+  lectura de vuelta de los campos (nombre, fecha, tags, assignee) desde
+  ClickUp. Falta: no se actualiza/cierra la tarea al marcar la
+  optimización como `realizada` (cada lista tiene nombres de estado
+  propios, no un "closed" universal — se dejó para un fast-follow),
+  generación semanal real de las optimizaciones de Ads en producción
+  (hoy solo existe en `scripts/seed.ts`, no como server action), y
+  reprogramación automática por feriado/ausencia (regla D) tampoco existe
+  persistida en producción — son gaps preexistentes, no de esta ronda.
 
-**Próximo paso:** el resto de la integración de ClickUp (tareas/bloques de
-calendario en la vista Calendario de ClickUp, webhooks de
-`taskStatusUpdated`, job de reintento de `pendiente_sync`). La sección 3.15 (pestaña "Resultados", agregada en
+**Próximo paso:** webhooks de ClickUp (`taskStatusUpdated`, para reflejar
+en la plataforma cuando el equipo completa una tarea desde ClickUp) y el
+job de reintento de entradas `pendiente_sync`. La sección 3.15 (pestaña "Resultados", agregada en
 v1.4 de este brief) es Fase 3 — no antes.
 
 ---

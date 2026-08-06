@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { sql } from "@/lib/db";
 import { requireUser } from "@/lib/auth/server";
 import { hoySantiago, toIso } from "@/lib/dates";
+import { syncOptimizationTaskToClickUp } from "@/lib/clickup/client";
 import { asignarViernesOrdinal, generarOptimizacionesSeoDelMes } from "@/lib/scheduling/seo";
 import { generarOptimizacionesAdsDelMes } from "@/lib/scheduling/ads";
 import type { Holiday, OptimizacionGenerada, ServicioActivo, ServicioTipo } from "@/lib/scheduling/types";
@@ -104,10 +105,19 @@ async function activarPrimeraOptimizacionSiCorresponde(clientId: string, actorId
         generarOptimizacionesSeoDelMes,
       );
       if (!opt) continue;
-      await sql`
+      const [{ id: optimizationId }] = await sql<{ id: string }[]>`
         insert into optimizations (client_id, service_id, tipo, fecha_programada, responsable_id, estado, sync_status)
         values (${clientId}, ${s.id}, 'seo_aeo_geo', ${opt.fechaProgramada}, ${s.responsable_id}, 'programada', 'pendiente_sync')
+        returning id
       `;
+      await syncOptimizationTaskToClickUp({
+        optimizationId,
+        clientId,
+        serviceId: s.id,
+        servicioTipo: "seo_aeo_geo",
+        fechaProgramada: opt.fechaProgramada,
+        responsableId: s.responsable_id,
+      });
       generadas.push({ fecha: opt.fechaProgramada, tipoLabel: "SEO · AEO · GEO" });
     }
   }
@@ -115,10 +125,20 @@ async function activarPrimeraOptimizacionSiCorresponde(clientId: string, actorId
   for (const s of servicios.filter((s) => s.tipo !== "seo_aeo_geo")) {
     const opt = await primeraFechaDesdeHoy({ id: s.id, clientId, tipo: s.tipo, responsableId: s.responsable_id }, generarOptimizacionesAdsDelMes);
     if (!opt) continue;
-    await sql`
+    const [{ id: optimizationId }] = await sql<{ id: string }[]>`
       insert into optimizations (client_id, service_id, tipo, fecha_programada, hora_programada, responsable_id, estado, sync_status)
       values (${clientId}, ${s.id}, ${s.tipo}, ${opt.fechaProgramada}, ${opt.horaProgramada ?? null}, ${s.responsable_id}, 'programada', 'pendiente_sync')
+      returning id
     `;
+    await syncOptimizationTaskToClickUp({
+      optimizationId,
+      clientId,
+      serviceId: s.id,
+      servicioTipo: s.tipo,
+      fechaProgramada: opt.fechaProgramada,
+      horaProgramada: opt.horaProgramada ?? null,
+      responsableId: s.responsable_id,
+    });
     generadas.push({ fecha: opt.fechaProgramada, tipoLabel: s.tipo === "meta_ads" ? "Meta Ads" : "Google Ads" });
   }
 

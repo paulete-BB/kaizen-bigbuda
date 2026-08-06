@@ -144,3 +144,148 @@ export async function verificarConexionClickUp(): Promise<boolean> {
     return false;
   }
 }
+
+// ---------------------------------------------------------------------------
+// Tareas/bloques de calendario (§3.5)
+// ---------------------------------------------------------------------------
+
+export type ServicioTipoClickUp = "seo_aeo_geo" | "meta_ads" | "google_ads";
+
+export interface ClickUpTaskPayload {
+  optimizationId: string;
+  clientId: string;
+  serviceId: string;
+  servicioTipo: ServicioTipoClickUp;
+  fechaProgramada: string;
+  horaProgramada?: string | null;
+  responsableId?: string | null;
+}
+
+export interface ClickUpTaskResult {
+  ok: boolean;
+  clickupTaskId?: string;
+}
+
+const SERVICIO_LABEL: Record<ServicioTipoClickUp, string> = {
+  seo_aeo_geo: "SEO · AEO · GEO",
+  meta_ads: "Meta Ads",
+  google_ads: "Google Ads",
+};
+
+/** Offset real (en minutos) de un timezone IANA en un instante dado — usa la Intl tzdb, así que respeta DST sin hardcodear reglas de Chile que puedan cambiar. */
+function offsetMinutosTz(timeZone: string, atUtcMs: number): number {
+  const partes = new Intl.DateTimeFormat("en-US", {
+    timeZone,
+    hourCycle: "h23",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+  }).formatToParts(new Date(atUtcMs));
+  const get = (tipo: string) => Number(partes.find((p) => p.type === tipo)?.value);
+  const comoUtc = Date.UTC(get("year"), get("month") - 1, get("day"), get("hour"), get("minute"), get("second"));
+  return (comoUtc - atUtcMs) / 60_000;
+}
+
+/** Epoch ms (UTC) de una fecha/hora expresada en America/Santiago — lo que espera due_date/start_date de ClickUp. */
+function epochMsSantiago(fechaIso: string, hora: string): number {
+  const [y, m, d] = fechaIso.split("-").map(Number);
+  const [hh, mm] = hora.split(":").map(Number);
+  const intento = Date.UTC(y, m - 1, d, hh, mm);
+  return intento - offsetMinutosTz("America/Santiago", intento) * 60_000;
+}
+
+/**
+ * La estructura real del workspace tiene una carpeta por línea de servicio
+ * ("SEO + IA" / "Marketing (Ads)") con una lista ya existente por cliente,
+ * no una sola lista global "Operaciones" — se busca la lista del cliente
+ * dentro de la carpeta correspondiente y se cachea en
+ * `services.clickup_list_id`; si no existe (cliente nuevo sin lista todavía
+ * en ClickUp), cae a `settings.clickup_default_list_id`.
+ */
+async function resolverListaOptimizacion(
+  folderId: string | null,
+  serviceId: string,
+  clienteNombre: string,
+  defaultListId: string | null,
+): Promise<string | null> {
+  const [servicio] = await sql<{ clickup_list_id: string | null }[]>`
+    select clickup_list_id from services where id = ${serviceId}
+  `;
+  if (servicio?.clickup_list_id) return servicio.clickup_list_id;
+
+  if (folderId) {
+    const res = await clickupFetch(`${API_V2}/folder/${folderId}/list`, { method: "GET" });
+    const { lists } = (await res.json()) as { lists: { id: string; name: string }[] };
+    const existente = lists.find((l) => l.name === clienteNombre);
+    if (existente) {
+      await sql`update services set clickup_list_id = ${existente.id} where id = ${serviceId}`;
+      return existente.id;
+    }
+  }
+
+  return defaultListId;
+}
+
+/**
+ * Crea o actualiza la tarea de ClickUp de una optimización programada
+ * (§3.5) — visible en la vista Calendario de ClickUp del equipo. Si la
+ * optimización ya tiene `clickup_task_id`, actualiza fecha/responsable en
+ * vez de crear una tarea duplicada. Cualquier falla degrada a `{ok:false}`
+ * (la fila queda/sigue en `pendiente_sync`).
+ */
+export async function syncOptimizationTaskToClickUp(payload: ClickUpTaskPayload): Promise<ClickUpTaskResult> {
+  try {
+    const settings = await getSettings();
+    const folderId = payload.servicioTipo === "seo_aeo_geo" ? settings.clickupFolderSeoId : settings.clickupFolderAdsId;
+
+    const [cliente] = await sql<{ nombre: string }[]>`select nombre from clients where id = ${payload.clientId}`;
+    if (!cliente) return { ok: false };
+
+    const listId = await resolverListaOptimizacion(folderId, payload.serviceId, cliente.nombre, settings.clickupDefaultListId);
+    if (!listId) return { ok: false };
+
+    const [existente] = await sql<{ clickup_task_id: string | null }[]>`
+      select clickup_task_id from optimizations where id = ${payload.optimizationId}
+    `;
+
+    let assigneeClickupId: number | null = null;
+    if (payload.responsableId) {
+      const [responsable] = await sql<{ clickup_user_id: string | null }[]>`
+        select clickup_user_id from users where id = ${payload.responsableId}
+      `;
+      if (responsable?.clickup_user_id) assigneeClickupId = Number(responsable.clickup_user_id);
+    }
+
+    const hora = payload.horaProgramada ?? (payload.servicioTipo === "seo_aeo_geo" ? "12:00" : "16:00");
+    const fechaMs = epochMsSantiago(payload.fechaProgramada, hora);
+    const appUrl = process.env.NEXT_PUBLIC_APP_URL;
+    const enlace = appUrl ? `\n\n${appUrl}/clientes/${payload.clientId}` : `\n\n(ficha del cliente: /clientes/${payload.clientId})`;
+
+    const body = {
+      name: `Optimización ${SERVICIO_LABEL[payload.servicioTipo]} — ${cliente.nombre}`,
+      description: `Optimización ${SERVICIO_LABEL[payload.servicioTipo]} para ${cliente.nombre}, generada por Kaizen Bigbuda.${enlace}`,
+      due_date: fechaMs,
+      due_date_time: true,
+      start_date: fechaMs,
+      start_date_time: true,
+      tags: ["optimizacion", payload.servicioTipo === "seo_aeo_geo" ? "seo" : "ads", cliente.nombre],
+      ...(assigneeClickupId ? { assignees: [assigneeClickupId] } : {}),
+    };
+
+    const taskId = existente?.clickup_task_id;
+    const res = taskId
+      ? await clickupFetch(`${API_V2}/task/${taskId}`, { method: "PUT", body: JSON.stringify(body) })
+      : await clickupFetch(`${API_V2}/list/${listId}/task`, { method: "POST", body: JSON.stringify(body) });
+    const task = (await res.json()) as { id: string };
+
+    await sql`update optimizations set clickup_task_id = ${task.id}, sync_status = 'ok' where id = ${payload.optimizationId}`;
+    return { ok: true, clickupTaskId: task.id };
+  } catch (e) {
+    if (process.env.CLICKUP_DEBUG) console.error("syncOptimizationTaskToClickUp error:", e);
+    await sql`update optimizations set sync_status = 'pendiente_sync' where id = ${payload.optimizationId}`.catch(() => {});
+    return { ok: false };
+  }
+}

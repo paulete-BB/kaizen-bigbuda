@@ -4,6 +4,8 @@ export interface Settings {
   clickupWorkspaceId: string | null;
   clickupDefaultListId: string | null;
   clickupBitacoraDocId: string | null;
+  clickupFolderSeoId: string | null;
+  clickupFolderAdsId: string | null;
   diasAlertaDescuento: number;
   diasAlertaVencimientoServicio: number;
   umbralPacingPct: number;
@@ -17,6 +19,8 @@ export async function getSettings(): Promise<Settings> {
       clickup_workspace_id: string | null;
       clickup_default_list_id: string | null;
       clickup_bitacora_doc_id: string | null;
+      clickup_folder_seo_id: string | null;
+      clickup_folder_ads_id: string | null;
       dias_alerta_descuento: number;
       dias_alerta_vencimiento_servicio: number;
       umbral_pacing_pct: number;
@@ -29,6 +33,8 @@ export async function getSettings(): Promise<Settings> {
     clickupWorkspaceId: row.clickup_workspace_id,
     clickupDefaultListId: row.clickup_default_list_id,
     clickupBitacoraDocId: row.clickup_bitacora_doc_id,
+    clickupFolderSeoId: row.clickup_folder_seo_id,
+    clickupFolderAdsId: row.clickup_folder_ads_id,
     diasAlertaDescuento: row.dias_alerta_descuento,
     diasAlertaVencimientoServicio: row.dias_alerta_vencimiento_servicio,
     umbralPacingPct: row.umbral_pacing_pct,

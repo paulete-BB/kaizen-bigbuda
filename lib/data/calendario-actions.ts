@@ -5,6 +5,7 @@ import { sql } from "@/lib/db";
 import { requireUser } from "@/lib/auth/server";
 import { fridaysOfMonth } from "@/lib/scheduling/dates";
 import { MAX_SEO_POR_VIERNES } from "@/lib/scheduling/seo";
+import { syncOptimizationTaskToClickUp } from "@/lib/clickup/client";
 
 export interface ReasignarResultado {
   ok: boolean;
@@ -32,8 +33,8 @@ export async function reasignarViernesSeo(
   const nuevaFecha = fridays[nuevoOrdinal - 1];
   if (!nuevaFecha) return { ok: false, error: "Ese mes no tiene ese viernes." };
 
-  const [optimizacion] = await sql<{ id: string; fecha_programada: string }[]>`
-    select id, fecha_programada from optimizations
+  const [optimizacion] = await sql<{ id: string; fecha_programada: string; client_id: string; responsable_id: string | null }[]>`
+    select id, fecha_programada, client_id, responsable_id from optimizations
     where service_id = ${serviceId} and estado = 'programada'
       and extract(year from fecha_programada) = ${year} and extract(month from fecha_programada) = ${month}
   `;
@@ -46,6 +47,14 @@ export async function reasignarViernesSeo(
       insert into reschedules (optimization_id, fecha_original, fecha_nueva, motivo, creado_por)
       values (${optimizacion.id}, ${optimizacion.fecha_programada}, ${nuevaFecha}, 'manual', ${session.userId})
     `;
+    await syncOptimizationTaskToClickUp({
+      optimizationId: optimizacion.id,
+      clientId: optimizacion.client_id,
+      serviceId,
+      servicioTipo: "seo_aeo_geo",
+      fechaProgramada: nuevaFecha,
+      responsableId: optimizacion.responsable_id,
+    });
   }
 
   revalidatePath("/calendario");

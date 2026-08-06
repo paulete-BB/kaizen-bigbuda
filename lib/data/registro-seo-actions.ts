@@ -4,7 +4,7 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { sql } from "@/lib/db";
 import { requireUser } from "@/lib/auth/server";
-import { syncLogEntryToClickUp } from "@/lib/clickup/client";
+import { syncLogEntryToClickUp, syncOptimizationTaskToClickUp } from "@/lib/clickup/client";
 
 export async function toggleChecklistItemSeo(formData: FormData) {
   await requireUser();
@@ -69,10 +69,19 @@ export async function guardarRegistroSeo(formData: FormData) {
   `;
 
   if (proximaFecha) {
-    await sql`
+    const [{ id: proximaOptimizationId }] = await sql<{ id: string }[]>`
       insert into optimizations (client_id, service_id, tipo, fecha_programada, responsable_id, estado, sync_status)
       values (${clientId}, ${serviceId}, 'seo_aeo_geo', ${proximaFecha}, ${responsableId}, 'programada', 'pendiente_sync')
+      returning id
     `;
+    await syncOptimizationTaskToClickUp({
+      optimizationId: proximaOptimizationId,
+      clientId,
+      serviceId,
+      servicioTipo: "seo_aeo_geo",
+      fechaProgramada: proximaFecha,
+      responsableId,
+    });
   }
 
   revalidatePath(`/clientes/${clientId}`);
