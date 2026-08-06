@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { logout } from "@/lib/auth/actions";
 
-type NavKey = "dashboard" | "calendario" | "clientes";
+type NavKey = "dashboard" | "calendario" | "clientes" | "ajustes";
 
 export interface SidebarUsuario {
   nombre: string;
@@ -15,6 +15,7 @@ const NAV_ITEMS: { key: NavKey; label: string; href: string }[] = [
   { key: "dashboard", label: "Dashboard", href: "/dashboard" },
   { key: "calendario", label: "Calendario", href: "/calendario" },
   { key: "clientes", label: "Clientes", href: "/clientes" },
+  { key: "ajustes", label: "Ajustes", href: "/ajustes" },
 ];
 
 function NavIcon({ item }: { item: NavKey }) {
@@ -43,6 +44,13 @@ function NavIcon({ item }: { item: NavKey }) {
           <path d="M16 5.2a3 3 0 0 1 0 5.6M17.5 20c0-2.4-1-4.3-2.6-5.2" />
         </>
       );
+    case "ajustes":
+      return (
+        <>
+          <circle cx="12" cy="12" r="3.2" />
+          <path d="M12 2.5v3M12 18.5v3M2.5 12h3M18.5 12h3M5.2 5.2l2.1 2.1M16.7 16.7l2.1 2.1M18.8 5.2l-2.1 2.1M7.3 16.7l-2.1 2.1" />
+        </>
+      );
   }
 }
 
@@ -62,15 +70,6 @@ const PLACEHOLDER_ITEMS: { label: string; icon: React.ReactNode }[] = [
       <>
         <path d="M4 4.5h16v11H8l-4 3.5z" />
         <path d="M8 9h8M8 12h5" />
-      </>
-    ),
-  },
-  {
-    label: "Ajustes",
-    icon: (
-      <>
-        <circle cx="12" cy="12" r="3.2" />
-        <path d="M12 2.5v3M12 18.5v3M2.5 12h3M18.5 12h3M5.2 5.2l2.1 2.1M16.7 16.7l2.1 2.1M18.8 5.2l-2.1 2.1M7.3 16.7l-2.1 2.1" />
       </>
     ),
   },

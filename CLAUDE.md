@@ -82,10 +82,25 @@ pero no se mergearon a `main` (decisión explícita — el deploy en vivo de
 Vercel sigue mostrando la versión de antes del CRUD hasta que se pida el
 merge).
 
-**Fase 1 funcionalmente cerrada.** Próximo paso: decidir con qué arrancar
-de Fase 2 (panel de configuración, integración real de ClickUp — bitácora
-a Docs + tareas/webhooks —, o completar lo que falta de presupuesto/pacing
-como crear una fila de `budgets` nueva para un servicio/mes sin una). La
+**Fase 1 funcionalmente cerrada.** Empezada Fase 2:
+
+- **Panel de configuración** (`/ajustes`, nuevo ítem real en el Sidebar
+  — antes era un placeholder sin `href`): edita la fila única de
+  `settings` — workspace/lista default de ClickUp, días de alerta
+  (descuento/servicio por vencer, aprobación sin respuesta, onboarding
+  estancado) y umbral de pacing. Solo lectura para `miembro` (guardar
+  exige `rol = admin`, mismo patrón que el resto del control de acceso).
+  `services_view`/`discounts_view` (§4.2, migración 0001) ya leían estos
+  umbrales dinámicamente desde `settings` para calcular "por_vencer"; lo
+  que faltaba era la UI para poder cambiarlos sin ir a la base a mano.
+  Nota: los umbrales hardcodeados en JS de `ServiciosPanel`/`DescuentosPanel`
+  (45 y 20 días) todavía no leen de `settings` — quedan como deuda técnica
+  si se quiere que la UI refleje el valor configurado en vivo.
+
+**Próximo paso:** integración real de ClickUp (bitácora escribiendo en
+Docs, tareas/bloques de calendario, webhooks — hoy 100% stub en
+`lib/clickup/stub.ts`), o completar lo que falta de presupuesto/pacing
+(crear una fila de `budgets` nueva para un servicio/mes sin una). La
 sección 3.15 (pestaña "Resultados", agregada en v1.4 de este brief) es
 Fase 3 — no antes.
 
