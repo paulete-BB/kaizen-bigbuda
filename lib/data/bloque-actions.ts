@@ -24,21 +24,30 @@ export async function guardarAvanceBloque(formData: FormData) {
   const notas = String(formData.get("notas") ?? "");
   const serviceId = String(formData.get("serviceId") ?? "");
   const gasto = Number(formData.get("gasto") ?? 0);
+  const presupuesto = Number(formData.get("presupuesto") ?? 0);
   const mes = Number(formData.get("mes") ?? 0);
   const anio = Number(formData.get("anio") ?? 0);
   if (!optimizationId) return;
 
   await sql`update optimizations set resumen = ${notas} where id = ${optimizationId}`;
 
-  if (serviceId && gasto > 0) {
-    const [presupuestoRow] = await sql<{ presupuesto: number }[]>`
+  if (serviceId && (gasto > 0 || presupuesto > 0)) {
+    const [existente] = await sql<{ presupuesto: number }[]>`
       select presupuesto from budgets where service_id = ${serviceId} and mes = ${mes} and anio = ${anio}
     `;
-    if (presupuestoRow) {
-      const pacing = Math.round((gasto / presupuestoRow.presupuesto) * 100);
+    const presupuestoFinal = presupuesto > 0 ? presupuesto : existente?.presupuesto ?? 0;
+    if (presupuestoFinal > 0) {
+      const pacing = Math.round((gasto / presupuestoFinal) * 100);
+      const alerta = pacing >= 115 || pacing <= 85;
       await sql`
-        update budgets set gasto_acumulado = ${gasto}, pacing_pct = ${pacing}, alerta_disparada = ${pacing >= 115 || pacing <= 85}
-        where service_id = ${serviceId} and mes = ${mes} and anio = ${anio}
+        insert into budgets (service_id, mes, anio, presupuesto, gasto_acumulado, pacing_pct, alerta_disparada)
+        values (${serviceId}, ${mes}, ${anio}, ${presupuestoFinal}, ${gasto}, ${pacing}, ${alerta})
+        on conflict (service_id, mes, anio) do update set
+          presupuesto = ${presupuestoFinal},
+          gasto_acumulado = ${gasto},
+          pacing_pct = ${pacing},
+          alerta_disparada = ${alerta},
+          actualizado_en = now()
       `;
     }
   }

@@ -96,13 +96,23 @@ merge).
   Nota: los umbrales hardcodeados en JS de `ServiciosPanel`/`DescuentosPanel`
   (45 y 20 días) todavía no leen de `settings` — quedan como deuda técnica
   si se quiere que la UI refleje el valor configurado en vivo.
+- **Creación de presupuesto (§3.9) desde el bloque de miércoles**: cerrado
+  el hueco de `guardarAvanceBloque` — antes solo hacía `update` sobre una
+  fila de `budgets` existente, así que un servicio de ads sin presupuesto
+  cargado para ese mes nunca podía registrar pacing (el gasto se guardaba
+  pero el cálculo se descartaba en silencio). Ahora `BloqueCard` tiene un
+  campo "Presupuesto mensual acordado" junto al de gasto, y la action hace
+  `insert ... on conflict (service_id, mes, anio) do update` — crea la fila
+  si no existe o actualiza la existente (mismo pacing/alerta de siempre,
+  umbral ±15 desde `settings`). Verificado con Playwright contra Postgres
+  local: un servicio (Provetec Mining · Google Ads, agosto sin fila de
+  `budgets`) pasó de "—" a pacing calculado tras guardar, y una segunda
+  edición del mismo mes actualizó la fila en vez de duplicarla.
 
 **Próximo paso:** integración real de ClickUp (bitácora escribiendo en
 Docs, tareas/bloques de calendario, webhooks — hoy 100% stub en
-`lib/clickup/stub.ts`), o completar lo que falta de presupuesto/pacing
-(crear una fila de `budgets` nueva para un servicio/mes sin una). La
-sección 3.15 (pestaña "Resultados", agregada en v1.4 de este brief) es
-Fase 3 — no antes.
+`lib/clickup/stub.ts`). La sección 3.15 (pestaña "Resultados", agregada en
+v1.4 de este brief) es Fase 3 — no antes.
 
 ---
 

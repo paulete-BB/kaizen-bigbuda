@@ -15,12 +15,14 @@ export function BloqueCard({ item, fecha, mes, anio, defaultOpen = false }: { it
   const [open, setOpen] = useState(defaultOpen);
   const [notas, setNotas] = useState(item.notas ?? "");
   const [gasto, setGasto] = useState(item.gastoAcumulado ? String(item.gastoAcumulado) : "");
+  const [presupuesto, setPresupuesto] = useState(item.presupuesto ? String(item.presupuesto) : "");
   const [pending, setPending] = useState(false);
   const canal = TIPO_LABEL[item.tipo];
   const completado = item.estado === "realizada";
   const done = item.checklist.filter((c) => c.completado).length;
 
-  const pacing = item.presupuesto && gasto ? Math.round((Number(gasto) / item.presupuesto) * 100) : item.pacingPct;
+  const presupuestoEfectivo = presupuesto ? Number(presupuesto) : item.presupuesto;
+  const pacing = presupuestoEfectivo && gasto ? Math.round((Number(gasto) / presupuestoEfectivo) * 100) : item.pacingPct;
   const desviacion = pacing != null ? pacing - 100 : null;
   const desviacionColor = desviacion == null ? "var(--color-muted)" : desviacion > 15 ? "var(--color-danger)" : desviacion < -15 ? "var(--color-warning)" : "var(--color-success)";
 
@@ -40,6 +42,7 @@ export function BloqueCard({ item, fecha, mes, anio, defaultOpen = false }: { it
     fd.set("notas", notas);
     fd.set("serviceId", item.serviceId);
     fd.set("gasto", gasto);
+    fd.set("presupuesto", presupuesto);
     fd.set("mes", String(mes));
     fd.set("anio", String(anio));
     try {
@@ -121,6 +124,16 @@ export function BloqueCard({ item, fecha, mes, anio, defaultOpen = false }: { it
 
           <div className="flex flex-col gap-3">
             <div className="text-[11px] font-bold uppercase text-faint [letter-spacing:.03em]">Ritmo de gasto en vivo</div>
+            <label className="flex flex-col gap-1.5">
+              <span className="text-[11px] font-semibold text-muted-2">Presupuesto mensual acordado</span>
+              <input
+                type="number"
+                value={presupuesto}
+                onChange={(e) => setPresupuesto(e.target.value)}
+                placeholder="Sin definir — este mes no tiene presupuesto"
+                className="rounded-lg border border-border bg-surface px-2.5 py-2 text-[12.5px] text-ink"
+              />
+            </label>
             <label className="flex flex-col gap-1.5">
               <span className="text-[11px] font-semibold text-muted-2">Gasto acumulado del mes</span>
               <input type="number" value={gasto} onChange={(e) => setGasto(e.target.value)} className="rounded-lg border border-border bg-surface px-2.5 py-2 text-[12.5px] text-ink" />
