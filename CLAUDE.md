@@ -332,19 +332,39 @@ merge).
   de impresión con las slides correctas, y registrar el envío (dispara
   bitácora real en ClickUp — la página de prueba se creó en el Doc
   compartido real y se borró igual que en la ronda anterior).
-- **Falta:** el editor/render del formato Ads reducido (6 slides:
-  Portada, ¿Cómo vamos?·cifras, Inversión del mes, ¿Qué mejoramos?, ¿Qué
-  proyectamos?, Cierre) todavía no existe —
-  `app/informes/[id]/page.tsx` muestra un placeholder para
-  `meta_ads`/`google_ads` mientras tanto—, y la integración GSC/GA4/Meta
-  (§3.14) que reemplazaría el pre-llenado manual por datos en vivo sigue
-  sin empezar.
+- **Formato Ads reducido (6 slides)** — usuario subió la plantilla real
+  también para este formato (`Informe Marketing.dc.html`, idéntica byte a
+  byte a la ya usada para definir `InformeMarketingContenido`, así que no
+  hizo falta rehacer el modelo de contenido). `lib/informes/slides-marketing.ts`
+  transcribe los 6 slides (Portada, 01 · ¿Cómo vamos?·cifras, 01 ·
+  Inversión del mes, 02 · ¿Qué mejoramos?, 03 · ¿Qué proyectamos?, Cierre)
+  con el mismo patrón que el formato SEO — HTML crudo, mismos tokens de
+  diseño. `InformeEditorMarketing.tsx` reusa `ListaEditable`,
+  `InformeDeckPreview` y las mismas server actions de guardado/envío sin
+  ningún cambio; solo cambió el shape de campos. La barra de pacing de
+  "Inversión del mes" (ancho del gasto ejecutado + marcador de "día X ·
+  Y% del mes") se calcula parseando el número de los campos de texto
+  libre (`parsePct` en `slides-marketing.ts`) — los campos siguen siendo
+  texto libre como en el resto del sistema (§3.14 los reemplazará después
+  por datos reales), esto solo lee el número para dimensionar la barra.
+  Verificado de punta a punta contra Postgres local + `next dev` real +
+  ClickUp real, con un cliente Meta Ads de prueba: el pre-llenado real
+  desde `budgets` y desde `optimizations.resumen` funcionó en ambas ramas
+  (mes en curso y mes cerrado, cubiertas por los dos informes de prueba
+  de esta ronda y la anterior), las 6 slides se renderizan correctas en
+  la vista de impresión, y el registro de envío disparó la bitácora real
+  (página de prueba borrada después, igual que las rondas anteriores).
+- **Falta:** la integración GSC/GA4/Meta (§3.14) que reemplazaría el
+  pre-llenado manual por datos en vivo.
 
-**Próximo paso:** el formato Ads reducido del generador de informes
-(reusa toda la infraestructura ya construida — slides, editor, impresión,
-autoguardado — solo con el set de 6 slides y el content shape de
-`InformeMarketingContenido`, ya definido en `lib/informes/tipos.ts`).
-Aparte, sigue pendiente correr `registrarWebhookClickUp` contra el
+**Próximo paso:** integración GSC/GA4/Meta (§3.14) — OAuth con refresh
+token, importador de configuración desde el dashboard existente,
+pre-llenado real de métricas en los informes (reemplazando los valores
+manuales/pre-llenados-desde-datos-locales que ya existen), y pacing
+automático desde Meta API. Requiere que el usuario cree las credenciales
+OAuth en Google Cloud antes de poder avanzar en el lado de Google
+(GSC/GA4); el lado de Meta usa el mismo token de System User que ya
+existe. Aparte, sigue pendiente correr `registrarWebhookClickUp` contra el
 workspace real una vez que este código esté en `main` y desplegado
 (requiere el endpoint público y alcanzable). La sección 3.15 (pestaña "Resultados",
 agregada en v1.4 de este brief) es Fase 3 — no antes.

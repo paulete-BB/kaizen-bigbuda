@@ -1,5 +1,6 @@
-import { fmtMesAnio, type InformeSeoContenido } from "@/lib/informes/tipos";
+import { fmtMesAnio, type InformeMarketingContenido, type InformeSeoContenido } from "@/lib/informes/tipos";
 import { renderSlidesSeo } from "@/lib/informes/slides-seo";
+import { renderSlidesMarketing, type ServicioAdsTipo } from "@/lib/informes/slides-marketing";
 import type { InformeCompleto } from "@/lib/data/informes";
 
 const LOGO_SRC = "/informes/logo-bigbuda.svg";
@@ -22,6 +23,15 @@ export function renderSlidesInforme(informe: InformeCompleto): string[] {
     });
   }
 
-  // Formato Ads reducido — ver tarea de réplica pendiente.
-  return [];
+  return renderSlidesMarketing({
+    clienteNombre: informe.clienteNombre,
+    clienteEmpresa: informe.clienteEmpresa,
+    contactoNombre: informe.contactoNombre,
+    sitioWeb: informe.sitioWeb,
+    mesAnioLabel,
+    fechaSnapshotLabel,
+    logoSrc: LOGO_SRC,
+    servicioTipo: informe.tipo as ServicioAdsTipo,
+    contenido: informe.contenido as InformeMarketingContenido,
+  });
 }
