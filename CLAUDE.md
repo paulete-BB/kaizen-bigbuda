@@ -243,9 +243,110 @@ merge).
   dejar rastro — no está documentado en la guía pública de Docs, pero
   funciona (204) y la página desaparece del listado.
 
-**Próximo paso:** correr `registrarWebhookClickUp` contra el workspace
-real una vez que este código esté en `main` y desplegado (requiere el
-endpoint público y alcanzable). La sección 3.15 (pestaña "Resultados",
+**Fase 3 iniciada — Generador de informes (§3.4), formato SEO-AEO-GEO:**
+
+- **Plantilla visual real, no reconstruida desde el brief.** El usuario
+  subió las plantillas ya diseñadas (`Informe SEO-AEO-GEO.dc.html` /
+  `Informe Marketing.dc.html`, formato de deck de Claude Design con
+  `<x-dc>`/`<x-import>` + `deck-stage.js`/`support.js`) junto con los dos
+  PDF de referencia del brief original. No se usa el runtime de esos
+  archivos (es la maquinaria del editor visual, no algo para producción);
+  se tomó la plantilla como especificación exacta de tipografía, color,
+  espaciado y estructura de cada slide, y se transcribió a HTML propio
+  (`lib/informes/slides-seo.ts`), incluyendo los 13 slides reales del
+  formato completo (Portada, En una frase, Nuestro enfoque, Punto de
+  partida, Lo que dejamos funcionando, 2 slides de Detalle, Resultados en
+  números, Tráfico desde IA y Antes/Después —ambas opcionales—, Impacto
+  proyectado, Hoja de ruta, Garantías) y los logos reales (`public/informes/`).
+- **HTML crudo, no JSX con objetos de estilo** (`lib/informes/render.ts`):
+  cada slide tiene decenas de propiedades de estilo inline por elemento;
+  convertir cada una a un objeto de estilo React solo agrega superficie
+  de error de transcripción sin beneficio, porque el contenido no es HTML
+  arbitrario de terceros, es la plantilla fija del sistema. Todo texto que
+  entra desde el editor pasa por `esc()` antes de interpolarse (o
+  `boldAccent()`, que escapa primero y solo después habilita `**negrita**`
+  con acento dorado — mismo tratamiento visual que "En una frase" y "El
+  insight del mes" de la plantilla real).
+- **Export a PDF: imprimir desde el navegador, no Playwright server-side.**
+  Se evaluó explícitamente la alternativa (Playwright/Puppeteer +
+  `@sparticuz/chromium(-min)` para correr Chromium headless en una función
+  serverless de Vercel) y se descartó: ese paquete está documentado para
+  runtimes de AWS Lambda, no para Vercel — funcionaría por la superposición
+  real entre ambos, pero no es el caso de uso oficialmente soportado y no
+  se puede verificar contra un deploy real desde este entorno. La ruta
+  `/informes/[id]/imprimir` (`app/informes/[id]/imprimir/page.tsx`) renderiza
+  el deck completo a tamaño real con CSS de impresión (`@page` 1920×1080,
+  salto de página por slide) — el equipo exporta con Ctrl/Cmd+P → Guardar
+  como PDF, mismo motor de renderizado, cero infraestructura nueva.
+- **`contenido_json` (tabla `reports`, ya existente desde la migración
+  0006 — no hizo falta ninguna migración nueva) guarda solo lo específico
+  del informe** (`lib/informes/tipos.ts`): nombre del cliente, contacto,
+  sitio web y período se leen en vivo desde `clients`/`reports` al
+  renderizar, nunca se duplican en el JSON, para que un cambio de contacto
+  no deje informes viejos con datos obsoletos. La sección "Garantías"
+  (SEO) y el bloque de garantías del "Cierre" (Ads) son boilerplate fijo
+  del sistema (§3.4: "casi nunca cambia entre informes") y no viven en el
+  JSON — están hardcodeados en el componente de slide.
+- **Pre-llenado real (no solo maquetado) para el formato de campañas**
+  (`lib/data/informes-actions.ts`, aplica al crear un borrador nuevo, no al
+  duplicar): "Inversión del mes" se pre-llena desde `budgets` si existe
+  fila para ese servicio/período (§3.9 ya la calculaba; acá solo se
+  reutiliza en vez de volver a pedir el dato a mano), y "¿Qué mejoramos?"
+  se pre-llena con los resúmenes de `optimizations.resumen` del período
+  (texto crudo — el equipo condensa, tal como pide el brief). El pre-llenado
+  real desde GSC/GA4/Meta (§3.14) sigue pendiente y reemplazará estos
+  valores por defecto más adelante, no la forma del dato.
+- **Editor por secciones con autoguardado** (`components/informes/InformeEditorSeo.tsx`):
+  todo el `contenido_json` vive en un solo estado de React; cada sección es
+  un `<details>` con sus propios campos, un editor de listas genérico
+  (`ListaEditable`) cubre todos los arrays de objetos (decisiones,
+  métricas, pasos, filas de tabla) y uno aparte (`ListaTextosEditable`)
+  los arrays de strings simples (bullets) — mezclarlos fue el primer
+  intento y no compila limpio: no tiene sentido "spreadear" un string como
+  si fuera un objeto. Autoguardado con debounce de 1s llamando al mismo
+  server action que usa el guardado manual. La vista previa
+  (`InformeDeckPreview`) reusa el mismo `renderSlidesSeo` que consume la
+  ruta de impresión, escalado con `transform:scale()` — no hay una segunda
+  plantilla que se pueda desincronizar de la real.
+- **Bug real encontrado probando con Postgres real (no solo tipos):**
+  `sql\`insert ... values (${JSON.stringify(contenido)})\`` sobre una
+  columna `jsonb` queda doblemente serializado — `postgres.js` ya
+  serializa el valor para columnas `jsonb`, así que pre-stringificarlo a
+  mano guarda un *string* que contiene el JSON, no un objeto (`jsonb_typeof`
+  devolvía `string`, no `object`; `contenido.detalles` llegaba `undefined`
+  al leer de vuelta). Corregido usando `sql.json(contenido)`, la forma
+  correcta de la librería para este caso.
+- **Otro bug real, esta vez de integración entre páginas:** el primer test
+  end-to-end abría la vista de impresión en una pestaña nueva del mismo
+  browser (`browser.newPage()`) y fallaba porque cada `newPage()` de
+  Playwright crea un contexto aislado sin la cookie de sesión de la
+  pestaña anterior — nunca se habría notado navegando manualmente en el
+  mismo tab. Corregido reusando la misma página en la prueba (no es un bug
+  de la app, era un bug del test, pero documentarlo evita que alguien lo
+  repita).
+- Verificado de punta a punta con Postgres local + `next dev` real +
+  Playwright (Chromium headless) contra un cliente de prueba: crear
+  borrador, editar texto con `**negrita**` y verlo reflejado en la vista
+  previa en vivo, activar/desactivar las dos slides opcionales (13/13
+  slides con ambas activas, 11/13 con ambas desactivadas), abrir la vista
+  de impresión con las slides correctas, y registrar el envío (dispara
+  bitácora real en ClickUp — la página de prueba se creó en el Doc
+  compartido real y se borró igual que en la ronda anterior).
+- **Falta:** el editor/render del formato Ads reducido (6 slides:
+  Portada, ¿Cómo vamos?·cifras, Inversión del mes, ¿Qué mejoramos?, ¿Qué
+  proyectamos?, Cierre) todavía no existe —
+  `app/informes/[id]/page.tsx` muestra un placeholder para
+  `meta_ads`/`google_ads` mientras tanto—, y la integración GSC/GA4/Meta
+  (§3.14) que reemplazaría el pre-llenado manual por datos en vivo sigue
+  sin empezar.
+
+**Próximo paso:** el formato Ads reducido del generador de informes
+(reusa toda la infraestructura ya construida — slides, editor, impresión,
+autoguardado — solo con el set de 6 slides y el content shape de
+`InformeMarketingContenido`, ya definido en `lib/informes/tipos.ts`).
+Aparte, sigue pendiente correr `registrarWebhookClickUp` contra el
+workspace real una vez que este código esté en `main` y desplegado
+(requiere el endpoint público y alcanzable). La sección 3.15 (pestaña "Resultados",
 agregada en v1.4 de este brief) es Fase 3 — no antes.
 
 ---

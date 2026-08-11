@@ -54,6 +54,16 @@ export function ClienteView({
             Bitácora
           </Link>
           <Link
+            href={`/clientes/${cliente.id}/informes`}
+            className="qa flex items-center gap-2 rounded-[9px] border border-border bg-surface px-[13px] py-[9px] text-[12.5px] font-semibold text-ink"
+          >
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="var(--color-muted)" strokeWidth="1.8">
+              <path d="M7 3h8l4 4v14H7z" />
+              <path d="M11 12h6M11 16h6M11 8h3" />
+            </svg>
+            Informes
+          </Link>
+          <Link
             href={`/clientes/${cliente.id}/registro-seo`}
             className="btn-primary flex items-center gap-2 rounded-[9px] bg-accent px-[15px] py-2.5 text-[13px] font-semibold text-white"
           >
