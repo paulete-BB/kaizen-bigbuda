@@ -7,6 +7,7 @@ import { BitacoraPanel } from "./BitacoraPanel";
 import { DescuentosPanel } from "./DescuentosPanel";
 import { OnboardingPanel } from "./OnboardingPanel";
 import { ReunionesPanel } from "./ReunionesPanel";
+import { IntegracionesPanel } from "./IntegracionesPanel";
 import type { ClienteDetalleCompleto } from "@/lib/data/cliente-detalle";
 import type { BitacoraEntrada } from "@/lib/data/bitacora";
 import type { OnboardingResumen } from "@/lib/data/onboarding";
@@ -98,6 +99,7 @@ export function ClienteView({
               <DescuentosPanel clientId={cliente.id} descuentos={cliente.descuentos} />
               <ReunionesPanel clientId={cliente.id} reuniones={reuniones} />
               <OnboardingPanel clientId={cliente.id} resumen={onboarding} />
+              <IntegracionesPanel clientId={cliente.id} configApis={cliente.configApis} />
             </div>
           </div>
         </div>

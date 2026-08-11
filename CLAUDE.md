@@ -357,17 +357,69 @@ merge).
 - **Falta:** la integración GSC/GA4/Meta (§3.14) que reemplazaría el
   pre-llenado manual por datos en vivo.
 
-**Próximo paso:** integración GSC/GA4/Meta (§3.14) — OAuth con refresh
-token, importador de configuración desde el dashboard existente,
-pre-llenado real de métricas en los informes (reemplazando los valores
-manuales/pre-llenados-desde-datos-locales que ya existen), y pacing
-automático desde Meta API. Requiere que el usuario cree las credenciales
-OAuth en Google Cloud antes de poder avanzar en el lado de Google
-(GSC/GA4); el lado de Meta usa el mismo token de System User que ya
-existe. Aparte, sigue pendiente correr `registrarWebhookClickUp` contra el
-workspace real una vez que este código esté en `main` y desplegado
-(requiere el endpoint público y alcanzable). La sección 3.15 (pestaña "Resultados",
-agregada en v1.4 de este brief) es Fase 3 — no antes.
+**Integración GSC/GA4/Meta (§3.14) — arrancada, porteando el dashboard
+real existente:**
+
+- El usuario tiene un dashboard de resultados ya en producción
+  (`seo-dashboard` en GitHub, HTML estático + un Cloudflare Worker como
+  proxy CORS de Meta/Anthropic) que consume estas tres APIs en vivo desde
+  el navegador — exactamente el que describe el brief como "no puede
+  usarse como fuente de datos". Se leyó completo (no se reconstruyó la
+  lógica de memoria): OAuth implícito de Google (client ID hardcodeado,
+  token en `sessionStorage`, sin refresh — el problema exacto que este
+  §3.14 tiene que resolver), los query shapes reales de GSC
+  (`searchAnalytics/query`) y GA4 (`runReport`, con los filtros exactos de
+  `sessionDefaultChannelGroup`/`sessionMedium`/`sessionSource` que ya
+  resuelven "organic vs. paid vs. IA"), los campos de Meta Insights
+  pedidos, y la lista real de dominios de IA usada para clasificar
+  tráfico. Se va a portar esa lógica ya probada en producción al backend,
+  no reinventarla.
+- **Config por cliente (§4.2, columnas que ya existían desde la
+  migración 0001 pero nunca tenían UI ni lógica conectada)**:
+  `IntegracionesPanel.tsx` en la ficha del cliente edita
+  `gsc_property`/`ga4_property_id`/`meta_ad_account_id`/`fb_page_id`/
+  `ig_account_id` — los mismos campos que el dashboard viejo guardaba en
+  `localStorage['bb_cl']`. Se agregó `meta_token_key` (migración
+  `0011_meta_token_key.sql`), no contemplado en el brief original: el
+  dashboard real soporta que un cliente use su propio token de System
+  User de Meta en vez del de la agencia (cuando el Business Manager vive
+  del lado del cliente) — se preservó esa capacidad real al portar en vez
+  de perderla por apegarse estrictamente al modelo de datos del brief.
+- **Importador del JSON exportado** (§3.14: "incluir importador... para
+  migrar la configuración en un paso") — sección en `/ajustes`
+  (`ImportadorConfigDashboard.tsx` + `lib/data/integraciones-actions.ts`,
+  solo admin). Empareja por **nombre** de cliente, no por la URL de GSC
+  que usaba el dashboard original para deduplicar en su propio import
+  (ese emparejamiento se rompía con clientes sin SEO contratado, que
+  comparten `url: ""`). Nunca crea clientes nuevos desde el import, solo
+  completa los campos de integración de los que ya existen — de lo
+  contrario un typo en el nombre exportado podría dar de alta un cliente
+  duplicado sin querer. Verificado de punta a punta contra Postgres
+  local + `next dev` real: guardar configuración a mano en la ficha,
+  importar un JSON que pisa esos valores y agrega uno nuevo, y un nombre
+  sin cliente correspondiente queda reportado como "sin emparejar" en vez
+  de fallar en silencio.
+- **Pendiente, bloqueado en credenciales del usuario:** el flujo OAuth de
+  backend (Authorization Code + PKCE + refresh token) necesita que el
+  usuario cree un OAuth Client en Google Cloud (Search Console API +
+  Analytics Data API habilitadas) — se le pidieron los pasos exactos y
+  las dos redirect URIs (`localhost:3100` para poder probarlo en este
+  entorno, y la URL real de producción). El lado de Meta no tiene ese
+  bloqueo estructural (reusa el `META_TOKEN` de System User que ya
+  existe), pero para probarlo contra datos reales en vez de a ciegas se
+  le pidió al usuario que lo comparta — pendiente de recibirlo.
+
+**Próximo paso:** con las credenciales de Google/Meta, construir
+`lib/google/oauth.ts` (Authorization Code + PKCE, refresh token guardado
+en `settings`) y los clientes de fetch server-side de GSC/GA4/Meta,
+cacheando en `metric_snapshots` (ya existe desde la migración 0006) con
+fallback al último snapshot si la API falla — después conectar ese
+pre-llenado real a los informes (reemplazando el pre-llenado
+manual/local ya construido) y recién ahí la pestaña "Resultados" (§3.15,
+Fase 3, comparte esta misma capa de datos). Aparte, sigue pendiente
+correr `registrarWebhookClickUp` contra el workspace real una vez que
+este código esté en `main` y desplegado (requiere el endpoint público y
+alcanzable).
 
 ---
 

@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { Sidebar, type SidebarUsuario } from "@/components/layout/Sidebar";
 import type { Settings } from "@/lib/data/settings";
 import { guardarAjustes } from "@/lib/data/settings-actions";
+import { ImportadorConfigDashboard } from "./ImportadorConfigDashboard";
 
 export function AjustesView({
   usuario,
@@ -207,6 +208,8 @@ export function AjustesView({
               </div>
             </label>
           </div>
+
+          {esAdmin && <ImportadorConfigDashboard />}
 
           {esAdmin && (
             <div>

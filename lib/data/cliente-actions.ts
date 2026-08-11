@@ -302,3 +302,45 @@ export async function eliminarDescuento(formData: FormData): Promise<AccionDescu
   revalidatePath(`/clientes/${clientId}`);
   return { ok: true };
 }
+
+export interface AccionConfigApisResultado {
+  ok: boolean;
+  error?: string;
+}
+
+/**
+ * Configuración por cliente para la integración GSC/GA4/Meta (§3.14) —
+ * los mismos identificadores que ya vivían en el localStorage del
+ * dashboard de referencia (`bb_cl`). `metaAdAccountId` acepta el ID con o
+ * sin el prefijo `act_` (se guarda sin prefijo, igual que hacía el
+ * dashboard original) y `metaTokenKey` se normaliza al mismo formato que
+ * espera el proxy/env var (`META_TOKEN_{KEY}`).
+ */
+export async function guardarConfigApis(formData: FormData): Promise<AccionConfigApisResultado> {
+  await requireUser();
+  const clientId = String(formData.get("clientId") ?? "");
+  if (!clientId) return { ok: false, error: "Cliente inválido." };
+
+  const gscProperty = String(formData.get("gscProperty") ?? "").trim();
+  const ga4PropertyId = String(formData.get("ga4PropertyId") ?? "").trim();
+  const metaAdAccountId = String(formData.get("metaAdAccountId") ?? "").trim().replace(/^act_/, "");
+  const fbPageId = String(formData.get("fbPageId") ?? "").trim();
+  const igAccountId = String(formData.get("igAccountId") ?? "").trim();
+  const metaTokenKey = String(formData.get("metaTokenKey") ?? "")
+    .trim()
+    .toUpperCase()
+    .replace(/[^A-Z0-9_]/g, "");
+
+  await sql`
+    update clients set
+      gsc_property = ${gscProperty || null},
+      ga4_property_id = ${ga4PropertyId || null},
+      meta_ad_account_id = ${metaAdAccountId || null},
+      fb_page_id = ${fbPageId || null},
+      ig_account_id = ${igAccountId || null},
+      meta_token_key = ${metaTokenKey || null}
+    where id = ${clientId}
+  `;
+  revalidatePath(`/clientes/${clientId}`);
+  return { ok: true };
+}

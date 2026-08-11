@@ -50,6 +50,15 @@ export interface TareaDetalle {
   whoNombre: string;
 }
 
+export interface ConfigApis {
+  gscProperty: string | null;
+  ga4PropertyId: string | null;
+  metaAdAccountId: string | null;
+  fbPageId: string | null;
+  igAccountId: string | null;
+  metaTokenKey: string | null;
+}
+
 export interface ClienteDetalleCompleto {
   id: string;
   nombre: string;
@@ -66,6 +75,7 @@ export interface ClienteDetalleCompleto {
   serviciosTiposExistentes: ServicioTipo[];
   descuentos: DescuentoDetalle[];
   tareas: TareaDetalle[];
+  configApis: ConfigApis;
 }
 
 export async function getClienteDetalle(id: string): Promise<ClienteDetalleCompleto | null> {
@@ -81,8 +91,15 @@ export async function getClienteDetalle(id: string): Promise<ClienteDetalleCompl
       contacto_nombre: string;
       contacto_email: string;
       contacto_telefono: string | null;
+      gsc_property: string | null;
+      ga4_property_id: string | null;
+      meta_ad_account_id: string | null;
+      fb_page_id: string | null;
+      ig_account_id: string | null;
+      meta_token_key: string | null;
     }[]
-  >`select id, nombre, empresa, industria, sitio_web, estado, contacto_nombre, contacto_email, contacto_telefono
+  >`select id, nombre, empresa, industria, sitio_web, estado, contacto_nombre, contacto_email, contacto_telefono,
+       gsc_property, ga4_property_id, meta_ad_account_id, fb_page_id, ig_account_id, meta_token_key
      from clients where id = ${id}`;
   if (!cliente) return null;
 
@@ -149,6 +166,14 @@ export async function getClienteDetalle(id: string): Promise<ClienteDetalleCompl
     contactoTelefono: cliente.contacto_telefono,
     logoIniciales: cliente.nombre.slice(0, 1).toUpperCase(),
     proximaOptimizacion: proximaRows[0]?.fecha_programada ?? "sin próxima optimización",
+    configApis: {
+      gscProperty: cliente.gsc_property,
+      ga4PropertyId: cliente.ga4_property_id,
+      metaAdAccountId: cliente.meta_ad_account_id,
+      fbPageId: cliente.fb_page_id,
+      igAccountId: cliente.ig_account_id,
+      metaTokenKey: cliente.meta_token_key,
+    },
     servicios: serviciosRows.map((s) => {
       const ritmo = s.alerta_disparada ?? false;
       const desviacion = s.pacing_pct != null ? s.pacing_pct - 100 : null;
