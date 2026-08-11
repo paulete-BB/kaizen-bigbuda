@@ -204,11 +204,49 @@ merge).
   distinto de `taskStatusUpdated` — los siete casos con el resultado
   esperado.
 
+- **Job de reintento de `pendiente_sync` (§4.3)** — `lib/clickup/retry.ts`
+  + `app/api/cron/reintentar-sync/route.ts`, invocado por el cron de
+  Vercel (`vercel.json`). `clickupFetch` ya reintenta con backoff dentro de
+  una misma llamada (§4.3); esto cubre lo que sigue fallando después de
+  esos reintentos (token vencido, permisos, folder/lista borrada, etc.),
+  recorriendo hasta 20 filas de `log_entries` y 20 de `optimizations` con
+  `sync_status != 'ok'` y reintentando cada una con las mismas funciones de
+  sync que usa el flujo normal — ambas rutas ya eran idempotentes de por sí
+  (`syncOptimizationTaskToClickUp` actualiza por `clickup_task_id` si ya
+  existe; una entrada que llega a `ok` nunca se vuelve a tocar), así que el
+  job no necesitó lógica de lock ni de deduplicación propia. Autenticación
+  con `Authorization: Bearer $CRON_SECRET` (convención real de Vercel:
+  agrega ese header solo si el env var `CRON_SECRET` existe en el
+  proyecto — confirmado contra la documentación oficial). Cron en
+  `vercel.json` a una vez al día (`0 12 * * *`, ~08:00 Chile) a propósito:
+  el plan Hobby de Vercel solo permite cron una vez al día —si el proyecto
+  está en un plan superior, se puede ajustar a algo más frecuente.
+  **Mismo bug de `proxy.ts` que el webhook, encontrado de nuevo probando
+  con petición HTTP real:** sin agregar `/api/cron` a
+  `SKIP_SESSION_AUTH_PATHS`, el cron de Vercel (que tampoco manda cookie de
+  sesión) habría rebotado a `/login` igual que hubiera pasado con el
+  webhook. **Otro bug real encontrado en el camino:** `creado_en` de
+  `log_entries` es `timestamptz`, no `date` —a diferencia de columnas
+  `date` como `fecha_programada`, que `lib/db.ts` ya parsea como string—,
+  así que llegaba como objeto `Date` de JS y `.slice(0, 10)` explotaba;
+  resuelto casteando en la query (`creado_en::date`) en vez de parsear el
+  `Date` a mano. Verificado de punta a punta contra Postgres local +
+  `next dev` real + ClickUp real: auth ausente/incorrecta/correcta, una
+  fila `pendiente_sync` de cada tabla se sincroniza y pasa a `ok` (tarea
+  nueva creada en ClickUp, página nueva en el Doc real de bitácoras), las
+  filas ya `ok` quedan intactas, y una segunda corrida no reintenta nada
+  (confirma que es idempotente). Al descubrir que la página de bitácora de
+  prueba se creó en el Doc compartido real "Bitácoras de Clientes" (los
+  IDs de workspace/doc vienen seedeados por la migración 0008, incluso en
+  una base de datos de prueba recién migrada), se confirmó y usó
+  `DELETE /workspaces/{id}/docs/{id}/pages/{id}` (API v3) para borrarla sin
+  dejar rastro — no está documentado en la guía pública de Docs, pero
+  funciona (204) y la página desaparece del listado.
+
 **Próximo paso:** correr `registrarWebhookClickUp` contra el workspace
 real una vez que este código esté en `main` y desplegado (requiere el
-endpoint público y alcanzable), y el job de reintento de entradas
-`pendiente_sync`. La sección 3.15 (pestaña "Resultados", agregada en v1.4
-de este brief) es Fase 3 — no antes.
+endpoint público y alcanzable). La sección 3.15 (pestaña "Resultados",
+agregada en v1.4 de este brief) es Fase 3 — no antes.
 
 ---
 
