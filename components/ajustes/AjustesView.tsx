@@ -11,10 +11,16 @@ export function AjustesView({
   usuario,
   esAdmin,
   settings,
+  googleEstado,
+  googleResultado,
+  googleError,
 }: {
   usuario: SidebarUsuario;
   esAdmin: boolean;
   settings: Settings;
+  googleEstado: { conectado: boolean; email: string | null };
+  googleResultado?: string;
+  googleError?: string;
 }) {
   const router = useRouter();
   const [draft, setDraft] = useState({
@@ -81,6 +87,41 @@ export function AjustesView({
               Ajustes guardados.
             </div>
           )}
+          {googleResultado === "conectado" && (
+            <div className="rounded-lg border border-success bg-success-bg px-3.5 py-2.5 text-[12.5px] font-semibold text-success">
+              Cuenta de Google conectada.
+            </div>
+          )}
+          {googleResultado === "error" && (
+            <div className="rounded-lg border border-danger-border bg-danger-bg px-3.5 py-2.5 text-[12.5px] font-semibold text-danger">
+              No se pudo conectar la cuenta de Google{googleError ? `: ${googleError}` : "."}
+            </div>
+          )}
+
+          <div className="rounded-[14px] border border-border bg-surface p-5">
+            <div className="mb-1 text-[13px] font-bold">Google (Search Console + Analytics)</div>
+            <p className="mb-3.5 text-[11.5px] text-muted-2">
+              Una sola cuenta de Google conectada para toda la agencia (§3.14) — necesita acceso a las propiedades de
+              GSC y GA4 de los clientes. Reemplaza el login del dashboard anterior, que perdía la sesión cada hora.
+            </p>
+            {googleEstado.conectado ? (
+              <div className="flex items-center gap-3">
+                <span className="rounded-full bg-success-bg px-2.5 py-0.5 text-[11px] font-semibold text-success">Conectado</span>
+                <span className="text-[12.5px] text-muted">{googleEstado.email}</span>
+                {esAdmin && (
+                  <a href="/api/auth/google/iniciar" className="qa ml-auto rounded-[9px] border border-border bg-surface px-[13px] py-[9px] text-[12.5px] font-semibold text-ink">
+                    Reconectar
+                  </a>
+                )}
+              </div>
+            ) : esAdmin ? (
+              <a href="/api/auth/google/iniciar" className="btn-primary inline-flex rounded-[9px] bg-accent px-4 py-2.5 text-[13px] font-semibold text-white">
+                Conectar con Google
+              </a>
+            ) : (
+              <span className="text-[12.5px] text-muted-2">No conectado.</span>
+            )}
+          </div>
 
           <div className="rounded-[14px] border border-border bg-surface p-5">
             <div className="mb-1 text-[13px] font-bold">ClickUp</div>

@@ -399,22 +399,62 @@ real existente:**
   importar un JSON que pisa esos valores y agrega uno nuevo, y un nombre
   sin cliente correspondiente queda reportado como "sin emparejar" en vez
   de fallar en silencio.
-- **Pendiente, bloqueado en credenciales del usuario:** el flujo OAuth de
-  backend (Authorization Code + PKCE + refresh token) necesita que el
-  usuario cree un OAuth Client en Google Cloud (Search Console API +
-  Analytics Data API habilitadas) — se le pidieron los pasos exactos y
-  las dos redirect URIs (`localhost:3100` para poder probarlo en este
-  entorno, y la URL real de producción). El lado de Meta no tiene ese
-  bloqueo estructural (reusa el `META_TOKEN` de System User que ya
-  existe), pero para probarlo contra datos reales en vez de a ciegas se
-  le pidió al usuario que lo comparta — pendiente de recibirlo.
+- **OAuth de Google (Authorization Code + PKCE) construido y verificado
+  hasta donde es posible sin login humano real** — `lib/google/oauth.ts` +
+  `app/api/auth/google/iniciar` + `.../callback` (migración
+  `0012_google_oauth.sql`: `settings.google_refresh_token`/
+  `google_connected_email`). El usuario creó el OAuth Client en Google
+  Cloud y pasó Client ID/Secret reales. Se probó de punta a punta contra
+  la API real de Google todo lo que no requiere completar el login (que
+  no se puede automatizar ni debe intentarse): `/iniciar` arma la URL de
+  autorización con PKCE y Google la acepta sin `redirect_uri_mismatch` ni
+  `invalid_client` (llega a la pantalla real de login, confirmando que el
+  Client ID y el redirect URI registrado son correctos); el callback
+  maneja los tres casos de error reales (`access_denied` de Google, state
+  inválido, y un código de autorización inválido —contra el endpoint real
+  de intercambio de tokens de Google, que respondió con su error real
+  `Malformed auth code`, confirmando que el parseo de la respuesta de
+  error también es correcto). Falta que el usuario complete el consentimiento
+  una vez con su cuenta real (no se puede probar sin acceso a login de
+  Google) para confirmar que el refresh token se guarda correctamente —
+  eso solo se puede hacer una vez desplegado o corriendo la app
+  localmente ellos mismos.
+- **Clientes de fetch server-side** — `lib/google/gsc.ts` (resumen,
+  keywords, serie diaria, listado de propiedades), `lib/google/ga4.ts`
+  (tráfico orgánico, tráfico desde IA con la lista de dominios del
+  dashboard real —menos `google.com`/`bard.google.com`, que el dashboard
+  original agrupaba como "Google AI Overview" pero en la práctica
+  matchea casi todo el tráfico orgánico normal; mejor subestimar tráfico
+  de IA que inflarlo—, tráfico pagado vía `sessionMedium`), y
+  `lib/meta/client.ts` (resumen de cuenta y por campaña, mismos campos y
+  mismo criterio de "resultados" que el dashboard real —prioriza
+  landing/click/compra del píxel antes de sumar todas las acciones a
+  ciegas—, ya sin necesitar el Cloudflare Worker porque corre
+  server-side). `lib/metricas/snapshot.ts` es el wrapper de caché y
+  resiliencia (§3.14): intenta la llamada en vivo e inserta una fila
+  nueva en `metric_snapshots` (histórico, no upsert — es la fuente de
+  datos de la pestaña "Resultados", §3.15); si falla, cae al último
+  snapshot para ese mismo cliente/servicio/fuente/período con aviso.
+- **Tokens de Meta recibidos: dos, ambos por cliente, sin token general
+  de agencia** — el Worker real nunca tuvo un `META_TOKEN` default, solo
+  overrides por cliente (`meta_token_key`, ya soportado desde la ronda
+  anterior). Configurado `meta_token_key = 'TECNY_STAND'` en producción
+  para ese cliente (el otro token es de "Piso Urbano", que todavía no es
+  un cliente dado de alta en la plataforma — el token queda pendiente de
+  asignar cuando se le dé de alta). Ninguno de los dos clientes tiene
+  todavía `meta_ad_account_id`/`gsc_property`/`ga4_property_id`
+  configurados en producción, así que `lib/meta/client.ts`/`gsc.ts`/
+  `ga4.ts` están escritos siguiendo exactamente los shapes ya probados
+  del dashboard real pero **sin verificar contra una llamada real
+  todavía** — falta que el usuario complete esos IDs para poder probarlo
+  de punta a punta.
 
-**Próximo paso:** con las credenciales de Google/Meta, construir
-`lib/google/oauth.ts` (Authorization Code + PKCE, refresh token guardado
-en `settings`) y los clientes de fetch server-side de GSC/GA4/Meta,
-cacheando en `metric_snapshots` (ya existe desde la migración 0006) con
-fallback al último snapshot si la API falla — después conectar ese
-pre-llenado real a los informes (reemplazando el pre-llenado
+**Próximo paso:** con los IDs de cuenta/propiedad reales (Meta Ad Account
+ID de Tecny Stand, y un GSC property + GA4 Property ID de cualquier
+cliente), probar `lib/meta/client.ts`/`gsc.ts`/`ga4.ts` contra las APIs
+reales; y que el usuario complete el consentimiento de Google una vez
+para confirmar el guardado del refresh token. Con eso conectado, viene
+el pre-llenado real en los informes (reemplazando el pre-llenado
 manual/local ya construido) y recién ahí la pestaña "Resultados" (§3.15,
 Fase 3, comparte esta misma capa de datos). Aparte, sigue pendiente
 correr `registrarWebhookClickUp` contra el workspace real una vez que
