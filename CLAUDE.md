@@ -74,11 +74,15 @@ transaction (`aws-1-us-west-2.pooler.supabase.com:6543`, con
 `prepare:false` en `lib/db.ts` porque ese modo de pooler no soporta
 prepared statements entre transacciones) y un `AUTH_SECRET` propio de
 producción (distinto al de desarrollo local) — login verificado en vivo.
-**`main` quedó desincronizado a propósito**: el CRUD completo y el
-control de acceso por rol viven en `claude/verify-supabase-connection-k8b430`
-pero no se mergearon a `main` (decisión explícita — el deploy en vivo de
-Vercel sigue mostrando la versión de antes del CRUD hasta que se pida el
-merge).
+**`main` mergeado con `claude/verify-supabase-connection-k8b430` (a
+pedido explícito del usuario, para poder probar en vivo el flujo de
+conexión de Google que requiere un login real)** — hasta ese momento
+`main` había quedado desincronizado a propósito mientras se
+desarrollaba el CRUD, el control de acceso por rol, ClickUp Fase 2 y el
+generador de informes; ahora el deploy en vivo de Vercel refleja todo
+eso. De acá en adelante, seguir desarrollando sobre esta misma rama y
+mergeando a `main` cuando se pida, como hasta ahora — no se volvió a un
+esquema de ramas separadas por defecto.
 
 **Fase 1 funcionalmente cerrada.** Empezada Fase 2:
 
