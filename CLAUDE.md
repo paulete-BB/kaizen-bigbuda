@@ -404,25 +404,33 @@ real existente:**
   sin cliente correspondiente queda reportado como "sin emparejar" en vez
   de fallar en silencio.
 - **OAuth de Google (Authorization Code + PKCE) construido y verificado
-  hasta donde es posible sin login humano real** — `lib/google/oauth.ts` +
+  de punta a punta, incluido un login real** — `lib/google/oauth.ts` +
   `app/api/auth/google/iniciar` + `.../callback` (migración
   `0012_google_oauth.sql`: `settings.google_refresh_token`/
-  `google_connected_email`). El usuario creó el OAuth Client en Google
-  Cloud y pasó Client ID/Secret reales. Se probó de punta a punta contra
-  la API real de Google todo lo que no requiere completar el login (que
-  no se puede automatizar ni debe intentarse): `/iniciar` arma la URL de
-  autorización con PKCE y Google la acepta sin `redirect_uri_mismatch` ni
-  `invalid_client` (llega a la pantalla real de login, confirmando que el
-  Client ID y el redirect URI registrado son correctos); el callback
-  maneja los tres casos de error reales (`access_denied` de Google, state
-  inválido, y un código de autorización inválido —contra el endpoint real
-  de intercambio de tokens de Google, que respondió con su error real
-  `Malformed auth code`, confirmando que el parseo de la respuesta de
-  error también es correcto). Falta que el usuario complete el consentimiento
-  una vez con su cuenta real (no se puede probar sin acceso a login de
-  Google) para confirmar que el refresh token se guarda correctamente —
-  eso solo se puede hacer una vez desplegado o corriendo la app
-  localmente ellos mismos.
+  `google_connected_email`). Antes del login real ya se había probado
+  contra la API real de Google todo lo que no requería completarlo:
+  `/iniciar` arma la URL de autorización con PKCE y Google la acepta sin
+  `redirect_uri_mismatch` ni `invalid_client`; el callback maneja los tres
+  casos de error reales (`access_denied`, state inválido, código de
+  autorización inválido contra el endpoint real de intercambio de
+  tokens). El usuario completó el consentimiento con su cuenta real
+  (`paulete@bigbuda.com`) contra el deploy de producción — confirmado
+  directo en la base real: `settings.google_connected_email` y
+  `google_refresh_token` quedaron guardados correctamente.
+  **Depuración real hasta llegar ahí** (documentado porque costó varias
+  vueltas, no por el código en sí): (1) la integración de Vercel con
+  GitHub se había roto en algún momento ("Project Link not found" en
+  Settings → Git) — ningún push a `main` disparaba deploy nuevo, así que
+  el fix de abajo nunca llegaba a producción hasta reconectarla y forzar
+  un commit vacío para generar un webhook nuevo; (2) `/api/auth/google/iniciar`
+  no atrapaba errores de configuración (`GOOGLE_OAUTH_CLIENT_ID`/
+  `NEXT_PUBLIC_APP_URL` ausentes) y tiraba un 500 genérico en vez de decir
+  qué faltaba — corregido para redirigir a `/ajustes` con el mensaje de
+  error concreto, igual que ya hacía el callback; (3) la credencial de
+  Google que el usuario había creado y pasado originalmente resultó ser
+  de un proyecto de Google Cloud distinto al que pensaba — una vez
+  creada la credencial correcta en el proyecto correcto, conectó a la
+  primera.
 - **Clientes de fetch server-side** — `lib/google/gsc.ts` (resumen,
   keywords, serie diaria, listado de propiedades), `lib/google/ga4.ts`
   (tráfico orgánico, tráfico desde IA con la lista de dominios del
@@ -456,14 +464,13 @@ real existente:**
 **Próximo paso:** con los IDs de cuenta/propiedad reales (Meta Ad Account
 ID de Tecny Stand, y un GSC property + GA4 Property ID de cualquier
 cliente), probar `lib/meta/client.ts`/`gsc.ts`/`ga4.ts` contra las APIs
-reales; y que el usuario complete el consentimiento de Google una vez
-para confirmar el guardado del refresh token. Con eso conectado, viene
-el pre-llenado real en los informes (reemplazando el pre-llenado
-manual/local ya construido) y recién ahí la pestaña "Resultados" (§3.15,
-Fase 3, comparte esta misma capa de datos). Aparte, sigue pendiente
-correr `registrarWebhookClickUp` contra el workspace real una vez que
-este código esté en `main` y desplegado (requiere el endpoint público y
-alcanzable).
+reales. Con eso conectado, viene el pre-llenado real en los informes
+(reemplazando el pre-llenado manual/local ya construido) y recién ahí la
+pestaña "Resultados" (§3.15, Fase 3, comparte esta misma capa de datos).
+Aparte, sigue pendiente correr `registrarWebhookClickUp` contra el
+workspace real — ya no está bloqueado (`main` está desplegado y el
+pipeline de deploy de Vercel quedó confirmado funcionando de punta a
+punta tras la depuración de esta ronda), solo falta hacerlo.
 
 ---
 
