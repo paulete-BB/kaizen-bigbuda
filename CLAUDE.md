@@ -461,16 +461,26 @@ real existente:**
   todavía** — falta que el usuario complete esos IDs para poder probarlo
   de punta a punta.
 
+**Webhook `taskStatusUpdated` registrado contra el workspace real** —
+corrido `registrarWebhookClickUp` (vía llamada directa a la API de
+ClickUp + Management API de Supabase para guardar el resultado, porque
+esta sandbox sigue sin acceso directo a Postgres; mismo efecto que
+correr la función). Antes de registrar se confirmó que el endpoint de
+producción respondía (`GET` → 405 esperado; `POST` sin secret aún
+configurado → 500 esperado, no un deploy roto). ClickUp devolvió
+`health.status: "active"` al registrarlo — confirma que pudo alcanzar el
+endpoint. Guardado `clickup_webhook_id`/`clickup_webhook_secret` en
+`settings` de producción. Verificado el cambio de estado real: la misma
+entrega sin firma que antes daba 500 (sin secret configurado) ahora da
+401 (secret configurado, firma inválida rechazada) — confirma que el
+webhook está realmente activo, no solo registrado en la base.
+
 **Próximo paso:** con los IDs de cuenta/propiedad reales (Meta Ad Account
 ID de Tecny Stand, y un GSC property + GA4 Property ID de cualquier
 cliente), probar `lib/meta/client.ts`/`gsc.ts`/`ga4.ts` contra las APIs
 reales. Con eso conectado, viene el pre-llenado real en los informes
 (reemplazando el pre-llenado manual/local ya construido) y recién ahí la
 pestaña "Resultados" (§3.15, Fase 3, comparte esta misma capa de datos).
-Aparte, sigue pendiente correr `registrarWebhookClickUp` contra el
-workspace real — ya no está bloqueado (`main` está desplegado y el
-pipeline de deploy de Vercel quedó confirmado funcionando de punta a
-punta tras la depuración de esta ronda), solo falta hacerlo.
 
 ---
 
