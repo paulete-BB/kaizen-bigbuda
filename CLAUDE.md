@@ -493,12 +493,20 @@ refresh token real de producción copiado temporalmente a la base de
 prueba (nunca impreso en la sesión, borrado el archivo intermedio al
 terminar) — no contra un mock.
 
-**Próximo paso:** dar de alta a Gonfernic como cliente real en la
-plataforma con esos mismos IDs de GSC/GA4 ya verificados (falta
-nombre/empresa/contacto para el alta). Con los tres clientes de datos
-verificados, sigue el pre-llenado real en los informes (reemplazando el
-pre-llenado manual/local ya construido) y recién ahí la pestaña
-"Resultados" (§3.15, Fase 3, comparte esta misma capa de datos).
+**Gonfernic dado de alta como cliente real** (Fernando Abarca ·
+abarca@gonfernic.cl · industria "Máquinas de Café y Snack en comodato" ·
+servicios SEO-AEO-GEO y Google Ads), con `gsc_property`/`ga4_property_id`
+ya cargados desde el alta — mismos INSERTs que haría el formulario real,
+corridos vía Management API por el mismo motivo que las migraciones
+(esta sandbox no tiene acceso directo a Postgres). El checklist de
+onboarding se instancia solo al abrir la ficha por primera vez (perezoso,
+como ya documentado), así que no hizo falta crearlo a mano.
+
+**Próximo paso:** con los tres clientes de datos verificados (Tecny
+Stand para Meta, Gonfernic para GSC/GA4) y Gonfernic ya dado de alta,
+sigue el pre-llenado real en los informes (reemplazando el pre-llenado
+manual/local ya construido) y recién ahí la pestaña "Resultados" (§3.15,
+Fase 3, comparte esta misma capa de datos).
 
 ---
 
