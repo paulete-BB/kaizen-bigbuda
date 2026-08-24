@@ -475,12 +475,30 @@ entrega sin firma que antes daba 500 (sin secret configurado) ahora da
 401 (secret configurado, firma inválida rechazada) — confirma que el
 webhook está realmente activo, no solo registrado en la base.
 
-**Próximo paso:** con los IDs de cuenta/propiedad reales (Meta Ad Account
-ID de Tecny Stand, y un GSC property + GA4 Property ID de cualquier
-cliente), probar `lib/meta/client.ts`/`gsc.ts`/`ga4.ts` contra las APIs
-reales. Con eso conectado, viene el pre-llenado real en los informes
-(reemplazando el pre-llenado manual/local ya construido) y recién ahí la
-pestaña "Resultados" (§3.15, Fase 3, comparte esta misma capa de datos).
+**`lib/google/gsc.ts`/`ga4.ts`/`lib/meta/client.ts` verificados contra
+datos reales.** Guardado `meta_ad_account_id` real de Tecny Stand en
+producción; probado `obtenerResumenMeta`/`obtenerCampanasMeta` contra su
+cuenta real (gasto, impresiones, clics, 2 campañas reales con nombre).
+Para GSC/GA4 el usuario dio los IDs de un cliente que todavía no existe
+en la plataforma (Gonfernic, `sc-domain:gonfernic.cl` / GA4
+`368771119`) — no hacía falta crear la ficha para probar las funciones,
+así que se probaron directo contra esos IDs sin tocar la base de
+clientes: `obtenerResumenGSC`/`obtenerKeywordsGSC` devolvieron datos
+reales y sensatos (keywords de su rubro real, café en comodato) y
+`obtenerTraficoOrganicoGA4`/`obtenerTraficoIAGA4` también (incluida
+tracción real desde ChatGPT y Gemini, aunque baja — consistente con la
+limitación documentada en §3.14 de que este tráfico se subestima).
+Probado corriendo las funciones reales contra Postgres local con el
+refresh token real de producción copiado temporalmente a la base de
+prueba (nunca impreso en la sesión, borrado el archivo intermedio al
+terminar) — no contra un mock.
+
+**Próximo paso:** dar de alta a Gonfernic como cliente real en la
+plataforma con esos mismos IDs de GSC/GA4 ya verificados (falta
+nombre/empresa/contacto para el alta). Con los tres clientes de datos
+verificados, sigue el pre-llenado real en los informes (reemplazando el
+pre-llenado manual/local ya construido) y recién ahí la pestaña
+"Resultados" (§3.15, Fase 3, comparte esta misma capa de datos).
 
 ---
 
