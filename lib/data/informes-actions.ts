@@ -13,6 +13,8 @@ import {
   type InformeMarketingContenido,
   type InformeSeoContenido,
 } from "@/lib/informes/tipos";
+import { prellenarAdsDesdeApis, prellenarSeoDesdeApis, type ConfigApisCliente } from "@/lib/informes/prellenado-apis";
+import { getSettings } from "@/lib/data/settings";
 import type { ServicioTipo } from "@/lib/data/cliente-detalle";
 
 export interface AccionInformeResultado {
@@ -30,16 +32,43 @@ function esFormatoAds(tipo: ServicioTipo) {
   return tipo === "meta_ads" || tipo === "google_ads";
 }
 
-/** Pre-llena "Inversión del mes" desde `budgets` si existe una fila para ese servicio/período — reemplaza el ingreso manual cuando el dato ya se registró en el bloque de miércoles (§3.9). */
-async function prellenarInversionDelMes(serviceId: string, mes: number, anio: number): Promise<InformeMarketingContenido["inversionDelMes"] | null> {
+/** Config de GSC/GA4/Meta del cliente (§3.14) usada para pre-llenar el informe con datos en vivo. */
+async function obtenerConfigApisCliente(clientId: string): Promise<ConfigApisCliente> {
+  const [cliente] = await sql<
+    { gsc_property: string | null; ga4_property_id: string | null; meta_ad_account_id: string | null; meta_token_key: string | null }[]
+  >`select gsc_property, ga4_property_id, meta_ad_account_id, meta_token_key from clients where id = ${clientId}`;
+  return {
+    gscProperty: cliente?.gsc_property ?? null,
+    ga4PropertyId: cliente?.ga4_property_id ?? null,
+    metaAdAccountId: cliente?.meta_ad_account_id ?? null,
+    metaTokenKey: cliente?.meta_token_key ?? null,
+  };
+}
+
+/**
+ * Pre-llena "Inversión del mes" desde `budgets` si existe una fila para
+ * ese servicio/período — reemplaza el ingreso manual cuando el dato ya se
+ * registró en el bloque de miércoles (§3.9). Si `gastoRealApi` viene con
+ * datos (Meta/GA4 en vivo, §3.14), reemplaza el `gasto_acumulado` manual
+ * de esa fila para el cálculo de pacing — el presupuesto acordado sigue
+ * viniendo de `budgets` porque ninguna API sabe cuánto se pactó con el
+ * cliente, solo cuánto se gastó.
+ */
+async function prellenarInversionDelMes(
+  serviceId: string,
+  mes: number,
+  anio: number,
+  gastoRealApi: { valor: number; moneda: string } | null,
+): Promise<InformeMarketingContenido["inversionDelMes"] | null> {
   const [budget] = await sql<
     { presupuesto: string; moneda: string; gasto_acumulado: string; pacing_pct: string | null; alerta_disparada: boolean }[]
   >`select presupuesto, moneda, gasto_acumulado, pacing_pct, alerta_disparada from budgets where service_id = ${serviceId} and mes = ${mes} and anio = ${anio}`;
   if (!budget) return null;
 
   const presupuesto = Number(budget.presupuesto);
-  const gasto = Number(budget.gasto_acumulado);
-  const pacingPct = budget.pacing_pct ? Number(budget.pacing_pct) : presupuesto > 0 ? (gasto / presupuesto) * 100 : 0;
+  const usaGastoReal = Boolean(gastoRealApi && gastoRealApi.moneda === budget.moneda);
+  const gasto = usaGastoReal ? gastoRealApi!.valor : Number(budget.gasto_acumulado);
+  const pacingPct = presupuesto > 0 ? (gasto / presupuesto) * 100 : budget.pacing_pct ? Number(budget.pacing_pct) : 0;
   const fmtMoneda = (n: number) => `${n.toLocaleString("es-CL")} ${budget.moneda}`;
 
   const hoy = hoySantiago();
@@ -48,13 +77,23 @@ async function prellenarInversionDelMes(serviceId: string, mes: number, anio: nu
   const diaMes = esMesActual ? hoy.getDate() : diasDelMes;
   const pctMesTranscurrido = Math.round((diaMes / diasDelMes) * 1000) / 10;
 
+  // Si el gasto real de la API reemplazó al manual, el pacing recién calculado
+  // ya no coincide necesariamente con `alerta_disparada` (guardado contra el
+  // gasto manual en el bloque de miércoles) — se recalcula contra el umbral
+  // de settings en vez de confiar en ese booleano desactualizado.
+  let alerta = budget.alerta_disparada;
+  if (usaGastoReal) {
+    const { umbralPacingPct } = await getSettings();
+    alerta = Math.abs(pacingPct - 100) >= umbralPacingPct;
+  }
+
   return {
     presupuesto: fmtMoneda(presupuesto),
     gasto: fmtMoneda(gasto),
     diaMes: String(diaMes),
     pctMesTranscurrido: `${pctMesTranscurrido}%`,
     pctEjecutado: `${Math.round(pacingPct * 10) / 10}%`,
-    estado: !budget.alerta_disparada ? "dentro_rango" : pacingPct > 100 ? "sobregasto" : "subgasto",
+    estado: !alerta ? "dentro_rango" : pacingPct > 100 ? "sobregasto" : "subgasto",
     nota: "",
   };
 }
@@ -100,14 +139,22 @@ export async function crearInforme(formData: FormData): Promise<void> {
     `;
     contenido = origen ? origen.contenido_json : esFormatoAds(tipo) ? contenidoMarketingVacio() : contenidoSeoVacio();
   } else if (esFormatoAds(tipo) && serviceId) {
+    const config = await obtenerConfigApisCliente(clientId);
     const marketing = contenidoMarketingVacio();
-    const [inversion, acciones] = await Promise.all([
-      prellenarInversionDelMes(serviceId, periodoMes, periodoAnio),
+    const [acciones, ads] = await Promise.all([
       prellenarAccionesDesdeBitacora(serviceId, periodoMes, periodoAnio),
+      prellenarAdsDesdeApis(clientId, serviceId, tipo as "meta_ads" | "google_ads", config, periodoMes, periodoAnio),
     ]);
+    const inversion = await prellenarInversionDelMes(serviceId, periodoMes, periodoAnio, ads.gastoReal);
     if (inversion) marketing.inversionDelMes = inversion;
     if (acciones.length > 0) marketing.queMejoramos.acciones = acciones;
+    if (ads.metricas.length > 0) marketing.comoVamosCifras.metricas = ads.metricas;
     contenido = marketing;
+  } else if (!esFormatoAds(tipo) && serviceId) {
+    const config = await obtenerConfigApisCliente(clientId);
+    const seo = contenidoSeoVacio();
+    const prellenado = await prellenarSeoDesdeApis(clientId, serviceId, config, periodoMes, periodoAnio);
+    contenido = { ...seo, ...prellenado };
   } else {
     contenido = esFormatoAds(tipo) ? contenidoMarketingVacio() : contenidoSeoVacio();
   }

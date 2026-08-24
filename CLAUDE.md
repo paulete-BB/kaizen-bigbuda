@@ -502,11 +502,53 @@ corridos vía Management API por el mismo motivo que las migraciones
 onboarding se instancia solo al abrir la ficha por primera vez (perezoso,
 como ya documentado), así que no hizo falta crearlo a mano.
 
-**Próximo paso:** con los tres clientes de datos verificados (Tecny
-Stand para Meta, Gonfernic para GSC/GA4) y Gonfernic ya dado de alta,
-sigue el pre-llenado real en los informes (reemplazando el pre-llenado
-manual/local ya construido) y recién ahí la pestaña "Resultados" (§3.15,
-Fase 3, comparte esta misma capa de datos).
+**Pre-llenado real de informes desde GSC/GA4/Meta (§3.14 → §3.4),
+reemplaza el pre-llenado manual/local de la ronda anterior:**
+`lib/informes/prellenado-apis.ts` (`prellenarSeoDesdeApis`,
+`prellenarAdsDesdeApis`) queda enganchado en `crearInforme`
+(`lib/data/informes-actions.ts`) — solo al crear un borrador nuevo, no al
+duplicar (duplicar sigue copiando el contenido tal cual del informe
+origen, sin volver a pedir datos a las APIs). Para SEO-AEO-GEO trae
+"Punto de partida" desde GSC (CTR, posición media, impresiones, clics) y
+"Tráfico desde IA" desde GA4; para Meta Ads trae las cifras de
+"¿Cómo vamos?" desde Meta Insights (con delta vs. mes anterior); para
+Google Ads, desde GA4 filtrado por `sessionMedium=cpc/paid` (§3.14: no
+hay API de Google Ads propia conectada). Ambas rutas usan
+`conCacheDeSnapshot` (snapshot nuevo en éxito, último snapshot cacheado
+si la API falla) y degradan en silencio a lo que ya hacía el pre-llenado
+anterior si el cliente no tiene la propiedad/cuenta configurada — nunca
+rompen la creación del informe.
+**Pacing automático (§3.9 → automático):** `prellenarInversionDelMes`
+ahora recibe el gasto real de Meta/GA4 (`ads.gastoReal`) cuando la
+moneda coincide con la de `budgets`, y lo usa en vez del
+`gasto_acumulado` manual para el cálculo de pacing — el presupuesto
+acordado sigue viniendo de `budgets` (ninguna API sabe cuánto se pactó).
+Bug evitado en el camino: el campo `estado` ("dentro_rango" /
+"sobregasto" / "subgasto") se calculaba antes contra `alerta_disparada`,
+un booleano guardado la última vez que el equipo cargó el gasto a mano
+en el bloque de miércoles — con el gasto real de la API reemplazando al
+manual, ese booleano queda desactualizado. Ahora, cuando hay gasto real
+de API, `estado` se recalcula en el momento contra
+`settings.umbralPacingPct` en vez de confiar en el valor guardado.
+Verificado de punta a punta contra Postgres local + `next dev` real:
+Filtrocentro con `gsc_property`/`ga4_property_id` reales de Gonfernic
+(el cliente real de prueba de la ronda anterior) trajo CTR/posición/
+impresiones/clics de GSC y tráfico real desde ChatGPT/Gemini de GA4;
+Tecny Stand con `meta_ad_account_id` real pero sin
+`META_TOKEN_TECNY_STAND` en el entorno de prueba local degradó
+correctamente al pre-llenado manual desde `budgets` sin romper la
+creación del informe (confirma la resiliencia del `try/catch` cuando la
+API falla o no está configurada). Las cuatro páginas involucradas
+(editor y vista de impresión de ambos informes) cargaron sin errores de
+consola. Confirmado `jsonb_typeof` = `object` en ambos (sin regresión
+del bug de doble serialización). Datos de prueba (config de API en los
+clientes, presupuesto, refresh token de Google copiado temporalmente)
+limpiados de la base de prueba al terminar.
+
+**Próximo paso:** con el pre-llenado real ya conectado, sigue la
+pestaña "Resultados" (§3.15, Fase 3, comparte esta misma capa de datos):
+vista por cliente con GSC/GA4/Meta en vivo y overlay de optimizaciones
+sobre las series temporales.
 
 ---
 
