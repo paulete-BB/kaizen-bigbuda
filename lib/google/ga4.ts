@@ -12,7 +12,7 @@ const GA4_API = "https://analyticsdata.googleapis.com/v1beta";
  * — brief §3.14). Mejor subestimar el tráfico de IA que inflarlo con
  * búsqueda orgánica común.
  */
-const DOMINIOS_IA = ["chatgpt.com", "chat.openai.com", "perplexity.ai", "gemini.google.com", "claude.ai", "copilot.microsoft.com"];
+export const DOMINIOS_IA = ["chatgpt.com", "chat.openai.com", "perplexity.ai", "gemini.google.com", "claude.ai", "copilot.microsoft.com"];
 
 interface Ga4Row {
   dimensionValues?: { value: string }[];
@@ -32,6 +32,11 @@ async function consultarGA4(propertyId: string, body: Record<string, unknown>): 
 }
 
 const num = (v: string | undefined) => Number(v ?? 0);
+
+/** GA4 devuelve la dimensión `date` como YYYYMMDD sin separadores — se normaliza a ISO para poder cruzarla con las fechas de la app. */
+function fechaGa4AIso(v: string): string {
+  return `${v.slice(0, 4)}-${v.slice(4, 6)}-${v.slice(6, 8)}`;
+}
 
 export interface ResumenGA4Organico {
   sesiones: number;
@@ -92,9 +97,8 @@ export interface ResumenTraficoPagado {
   costo: number;
 }
 
-/** Google Ads vía GA4 (sessionMedium = cpc | paid) — usado para el informe de Google Ads, que no tiene una API de Ads propia conectada todavía. */
-export async function obtenerTraficoPagadoGA4(propertyId: string, startDate: string, endDate: string): Promise<ResumenTraficoPagado> {
-  const paidFilter = {
+function filtroTraficoPagado() {
+  return {
     orGroup: {
       expressions: [
         { filter: { fieldName: "sessionMedium", stringFilter: { matchType: "EXACT" as const, value: "cpc", caseSensitive: false } } },
@@ -102,11 +106,39 @@ export async function obtenerTraficoPagadoGA4(propertyId: string, startDate: str
       ],
     },
   };
+}
+
+/** Google Ads vía GA4 (sessionMedium = cpc | paid) — usado para el informe de Google Ads, que no tiene una API de Ads propia conectada todavía. */
+export async function obtenerTraficoPagadoGA4(propertyId: string, startDate: string, endDate: string): Promise<ResumenTraficoPagado> {
   const data = await consultarGA4(propertyId, {
     dateRanges: [{ startDate, endDate }],
     metrics: [{ name: "sessions" }, { name: "conversions" }, { name: "advertiserAdCost" }],
-    dimensionFilter: paidFilter,
+    dimensionFilter: filtroTraficoPagado(),
   });
   const row = data.rows?.[0];
   return { sesiones: num(row?.metricValues?.[0]?.value), conversiones: num(row?.metricValues?.[1]?.value), costo: num(row?.metricValues?.[2]?.value) };
+}
+
+export interface PuntoDiarioPagado {
+  fecha: string;
+  sesiones: number;
+  conversiones: number;
+  costo: number;
+}
+
+/** Serie diaria de tráfico pagado (Google Ads vía GA4) — pestaña Resultados (§3.15), overlay de optimizaciones sobre la serie. */
+export async function obtenerTraficoPagadoDiarioGA4(propertyId: string, startDate: string, endDate: string): Promise<PuntoDiarioPagado[]> {
+  const data = await consultarGA4(propertyId, {
+    dateRanges: [{ startDate, endDate }],
+    dimensions: [{ name: "date" }],
+    metrics: [{ name: "sessions" }, { name: "conversions" }, { name: "advertiserAdCost" }],
+    dimensionFilter: filtroTraficoPagado(),
+    orderBys: [{ dimension: { dimensionName: "date" } }],
+  });
+  return (data.rows ?? []).map((r) => ({
+    fecha: fechaGa4AIso(r.dimensionValues?.[0]?.value ?? ""),
+    sesiones: num(r.metricValues?.[0]?.value),
+    conversiones: num(r.metricValues?.[1]?.value),
+    costo: num(r.metricValues?.[2]?.value),
+  }));
 }

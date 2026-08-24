@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { logout } from "@/lib/auth/actions";
 
-type NavKey = "dashboard" | "calendario" | "clientes" | "ajustes";
+type NavKey = "dashboard" | "calendario" | "clientes" | "resultados" | "ajustes";
 
 export interface SidebarUsuario {
   nombre: string;
@@ -15,6 +15,7 @@ const NAV_ITEMS: { key: NavKey; label: string; href: string }[] = [
   { key: "dashboard", label: "Dashboard", href: "/dashboard" },
   { key: "calendario", label: "Calendario", href: "/calendario" },
   { key: "clientes", label: "Clientes", href: "/clientes" },
+  { key: "resultados", label: "Resultados", href: "/resultados" },
   { key: "ajustes", label: "Ajustes", href: "/ajustes" },
 ];
 
@@ -42,6 +43,13 @@ function NavIcon({ item }: { item: NavKey }) {
           <circle cx="9" cy="8" r="3.2" />
           <path d="M3.5 20c0-3.3 2.5-5.5 5.5-5.5s5.5 2.2 5.5 5.5" />
           <path d="M16 5.2a3 3 0 0 1 0 5.6M17.5 20c0-2.4-1-4.3-2.6-5.2" />
+        </>
+      );
+    case "resultados":
+      return (
+        <>
+          <path d="M4 19V10M11 19V5M18 19v-6" />
+          <path d="M3 19h18" />
         </>
       );
     case "ajustes":

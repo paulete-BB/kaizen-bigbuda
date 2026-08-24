@@ -545,10 +545,106 @@ del bug de doble serialización). Datos de prueba (config de API en los
 clientes, presupuesto, refresh token de Google copiado temporalmente)
 limpiados de la base de prueba al terminar.
 
-**Próximo paso:** con el pre-llenado real ya conectado, sigue la
-pestaña "Resultados" (§3.15, Fase 3, comparte esta misma capa de datos):
-vista por cliente con GSC/GA4/Meta en vivo y overlay de optimizaciones
-sobre las series temporales.
+**Pestaña "Resultados" (§3.15) — dashboard en vivo con overlay de
+optimizaciones, comparte la capa de datos de §3.14:**
+
+- **Nuevo ítem real del Sidebar** (`/resultados`, entre Clientes y
+  Ajustes — antes solo existían los placeholders sin `href` de
+  "Informes"/"Prompts", que siguen igual). Selector de cliente + rango
+  (14/28/90 días, mismos presets que el dashboard de referencia) vía
+  `<select>`/`Link` con query params, mismo patrón de navegación que
+  `CalendarioPage` — sin `useSearchParams` del lado cliente.
+- **Cuatro secciones independientes** (`lib/data/resultados.ts`,
+  `obtenerResultadosCliente`): SEO·AEO·GEO (GSC: clics/impresiones/CTR/
+  posición media + top keywords + serie diaria de clics), AEO·GEO
+  tráfico desde IA (GA4, breakdown por fuente + nota al pie de las
+  limitaciones conocidas de §4.3), Meta Ads (gasto/resultados/CTR/CPC/
+  alcance + campañas + serie diaria de gasto) y Google Ads (GA4 filtrado
+  `sessionMedium=cpc/paid`, sin API de Ads propia — mismo criterio que el
+  pre-llenado de informes). Cada sección se gatilla por **servicio activo
+  contratado** (no solo por config): sin el servicio, el mensaje dice "no
+  tiene X contratado"; con servicio pero sin `gsc_property`/
+  `ga4_property_id`/`meta_ad_account_id`, dice qué falta configurar en la
+  ficha; y si la API falla se degrada a `conCacheDeSnapshot` con aviso de
+  fecha — nunca rompe la página. Reutiliza exactamente los mismos
+  fetchers de `lib/google/gsc.ts`/`ga4.ts`/`lib/meta/client.ts` que el
+  pre-llenado de informes (Fase 3 anterior), agregando series diarias
+  nuevas donde no existían: `obtenerTraficoPagadoDiarioGA4` (GA4) y
+  `obtenerSerieDiariaMeta` (Meta, `time_increment:'1'`, mismo query shape
+  confirmado contra el dashboard de referencia real).
+- **Overlay de optimizaciones — la funcionalidad diferencial del brief**:
+  cada gráfico de serie temporal marca con línea vertical punteada +
+  punto las fechas de `optimizations.fecha_realizada` (estado
+  `realizada`) y `reports.enviado_en` (estado `enviado`) para el
+  servicio correspondiente, con tooltip al pasar el mouse. Filtrado por
+  *servicio* (no por cliente completo): el gráfico de SEO solo muestra
+  hitos de optimizaciones SEO, el de Meta Ads solo los de Meta Ads, etc.
+  — la lectura correcta es "esta intervención específica, este efecto en
+  esta métrica específica", no todas las intervenciones mezcladas.
+- **Gráficos de líneas con crosshair + tooltip propios, sin librería
+  nueva** (`components/resultados/SerieTiempo.tsx`): SVG a mano, mismo
+  patrón que `Donut.tsx` (dashboard) — el proyecto no tiene Chart.js ni
+  ninguna librería de gráficos, y el dashboard de referencia (que sí usa
+  Chart.js) es la especificación de qué datos mostrar, no de cómo
+  renderizarlos. Construido siguiendo la skill de dataviz del entorno:
+  un solo eje (nunca dual-axis — clics/impresiones del dashboard viejo se
+  separaron en gráficos distintos en vez de superponerse con dos
+  escalas), paleta categórica validada para las fuentes de IA (5 colores
+  fijos por dominio, nunca reciclados), hover con crosshair que ubica el
+  punto más cercano y un tooltip con fecha + valor + hito si corresponde.
+- **KPIs con delta correctamente separado en número vs. color** — bug
+  real encontrado y corregido en el camino: para métricas donde bajar es
+  mejorar (CPC, costo, posición media), la primera versión invertía el
+  signo del número mostrado para que siempre fuera positivo en verde
+  ("posición mejoró 4.9%" → "+4.9%"), pero eso contradice la flecha
+  (↑ +4.9% junto a un número que en realidad bajó) y el propio contrato
+  de la skill de dataviz ("delta: signed, vs a named period; color =
+  direction × whether up is good"). Corregido separando `tendencia`
+  (flecha, según el signo literal del cambio real) de `favorable` (color,
+  según si esa dirección es buena noticia para esa métrica en particular)
+  — ahora "costo bajó 12%" se lee flecha abajo + verde, nunca flecha
+  arriba con un número negativo.
+- **Bug real de bundling encontrado probando con `next dev` real, no solo
+  tipos:** `SelectorResultados.tsx` (client component) importaba
+  `RANGOS_RESULTADOS` desde `lib/data/resultados.ts`, que a su vez
+  importa `lib/db` (el cliente de `postgres`, que usa `fs`/`net` de
+  Node) — Next.js intentó incluir todo ese árbol en el bundle del
+  navegador y tiró `Module not found: Can't resolve 'fs'`. No se habría
+  detectado con `tsc` (los tipos son correctos, es un problema de qué
+  código *runtime* cruza el límite server/client). Corregido extrayendo
+  las constantes sin dependencias de servidor a `lib/resultados-rango.ts`
+  y `lib/resultados-formato.ts` — el resto de los imports desde
+  componentes cliente ya eran `import type`, que sí se descarta en
+  compilación. Mismo motivo por el que `SerieTiempo` recibe el formato
+  como string (`"numero" | "moneda"`) en vez de una función: una función
+  tampoco puede cruzar ese límite ("Functions cannot be passed directly
+  to Client Components").
+- Verificado de punta a punta contra Postgres local + `next dev` real:
+  Filtrocentro con `gsc_property`/`ga4_property_id` reales de Gonfernic
+  mostró clics/impresiones/CTR/posición con deltas correctos, serie
+  diaria de clics con dos hitos de prueba superpuestos (optimización +
+  informe enviado, con tooltip al hacer hover confirmado con captura de
+  pantalla), top keywords reales, y tráfico real desde ChatGPT en la
+  sección AEO; Tecny Stand con `ga4_property_id` de prueba mostró
+  sesiones/conversiones/costo reales de Google Ads (vía GA4 pagado) con
+  su propio hito de optimización superpuesto, mientras que Meta Ads
+  degradó correctamente al mensaje "no se pudo obtener datos" al no
+  haber `META_TOKEN_TECNY_STAND` en el entorno de prueba (confirma la
+  resiliencia sin romper el resto de la página), y las secciones
+  SEO/AEO se ocultaron con "no tiene contratado" al no tener ese
+  servicio activo. Cero errores de consola en las cuatro combinaciones
+  de cliente/sección. Datos de prueba (config de API, hitos de
+  optimización/informe, refresh token de Google) limpiados de la base
+  de prueba al terminar.
+- **Falta:** el dashboard antiguo (GitHub Pages) se mantiene operativo en
+  paralelo hasta decidir su retiro, como indica el brief; esta pestaña no
+  persiste todavía un histórico visible más allá de lo que ya guarda
+  `metric_snapshots` (§3.14) en cada carga.
+
+**Próximo paso:** con Fase 3 funcionalmente completa (informes + datos +
+Resultados), sigue Fase 4 — repositorio de prompts con versionado y
+variables, flujo de aprobaciones (§3.11), offboarding (§3.12),
+retrospectiva mensual del área (§3.13) y KPIs de operación.
 
 ---
 
