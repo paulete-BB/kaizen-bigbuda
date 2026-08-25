@@ -641,6 +641,41 @@ optimizaciones, comparte la capa de datos de §3.14:**
   persiste todavía un histórico visible más allá de lo que ya guarda
   `metric_snapshots` (§3.14) en cada carga.
 
+**Bug real reportado en producción — "la página se cae" al elegir un
+cliente completamente configurado (Gonfernic: SEO-AEO-GEO + Google Ads,
+ambos con GSC/GA4 reales):** el selector de cliente en sí funcionaba bien
+(confirmado con Playwright contra dev y contra un build de producción
+real, clientes sin integraciones cambiaban sin problema) — el problema
+aparecía solo con un cliente que dispara las cuatro secciones a la vez.
+Causa real encontrada por inspección de `obtenerResultadosCliente`: un
+cliente con SEO+Ads configurado dispara ~9 refresh de access token de
+Google en paralelo (cada llamada a GSC/GA4 pedía uno propio —
+`obtenerAccessTokenGoogle` nunca cacheaba, a propósito, por "volumen
+bajo" — supuesto que la propia pestaña Resultados rompe) más ~6 queries
+extra a Postgres solo para los hitos de overlay (`obtenerHitos` se
+llamaba una vez por sección, no una vez por cliente). Contra Postgres
+local, con las credenciales reales de Google y el mismo shape exacto de
+Gonfernic (confirmado replicando su configuración real sobre otro
+cliente de prueba con los mismos dos servicios), la página respondió
+igual de rápido con o sin el fix — la latencia/límites de conexión reales
+de producción (pooler de Supabase + red hacia Google) no se pueden
+reproducir desde este entorno de desarrollo. Aun así, la causa
+estructural (fan-out innecesario de llamadas externas concurrentes que
+crece con cuántas integraciones tiene el cliente) es real y se corrigió
+igual: `obtenerAccessTokenGoogle` (`lib/google/oauth.ts`) ahora cachea el
+access token en memoria del proceso (con margen de 60s antes de expirar)
+y deduplica llamadas concurrentes con una promesa compartida —
+9 refresh de Google quedan en 1; `obtenerTodosLosHitos`
+(`lib/data/resultados.ts`) reemplaza el `obtenerHitos` por sección: 2
+queries para las tres líneas de servicio en vez de 2 por sección (hasta
+6). Verificado que no hay regresión (mismo render exacto, captura de
+pantalla comparada) contra Postgres local + build de producción real
+(`next build && next start`, no `next dev`) con el shape de Gonfernic
+replicado. Si el problema persiste tras este deploy, el próximo paso es
+revisar los logs de la función serverless en Vercel para confirmar la
+causa exacta (timeout vs. límite de conexiones del pooler vs. otra cosa)
+en vez de seguir infiriéndola desde acá.
+
 **Próximo paso:** con Fase 3 funcionalmente completa (informes + datos +
 Resultados), sigue Fase 4 — repositorio de prompts con versionado y
 variables, flujo de aprobaciones (§3.11), offboarding (§3.12),

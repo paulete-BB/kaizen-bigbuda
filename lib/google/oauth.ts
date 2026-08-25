@@ -92,11 +92,23 @@ export async function intercambiarCodigoPorTokens(code: string, verifier: string
   const userinfo = (await userinfoRes.json()) as { email?: string };
 
   await sql`update settings set google_refresh_token = ${data.refresh_token}, google_connected_email = ${userinfo.email ?? null} where id = 1`;
+  tokenCacheado = null; // el token en caché (si había) es de la conexión anterior
   return { ok: true, email: userinfo.email };
 }
 
-/** Access token fresco a partir del refresh token guardado — se pide uno nuevo en cada llamada en vez de cachear: volumen bajo (herramienta interna), evita lógica de expiración/concurrencia sin necesidad. */
-export async function obtenerAccessTokenGoogle(): Promise<string> {
+/**
+ * Cache en memoria del proceso, con de-duplicación de llamadas concurrentes.
+ * La pestaña Resultados (§3.15) dispara varias secciones en paralelo, cada
+ * una con sus propias llamadas a GSC/GA4 — sin esto, un solo cliente con
+ * SEO+Ads configurado llega a pedir ~9 access tokens simultáneos contra
+ * Google (y ~9 conexiones extra al pooler de Supabase para leer el refresh
+ * token cada vez), lo que en producción puede acercarse al timeout de la
+ * función serverless. El token vive ~1h; se cachea con margen de 60s.
+ */
+let tokenCacheado: { accessToken: string; expiraEn: number } | null = null;
+let refrescoEnCurso: Promise<string> | null = null;
+
+async function refrescarAccessTokenGoogle(): Promise<string> {
   const [settings] = await sql<{ google_refresh_token: string | null }[]>`select google_refresh_token from settings where id = 1`;
   if (!settings?.google_refresh_token) throw new Error("Google no está conectado — falta conectar la cuenta en /ajustes");
 
@@ -116,7 +128,18 @@ export async function obtenerAccessTokenGoogle(): Promise<string> {
   });
   const data = (await res.json()) as TokenResponse;
   if (!res.ok) throw new Error(data.error_description ?? data.error ?? `Google refresh ${res.status}`);
+  tokenCacheado = { accessToken: data.access_token, expiraEn: Date.now() + (data.expires_in - 60) * 1000 };
   return data.access_token;
+}
+
+export async function obtenerAccessTokenGoogle(): Promise<string> {
+  if (tokenCacheado && tokenCacheado.expiraEn > Date.now()) return tokenCacheado.accessToken;
+  if (refrescoEnCurso) return refrescoEnCurso;
+
+  refrescoEnCurso = refrescarAccessTokenGoogle().finally(() => {
+    refrescoEnCurso = null;
+  });
+  return refrescoEnCurso;
 }
 
 export async function obtenerEstadoConexionGoogle(): Promise<{ conectado: boolean; email: string | null }> {

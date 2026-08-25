@@ -79,23 +79,30 @@ export interface Hito {
   etiqueta: string;
 }
 
-async function obtenerHitos(clientId: string, tipo: ServicioTipo, desde: string, hasta: string): Promise<Hito[]> {
+/**
+ * Trae los hitos de las tres líneas de servicio en 2 queries (no 2 por
+ * sección) y los agrupa por tipo — con un cliente configurado en las tres
+ * líneas, cada sección corriendo su propia consulta sumaba conexiones
+ * concurrentes de sobra contra el pooler de Supabase (§3.15, visto en
+ * producción con un cliente con SEO+Ads: la página se caía).
+ */
+async function obtenerTodosLosHitos(clientId: string, desde: string, hasta: string): Promise<Record<ServicioTipo, Hito[]>> {
   const [optimizaciones, informes] = await Promise.all([
-    sql<{ fecha_realizada: string }[]>`
-      select fecha_realizada from optimizations
-      where client_id = ${clientId} and tipo = ${tipo} and estado = 'realizada'
+    sql<{ tipo: ServicioTipo; fecha_realizada: string }[]>`
+      select tipo, fecha_realizada from optimizations
+      where client_id = ${clientId} and estado = 'realizada'
         and fecha_realizada between ${desde} and ${hasta}
     `,
-    sql<{ fecha: string }[]>`
-      select enviado_en::date as fecha from reports
-      where client_id = ${clientId} and tipo = ${tipo} and estado = 'enviado'
+    sql<{ tipo: ServicioTipo; fecha: string }[]>`
+      select tipo, enviado_en::date as fecha from reports
+      where client_id = ${clientId} and estado = 'enviado'
         and enviado_en::date between ${desde} and ${hasta}
     `,
   ]);
-  return [
-    ...optimizaciones.map((o) => ({ fecha: o.fecha_realizada, tipo: "optimizacion" as const, etiqueta: "Optimización realizada" })),
-    ...informes.map((r) => ({ fecha: r.fecha, tipo: "informe" as const, etiqueta: "Informe enviado" })),
-  ];
+  const porTipo: Record<ServicioTipo, Hito[]> = { seo_aeo_geo: [], meta_ads: [], google_ads: [] };
+  for (const o of optimizaciones) porTipo[o.tipo].push({ fecha: o.fecha_realizada, tipo: "optimizacion", etiqueta: "Optimización realizada" });
+  for (const r of informes) porTipo[r.tipo].push({ fecha: r.fecha, tipo: "informe", etiqueta: "Informe enviado" });
+  return porTipo;
 }
 
 export interface Delta {
@@ -199,17 +206,17 @@ async function seccionSeo(
   hasta: string,
   desdeAnt: string,
   hastaAnt: string,
+  hitos: Hito[],
 ): Promise<SeccionSeo> {
   if (!gscProperty) {
     return { disponible: false, motivo: "Configura la propiedad de Search Console en la ficha del cliente.", kpis: [], serie: [], hitos: [], keywords: [] };
   }
   try {
-    const [{ datos: actual, deCache }, { datos: anterior }, serieDiaria, keywordsTop, hitos] = await Promise.all([
+    const [{ datos: actual, deCache }, { datos: anterior }, serieDiaria, keywordsTop] = await Promise.all([
       conCacheDeSnapshot<ResumenGSC>({ clientId, serviceId, fuente: "gsc", periodoInicio: desde, periodoFin: hasta, fetchLive: () => obtenerResumenGSC(gscProperty, desde, hasta) }),
       conCacheDeSnapshot<ResumenGSC>({ clientId, serviceId, fuente: "gsc", periodoInicio: desdeAnt, periodoFin: hastaAnt, fetchLive: () => obtenerResumenGSC(gscProperty, desdeAnt, hastaAnt) }),
       obtenerSerieDiariaGSC(gscProperty, desde, hasta),
       obtenerKeywordsGSC(gscProperty, desde, hasta, 10),
-      obtenerHitos(clientId, "seo_aeo_geo", desde, hasta),
     ]);
     return {
       disponible: true,
@@ -267,18 +274,18 @@ async function seccionMeta(
   hasta: string,
   desdeAnt: string,
   hastaAnt: string,
+  hitos: Hito[],
 ): Promise<SeccionMeta> {
   if (!metaAdAccountId) {
     return { disponible: false, motivo: "Configura el Ad Account ID de Meta en la ficha del cliente.", kpis: [], serie: [], hitos: [], campanas: [] };
   }
   const config = { adAccountId: metaAdAccountId, metaTokenKey };
   try {
-    const [{ datos: actual, deCache }, { datos: anterior }, serieDiaria, campanas, hitos] = await Promise.all([
+    const [{ datos: actual, deCache }, { datos: anterior }, serieDiaria, campanas] = await Promise.all([
       conCacheDeSnapshot<ResumenInsightsMeta>({ clientId, serviceId, fuente: "meta", periodoInicio: desde, periodoFin: hasta, fetchLive: () => obtenerResumenMeta(config, desde, hasta) }),
       conCacheDeSnapshot<ResumenInsightsMeta>({ clientId, serviceId, fuente: "meta", periodoInicio: desdeAnt, periodoFin: hastaAnt, fetchLive: () => obtenerResumenMeta(config, desdeAnt, hastaAnt) }),
       obtenerSerieDiariaMeta(config, desde, hasta),
       obtenerCampanasMeta(config, desde, hasta, 8),
-      obtenerHitos(clientId, "meta_ads", desde, hasta),
     ]);
     return {
       disponible: true,
@@ -307,16 +314,16 @@ async function seccionGoogleAds(
   hasta: string,
   desdeAnt: string,
   hastaAnt: string,
+  hitos: Hito[],
 ): Promise<SeccionGoogleAds> {
   if (!ga4PropertyId) {
     return { disponible: false, motivo: "Configura el GA4 Property ID en la ficha del cliente.", kpis: [], serie: [], hitos: [] };
   }
   try {
-    const [{ datos: actual, deCache }, { datos: anterior }, serieDiaria, hitos] = await Promise.all([
+    const [{ datos: actual, deCache }, { datos: anterior }, serieDiaria] = await Promise.all([
       conCacheDeSnapshot<ResumenTraficoPagado>({ clientId, serviceId, fuente: "ga4", periodoInicio: desde, periodoFin: hasta, fetchLive: () => obtenerTraficoPagadoGA4(ga4PropertyId, desde, hasta) }),
       conCacheDeSnapshot<ResumenTraficoPagado>({ clientId, serviceId, fuente: "ga4", periodoInicio: desdeAnt, periodoFin: hastaAnt, fetchLive: () => obtenerTraficoPagadoGA4(ga4PropertyId, desdeAnt, hastaAnt) }),
       obtenerTraficoPagadoDiarioGA4(ga4PropertyId, desde, hasta),
-      obtenerHitos(clientId, "google_ads", desde, hasta),
     ]);
     return {
       disponible: true,
@@ -342,30 +349,31 @@ async function seccionGoogleAds(
  * propiedad/cuenta configurada o la API falla — nunca rompe la página.
  */
 export async function obtenerResultadosCliente(clientId: string, rango: RangoResultados): Promise<ResultadosCliente | null> {
-  const [cliente] = await sql<
-    { nombre: string; gsc_property: string | null; ga4_property_id: string | null; meta_ad_account_id: string | null; meta_token_key: string | null }[]
-  >`select nombre, gsc_property, ga4_property_id, meta_ad_account_id, meta_token_key from clients where id = ${clientId}`;
+  const { actual, anterior } = calcularRangos(rango);
+
+  const [[cliente], servicios, hitosPorTipo] = await Promise.all([
+    sql<
+      { nombre: string; gsc_property: string | null; ga4_property_id: string | null; meta_ad_account_id: string | null; meta_token_key: string | null }[]
+    >`select nombre, gsc_property, ga4_property_id, meta_ad_account_id, meta_token_key from clients where id = ${clientId}`,
+    sql<{ id: string; tipo: ServicioTipo }[]>`select id, tipo from services where client_id = ${clientId} and not pausado`,
+    obtenerTodosLosHitos(clientId, actual.desde, actual.hasta),
+  ]);
   if (!cliente) return null;
 
-  const servicios = await sql<{ id: string; tipo: ServicioTipo }[]>`
-    select id, tipo from services where client_id = ${clientId} and not pausado
-  `;
   const servicioIdPorTipo = new Map(servicios.map((s) => [s.tipo, s.id]));
-
-  const { actual, anterior } = calcularRangos(rango);
 
   const [seo, aeo, meta, googleAds] = await Promise.all([
     servicioIdPorTipo.has("seo_aeo_geo")
-      ? seccionSeo(clientId, servicioIdPorTipo.get("seo_aeo_geo")!, cliente.gsc_property, actual.desde, actual.hasta, anterior.desde, anterior.hasta)
+      ? seccionSeo(clientId, servicioIdPorTipo.get("seo_aeo_geo")!, cliente.gsc_property, actual.desde, actual.hasta, anterior.desde, anterior.hasta, hitosPorTipo.seo_aeo_geo)
       : ({ disponible: false, motivo: "Este cliente no tiene SEO-AEO-GEO contratado.", kpis: [], serie: [], hitos: [], keywords: [] } as SeccionSeo),
     servicioIdPorTipo.has("seo_aeo_geo")
       ? seccionAeo(clientId, servicioIdPorTipo.get("seo_aeo_geo")!, cliente.ga4_property_id, actual.desde, actual.hasta, anterior.desde, anterior.hasta)
       : ({ disponible: false, motivo: "Este cliente no tiene SEO-AEO-GEO contratado.", totalSesiones: 0, deltaSesiones: null, porFuente: [] } as SeccionAeo),
     servicioIdPorTipo.has("meta_ads")
-      ? seccionMeta(clientId, servicioIdPorTipo.get("meta_ads")!, cliente.meta_ad_account_id, cliente.meta_token_key, actual.desde, actual.hasta, anterior.desde, anterior.hasta)
+      ? seccionMeta(clientId, servicioIdPorTipo.get("meta_ads")!, cliente.meta_ad_account_id, cliente.meta_token_key, actual.desde, actual.hasta, anterior.desde, anterior.hasta, hitosPorTipo.meta_ads)
       : ({ disponible: false, motivo: "Este cliente no tiene Meta Ads contratado.", kpis: [], serie: [], hitos: [], campanas: [] } as SeccionMeta),
     servicioIdPorTipo.has("google_ads")
-      ? seccionGoogleAds(clientId, servicioIdPorTipo.get("google_ads")!, cliente.ga4_property_id, actual.desde, actual.hasta, anterior.desde, anterior.hasta)
+      ? seccionGoogleAds(clientId, servicioIdPorTipo.get("google_ads")!, cliente.ga4_property_id, actual.desde, actual.hasta, anterior.desde, anterior.hasta, hitosPorTipo.google_ads)
       : ({ disponible: false, motivo: "Este cliente no tiene Google Ads contratado.", kpis: [], serie: [], hitos: [] } as SeccionGoogleAds),
   ]);
 
