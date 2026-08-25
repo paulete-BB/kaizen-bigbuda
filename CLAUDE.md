@@ -676,6 +676,78 @@ revisar los logs de la función serverless en Vercel para confirmar la
 causa exacta (timeout vs. límite de conexiones del pooler vs. otra cosa)
 en vez de seguir infiriéndola desde acá.
 
+**Rediseño de Resultados orientado a impacto de negocio** — feedback real
+del usuario tras ver la pestaña en vivo: comparado con el dashboard de
+referencia (que se usa en vivo en reuniones con clientes), la primera
+versión mostraba KPIs sueltos sin conectar la métrica con "¿esto le sirve
+al cliente?". Se agregó, reusando exactamente los mismos fetchers de GSC/
+GA4/Meta ya construidos (nada de datos nuevos, solo más lectura de lo que
+ya se traía):
+
+- **Frase de insight por sección** (`insightTrafico`/`insightAds`/
+  `insightAeo` en `lib/data/resultados.ts`) — regla simple, no IA (eso
+  sigue siendo Fase 4, §3.4): compara la dirección de dos deltas (tráfico
+  vs. conversión, costo vs. resultados, tasa IA vs. orgánica) y arma una
+  lectura de una línea, igual que haría alguien mirando el dashboard con
+  el cliente delante. `InsightCallout.tsx` la muestra con el mismo
+  tratamiento visual "✦ INSIGHT" del dashboard de referencia.
+- **Conversiones orgánicas + funnel SEO** (`Funnel.tsx`): impresiones →
+  clics → conversión, con el % de paso entre cada etapa. Trae
+  `obtenerTraficoOrganicoGA4` (ya existía en `lib/google/ga4.ts`, sin uso
+  hasta ahora) para el cliente cuando tiene GA4 configurado.
+- **Tabla de campañas con conversiones/CPA/tasa de conversión**
+  (`TablaCampanas.tsx`), reemplaza la barra de solo-gasto anterior tanto
+  en Meta Ads como en Google Ads — este último ahora trae desglose real
+  por campaña vía `obtenerCampanasPagadoGA4` (nuevo, dimensión
+  `sessionCampaignName` de GA4), algo que antes no existía para Google
+  Ads. `obtenerCampanasMeta` ahora también devuelve `resultados`
+  (conversiones) por campaña, no solo gasto/CTR/CPC.
+- **AEO con tasa de conversión y páginas de aterrizaje**: compara la tasa
+  de conversión del tráfico IA contra la orgánica (mismo criterio que el
+  insight del dashboard de referencia, "convierte Nx mejor") y agrega
+  `obtenerPaginasDestinoIAGA4` (nuevo) para responder "¿a qué página está
+  llegando la gente que la IA recomienda?".
+- **Bug real evitado a tiempo, antes de que llegara a producción:**
+  cachear las conversiones orgánicas bajo la misma `fuente:'ga4'` que ya
+  usa el tráfico IA (sección AEO) para el mismo cliente/servicio/período
+  habría generado una colisión real en `conCacheDeSnapshot` — si la API
+  fallara, el fallback "el snapshot más reciente" podría devolver la
+  forma equivocada (tráfico IA en vez de conversiones orgánicas, o
+  viceversa), rompiendo el render con valores `undefined`. Se resolvió
+  pidiendo las conversiones orgánicas **una sola vez** en el orquestador
+  (`obtenerResultadosCliente`, como promesa compartida sin cachear en
+  `metric_snapshots`) y pasándolas a SEO y AEO — evita la colisión y de
+  paso ahorra una llamada duplicada a GA4. Mismo criterio aplicado al
+  desglose de campañas de Google Ads (tampoco se cachea, mismo motivo).
+- **Segundo bug real, encontrado probando con datos reales de Gonfernic
+  (no con datos sintéticos):** la primera versión de la KPI "Tasa de
+  conversión" reusaba el delta del *conteo* de conversiones en vez de
+  calcular el delta de la *tasa* — con Provetec Mining (replicando el
+  shape real de Gonfernic) esto mostraba "Tasa de conversión: 8,8% ↓
+  -97,4%" cuando la tasa en realidad había subido +131,7% (las sesiones
+  habían caído más que las conversiones). Corregido calculando la tasa de
+  ambos períodos y comparando esas dos tasas entre sí, no los conteos
+  crudos.
+- **Tercer bug real, mismo dato real:** con un período anterior cercano a
+  cero, el % de cambio explota a números sin sentido para mostrar en una
+  reunión con el cliente (ej. "el costo por conversión subió 3655,9%").
+  `fmtDeltaPct` (`lib/resultados-formato.ts`) acota la magnitud mostrada a
+  999% — mismo criterio que usan paneles de ads reales — sin tocar el
+  signo ni la lógica de favorable/desfavorable, que siguen calculándose
+  sobre el número real sin acotar.
+- Verificado de punta a punta contra Postgres local + `next dev` real +
+  datos reales de Gonfernic (replicados sobre Provetec Mining, mismo
+  shape SEO+Google Ads) y Tecny Stand (Meta sin token local, degradación
+  correcta): insight de las cuatro secciones, funnel con números reales,
+  tabla de keywords con posición/CTR, tabla de páginas de aterrizaje IA,
+  tabla de campañas de Google Ads con nombres reales de campaña. Cero
+  errores de consola. Datos de prueba limpiados de la base al terminar.
+- **Falta:** distribución de posiciones de keywords (donut Top3/Top10/
+  Top20/Top50/50+, requeriría traer más de 10 keywords) y comparación de
+  posición por keyword vs. período anterior (Δ) quedaron fuera de esta
+  ronda — el dashboard de referencia las tiene, pero son fetches
+  adicionales que no se justificaban para esta iteración.
+
 **Próximo paso:** con Fase 3 funcionalmente completa (informes + datos +
 Resultados), sigue Fase 4 — repositorio de prompts con versionado y
 variables, flujo de aprobaciones (§3.11), offboarding (§3.12),

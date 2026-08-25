@@ -4,9 +4,13 @@ import { conCacheDeSnapshot } from "@/lib/metricas/snapshot";
 import { obtenerKeywordsGSC, obtenerResumenGSC, obtenerSerieDiariaGSC, type ResumenGSC } from "@/lib/google/gsc";
 import {
   DOMINIOS_IA,
+  obtenerCampanasPagadoGA4,
+  obtenerPaginasDestinoIAGA4,
   obtenerTraficoIAGA4,
+  obtenerTraficoOrganicoGA4,
   obtenerTraficoPagadoDiarioGA4,
   obtenerTraficoPagadoGA4,
+  type ResumenGA4Organico,
   type ResumenTraficoIA,
   type ResumenTraficoPagado,
 } from "@/lib/google/ga4";
@@ -133,11 +137,30 @@ export interface PuntoSerie {
   valor: number;
 }
 
+/** Tabla de campañas compartida por Meta Ads y Google Ads — "interacciones" es clics (Meta) o sesiones (Google Ads vía GA4), cada sección rotula la columna a su manera. */
+export interface FilaCampana {
+  nombre: string;
+  interacciones: number;
+  conversiones: number;
+  tasaConversion: number;
+  costoPorConversion: number | null;
+}
+
+export interface Funnel {
+  impresiones: number;
+  clics: number;
+  conversiones: number;
+  pctImpresionesAClics: number;
+  pctClicsAConversiones: number;
+}
+
 export interface SeccionSeo {
   disponible: boolean;
   motivo?: string;
   deCache?: string | null;
+  insight: string | null;
   kpis: KpiResultado[];
+  funnel: Funnel | null;
   serie: PuntoSerie[];
   hitos: Hito[];
   keywords: { termino: string; clics: number; impresiones: number; ctr: number; posicion: number }[];
@@ -147,28 +170,34 @@ export interface SeccionAeo {
   disponible: boolean;
   motivo?: string;
   deCache?: string | null;
+  insight: string | null;
   totalSesiones: number;
   deltaSesiones: Delta | null;
+  tasaConversion: number | null;
   porFuente: { fuente: string; sesiones: number }[];
+  paginasDestino: { pagina: string; sesiones: number; conversiones: number }[];
 }
 
 export interface SeccionMeta {
   disponible: boolean;
   motivo?: string;
   deCache?: string | null;
+  insight: string | null;
   kpis: KpiResultado[];
   serie: PuntoSerie[];
   hitos: Hito[];
-  campanas: { nombre: string; gasto: number }[];
+  campanas: FilaCampana[];
 }
 
 export interface SeccionGoogleAds {
   disponible: boolean;
   motivo?: string;
   deCache?: string | null;
+  insight: string | null;
   kpis: KpiResultado[];
   serie: PuntoSerie[];
   hitos: Hito[];
+  campanas: FilaCampana[];
 }
 
 export interface ResultadosCliente {
@@ -198,10 +227,71 @@ function rellenarDias(desde: string, hasta: string, puntos: { fecha: string; val
   return resultado;
 }
 
+function armarCampanas(filas: { nombre: string; interacciones: number; conversiones: number; gastoOCosto: number }[]): FilaCampana[] {
+  return filas
+    .map((f) => ({
+      nombre: f.nombre,
+      interacciones: f.interacciones,
+      conversiones: f.conversiones,
+      tasaConversion: f.interacciones > 0 ? f.conversiones / f.interacciones : 0,
+      costoPorConversion: f.conversiones > 0 ? f.gastoOCosto / f.conversiones : null,
+    }))
+    .sort((a, b) => b.interacciones - a.interacciones);
+}
+
+/** Igual criterio que fmtDeltaPct: con un período anterior casi en cero el % explota — se acota a 999 para que la frase siga siendo legible. */
+const abs1 = (n: number) => Math.min(Math.abs(n), 999).toString().replace(".", ",");
+
+/**
+ * Frases de una línea que conectan la métrica con el resultado de negocio
+ * — es el elemento que le faltaba a la primera versión (KPIs sueltos sin
+ * lectura). Reglas simples, no IA (eso es Fase 4, §3.4 "asistencia de
+ * IA"): comparan la dirección de dos deltas y arman una lectura, igual
+ * que haría alguien mirando el dashboard en una reunión con el cliente.
+ */
+function insightTrafico(nombreCanal: string, deltaVisitas: Delta, deltaConversiones: Delta): string | null {
+  if (deltaVisitas.pct === null || deltaConversiones.pct === null) return null;
+  const visitas = `${nombreCanal} ${deltaVisitas.tendencia === "down" ? "bajó" : deltaVisitas.tendencia === "up" ? "subió" : "se mantuvo estable"}${deltaVisitas.tendencia !== "flat" ? ` ${abs1(deltaVisitas.pct)}%` : ""}`;
+  const conv = `${abs1(deltaConversiones.pct)}%`;
+  if (deltaVisitas.favorable && deltaConversiones.favorable) return `${visitas} y las conversiones también subieron (+${conv}) → el canal está sano.`;
+  if (deltaVisitas.favorable && !deltaConversiones.favorable) {
+    return `${visitas}, pero las conversiones no acompañaron ese ritmo (-${conv}) → vale la pena revisar la calidad del tráfico o la experiencia de conversión.`;
+  }
+  if (!deltaVisitas.favorable && deltaConversiones.favorable) return `${visitas}, pero las conversiones subieron (+${conv}) → el tráfico que llega está convirtiendo mejor.`;
+  return `${visitas} y las conversiones también bajaron (-${conv}) → conviene revisar el canal antes del próximo período.`;
+}
+
+function insightAds(deltaCosto: Delta, deltaResultados: Delta): string | null {
+  if (deltaCosto.pct === null || deltaResultados.pct === null) return null;
+  const costoTxt = `El costo por conversión ${deltaCosto.tendencia === "down" ? "bajó" : deltaCosto.tendencia === "up" ? "subió" : "se mantuvo"}${deltaCosto.tendencia !== "flat" ? ` ${abs1(deltaCosto.pct)}%` : ""}`;
+  const resultadosTxt = `las conversiones ${deltaResultados.tendencia === "up" ? "subieron" : deltaResultados.tendencia === "down" ? "bajaron" : "se mantuvieron"}${deltaResultados.tendencia !== "flat" ? ` ${abs1(deltaResultados.pct)}%` : ""}`;
+  if (deltaCosto.favorable && deltaResultados.favorable) return `${costoTxt} mientras ${resultadosTxt} → la inversión está rindiendo mejor.`;
+  if (!deltaCosto.favorable && !deltaResultados.favorable) return `${costoTxt} y ${resultadosTxt} → vale la pena revisar las campañas antes de seguir invirtiendo igual.`;
+  if (deltaCosto.favorable && !deltaResultados.favorable) return `${costoTxt}, pero ${resultadosTxt} → el ahorro no se está traduciendo en más resultados.`;
+  return `${costoTxt}, aunque ${resultadosTxt} → la inversión extra sí está trayendo más resultados.`;
+}
+
+function insightAeo(tasaIA: number | null, tasaOrganica: number | null, sesionesIA: number): string | null {
+  if (sesionesIA === 0) return null;
+  if (tasaIA === null || tasaOrganica === null || tasaOrganica === 0) {
+    return `${fmtNumero(sesionesIA)} sesiones llegaron desde IAs este período — todavía sin suficiente historial para comparar su conversión contra el resto del tráfico.`;
+  }
+  const factor = tasaIA / tasaOrganica;
+  if (factor >= 1.15) return `El tráfico desde IA convierte ${factor.toFixed(1)}x mejor que el orgánico tradicional (${fmtPct(tasaIA)} vs ${fmtPct(tasaOrganica)}) → es un canal de alta intención, aunque todavía pequeño en volumen.`;
+  if (factor <= 0.85) return `El tráfico desde IA convierte peor que el orgánico tradicional (${fmtPct(tasaIA)} vs ${fmtPct(tasaOrganica)}) → probablemente llega en una etapa más temprana de la decisión.`;
+  return `El tráfico desde IA convierte en línea con el orgánico tradicional (${fmtPct(tasaIA)} vs ${fmtPct(tasaOrganica)}) → ya es un canal comparable, no solo exploratorio.`;
+}
+
+interface OrganicoActualAnterior {
+  actual: ResumenGA4Organico;
+  anterior: ResumenGA4Organico;
+}
+
 async function seccionSeo(
   clientId: string,
   serviceId: string | null,
   gscProperty: string | null,
+  organicoPromise: Promise<OrganicoActualAnterior | null>,
   desde: string,
   hasta: string,
   desdeAnt: string,
@@ -209,30 +299,56 @@ async function seccionSeo(
   hitos: Hito[],
 ): Promise<SeccionSeo> {
   if (!gscProperty) {
-    return { disponible: false, motivo: "Configura la propiedad de Search Console en la ficha del cliente.", kpis: [], serie: [], hitos: [], keywords: [] };
+    return { disponible: false, motivo: "Configura la propiedad de Search Console en la ficha del cliente.", insight: null, kpis: [], funnel: null, serie: [], hitos: [], keywords: [] };
   }
   try {
-    const [{ datos: actual, deCache }, { datos: anterior }, serieDiaria, keywordsTop] = await Promise.all([
+    const [{ datos: actual, deCache }, { datos: anterior }, serieDiaria, keywordsTop, organico] = await Promise.all([
       conCacheDeSnapshot<ResumenGSC>({ clientId, serviceId, fuente: "gsc", periodoInicio: desde, periodoFin: hasta, fetchLive: () => obtenerResumenGSC(gscProperty, desde, hasta) }),
       conCacheDeSnapshot<ResumenGSC>({ clientId, serviceId, fuente: "gsc", periodoInicio: desdeAnt, periodoFin: hastaAnt, fetchLive: () => obtenerResumenGSC(gscProperty, desdeAnt, hastaAnt) }),
       obtenerSerieDiariaGSC(gscProperty, desde, hasta),
       obtenerKeywordsGSC(gscProperty, desde, hasta, 10),
+      organicoPromise,
     ]);
+
+    const kpis: KpiResultado[] = [
+      { etiqueta: "Clics", valor: fmtNumero(actual.clics), delta: delta(actual.clics, anterior.clics) },
+      { etiqueta: "Impresiones", valor: fmtNumero(actual.impresiones), delta: delta(actual.impresiones, anterior.impresiones) },
+      { etiqueta: "CTR", valor: fmtPct(actual.ctr), delta: delta(actual.ctr, anterior.ctr) },
+      { etiqueta: "Posición media", valor: actual.posicionMedia.toFixed(1).replace(".", ","), delta: delta(actual.posicionMedia, anterior.posicionMedia, true) },
+    ];
+
+    let funnel: Funnel | null = null;
+    let insight: string | null = null;
+    if (organico) {
+      const { actual: convActual, anterior: convAnterior } = organico;
+      const tasaConv = convActual.sesiones > 0 ? convActual.conversiones / convActual.sesiones : 0;
+      const tasaConvAnt = convAnterior.sesiones > 0 ? convAnterior.conversiones / convAnterior.sesiones : 0;
+      kpis.push(
+        { etiqueta: "Conversiones orgánicas", valor: fmtNumero(convActual.conversiones), delta: delta(convActual.conversiones, convAnterior.conversiones) },
+        { etiqueta: "Tasa de conversión", valor: fmtPct(tasaConv), delta: delta(tasaConv, tasaConvAnt) },
+      );
+      funnel = {
+        impresiones: actual.impresiones,
+        clics: actual.clics,
+        conversiones: convActual.conversiones,
+        pctImpresionesAClics: actual.ctr,
+        pctClicsAConversiones: tasaConv,
+      };
+      insight = insightTrafico("El tráfico orgánico", delta(actual.clics, anterior.clics), delta(convActual.conversiones, convAnterior.conversiones));
+    }
+
     return {
       disponible: true,
       deCache: deCache ? "Datos del último snapshot disponible (la API no respondió)." : null,
-      kpis: [
-        { etiqueta: "Clics", valor: fmtNumero(actual.clics), delta: delta(actual.clics, anterior.clics) },
-        { etiqueta: "Impresiones", valor: fmtNumero(actual.impresiones), delta: delta(actual.impresiones, anterior.impresiones) },
-        { etiqueta: "CTR", valor: fmtPct(actual.ctr), delta: delta(actual.ctr, anterior.ctr) },
-        { etiqueta: "Posición media", valor: actual.posicionMedia.toFixed(1).replace(".", ","), delta: delta(actual.posicionMedia, anterior.posicionMedia, true) },
-      ],
+      insight,
+      kpis,
+      funnel,
       serie: rellenarDias(desde, hasta, serieDiaria.map((p) => ({ fecha: p.fecha, valor: p.clics }))),
       hitos,
       keywords: keywordsTop.map((k) => ({ termino: k.query, clics: k.clics, impresiones: k.impresiones, ctr: k.ctr, posicion: k.posicion })),
     };
   } catch {
-    return { disponible: false, motivo: "No se pudo obtener datos de Search Console para este período.", kpis: [], serie: [], hitos: [], keywords: [] };
+    return { disponible: false, motivo: "No se pudo obtener datos de Search Console para este período.", insight: null, kpis: [], funnel: null, serie: [], hitos: [], keywords: [] };
   }
 }
 
@@ -240,28 +356,37 @@ async function seccionAeo(
   clientId: string,
   serviceId: string | null,
   ga4PropertyId: string | null,
+  organicoPromise: Promise<OrganicoActualAnterior | null>,
   desde: string,
   hasta: string,
   desdeAnt: string,
   hastaAnt: string,
 ): Promise<SeccionAeo> {
   if (!ga4PropertyId) {
-    return { disponible: false, motivo: "Configura el GA4 Property ID en la ficha del cliente.", totalSesiones: 0, deltaSesiones: null, porFuente: [] };
+    return { disponible: false, motivo: "Configura el GA4 Property ID en la ficha del cliente.", insight: null, totalSesiones: 0, deltaSesiones: null, tasaConversion: null, porFuente: [], paginasDestino: [] };
   }
   try {
-    const [{ datos: actual, deCache }, { datos: anterior }] = await Promise.all([
+    const [{ datos: actual, deCache }, { datos: anterior }, paginasDestino, organico] = await Promise.all([
       conCacheDeSnapshot<ResumenTraficoIA>({ clientId, serviceId, fuente: "ga4", periodoInicio: desde, periodoFin: hasta, fetchLive: () => obtenerTraficoIAGA4(ga4PropertyId, desde, hasta) }),
       conCacheDeSnapshot<ResumenTraficoIA>({ clientId, serviceId, fuente: "ga4", periodoInicio: desdeAnt, periodoFin: hastaAnt, fetchLive: () => obtenerTraficoIAGA4(ga4PropertyId, desdeAnt, hastaAnt) }),
+      obtenerPaginasDestinoIAGA4(ga4PropertyId, desde, hasta).catch(() => []),
+      organicoPromise,
     ]);
+    const conversionesIA = actual.filas.reduce((s, f) => s + f.conversiones, 0);
+    const tasaConversion = actual.totalSesiones > 0 ? conversionesIA / actual.totalSesiones : null;
+    const tasaOrganica = organico && organico.actual.sesiones > 0 ? organico.actual.conversiones / organico.actual.sesiones : null;
     return {
       disponible: true,
       deCache: deCache ? "Datos del último snapshot disponible (la API no respondió)." : null,
+      insight: insightAeo(tasaConversion, tasaOrganica, actual.totalSesiones),
       totalSesiones: actual.totalSesiones,
       deltaSesiones: delta(actual.totalSesiones, anterior.totalSesiones),
+      tasaConversion,
       porFuente: actual.filas.map((f) => ({ fuente: f.fuente, sesiones: f.sesiones })).sort((a, b) => b.sesiones - a.sesiones),
+      paginasDestino: paginasDestino.map((p) => ({ pagina: p.pagina, sesiones: p.sesiones, conversiones: p.conversiones })),
     };
   } catch {
-    return { disponible: false, motivo: "No se pudo obtener datos de GA4 para este período.", totalSesiones: 0, deltaSesiones: null, porFuente: [] };
+    return { disponible: false, motivo: "No se pudo obtener datos de GA4 para este período.", insight: null, totalSesiones: 0, deltaSesiones: null, tasaConversion: null, porFuente: [], paginasDestino: [] };
   }
 }
 
@@ -277,7 +402,7 @@ async function seccionMeta(
   hitos: Hito[],
 ): Promise<SeccionMeta> {
   if (!metaAdAccountId) {
-    return { disponible: false, motivo: "Configura el Ad Account ID de Meta en la ficha del cliente.", kpis: [], serie: [], hitos: [], campanas: [] };
+    return { disponible: false, motivo: "Configura el Ad Account ID de Meta en la ficha del cliente.", insight: null, kpis: [], serie: [], hitos: [], campanas: [] };
   }
   const config = { adAccountId: metaAdAccountId, metaTokenKey };
   try {
@@ -287,22 +412,25 @@ async function seccionMeta(
       obtenerSerieDiariaMeta(config, desde, hasta),
       obtenerCampanasMeta(config, desde, hasta, 8),
     ]);
+    const costoActual = actual.resultados > 0 ? actual.gasto / actual.resultados : 0;
+    const costoAnterior = anterior.resultados > 0 ? anterior.gasto / anterior.resultados : 0;
     return {
       disponible: true,
       deCache: deCache ? "Datos del último snapshot disponible (la API no respondió)." : null,
+      insight: insightAds(delta(costoActual, costoAnterior, true), delta(actual.resultados, anterior.resultados)),
       kpis: [
         { etiqueta: "Inversión", valor: fmtMoneda(actual.gasto), delta: delta(actual.gasto, anterior.gasto) },
         { etiqueta: "Resultados", valor: fmtNumero(actual.resultados), delta: delta(actual.resultados, anterior.resultados) },
+        { etiqueta: "Costo por resultado", valor: fmtMoneda(costoActual), delta: delta(costoActual, costoAnterior, true) },
         { etiqueta: "CTR", valor: `${actual.ctr.toFixed(2)}%`, delta: delta(actual.ctr, anterior.ctr) },
-        { etiqueta: "CPC", valor: fmtMoneda(actual.cpc), delta: delta(actual.cpc, anterior.cpc, true) },
         { etiqueta: "Alcance", valor: fmtNumero(actual.alcance), delta: delta(actual.alcance, anterior.alcance) },
       ],
       serie: rellenarDias(desde, hasta, serieDiaria.map((p) => ({ fecha: p.fecha, valor: p.gasto }))),
       hitos,
-      campanas: campanas.map((c) => ({ nombre: c.nombre || "(sin nombre)", gasto: c.gasto })).sort((a, b) => b.gasto - a.gasto),
+      campanas: armarCampanas(campanas.map((c) => ({ nombre: c.nombre || "(sin nombre)", interacciones: c.clics, conversiones: c.resultados, gastoOCosto: c.gasto }))),
     };
   } catch {
-    return { disponible: false, motivo: "No se pudo obtener datos de Meta para este período.", kpis: [], serie: [], hitos: [], campanas: [] };
+    return { disponible: false, motivo: "No se pudo obtener datos de Meta para este período.", insight: null, kpis: [], serie: [], hitos: [], campanas: [] };
   }
 }
 
@@ -317,27 +445,39 @@ async function seccionGoogleAds(
   hitos: Hito[],
 ): Promise<SeccionGoogleAds> {
   if (!ga4PropertyId) {
-    return { disponible: false, motivo: "Configura el GA4 Property ID en la ficha del cliente.", kpis: [], serie: [], hitos: [] };
+    return { disponible: false, motivo: "Configura el GA4 Property ID en la ficha del cliente.", insight: null, kpis: [], serie: [], hitos: [], campanas: [] };
   }
   try {
-    const [{ datos: actual, deCache }, { datos: anterior }, serieDiaria] = await Promise.all([
+    const [{ datos: actual, deCache }, { datos: anterior }, serieDiaria, campanas] = await Promise.all([
       conCacheDeSnapshot<ResumenTraficoPagado>({ clientId, serviceId, fuente: "ga4", periodoInicio: desde, periodoFin: hasta, fetchLive: () => obtenerTraficoPagadoGA4(ga4PropertyId, desde, hasta) }),
       conCacheDeSnapshot<ResumenTraficoPagado>({ clientId, serviceId, fuente: "ga4", periodoInicio: desdeAnt, periodoFin: hastaAnt, fetchLive: () => obtenerTraficoPagadoGA4(ga4PropertyId, desdeAnt, hastaAnt) }),
       obtenerTraficoPagadoDiarioGA4(ga4PropertyId, desde, hasta),
+      // Sin conCacheDeSnapshot: mismo motivo que las conversiones orgánicas de
+      // SEO — este desglose por campaña tiene otra forma que el resumen
+      // actual/anterior de arriba, y ambos comparten (cliente, servicio,
+      // fuente, período); cachearlo ahí generaría la misma colisión.
+      obtenerCampanasPagadoGA4(ga4PropertyId, desde, hasta, 8).catch(() => []),
     ]);
+    const costoActual = actual.conversiones > 0 ? actual.costo / actual.conversiones : 0;
+    const costoAnterior = anterior.conversiones > 0 ? anterior.costo / anterior.conversiones : 0;
+    const tasaConv = actual.sesiones > 0 ? actual.conversiones / actual.sesiones : 0;
+    const tasaConvAnt = anterior.sesiones > 0 ? anterior.conversiones / anterior.sesiones : 0;
     return {
       disponible: true,
       deCache: deCache ? "Datos del último snapshot disponible (la API no respondió)." : null,
+      insight: insightAds(delta(costoActual, costoAnterior, true), delta(actual.conversiones, anterior.conversiones)),
       kpis: [
         { etiqueta: "Sesiones pagas", valor: fmtNumero(actual.sesiones), delta: delta(actual.sesiones, anterior.sesiones) },
         { etiqueta: "Conversiones", valor: fmtNumero(actual.conversiones), delta: delta(actual.conversiones, anterior.conversiones) },
-        { etiqueta: "Costo", valor: fmtMoneda(actual.costo, "CLP"), delta: delta(actual.costo, anterior.costo, true) },
+        { etiqueta: "Tasa de conversión", valor: fmtPct(tasaConv), delta: delta(tasaConv, tasaConvAnt) },
+        { etiqueta: "Costo por conversión", valor: fmtMoneda(costoActual, "CLP"), delta: delta(costoActual, costoAnterior, true) },
       ],
       serie: rellenarDias(desde, hasta, serieDiaria.map((p) => ({ fecha: p.fecha, valor: p.sesiones }))),
       hitos,
+      campanas: armarCampanas(campanas.map((c) => ({ nombre: c.nombre, interacciones: c.sesiones, conversiones: c.conversiones, gastoOCosto: c.costo }))),
     };
   } catch {
-    return { disponible: false, motivo: "No se pudo obtener datos de GA4 para este período.", kpis: [], serie: [], hitos: [] };
+    return { disponible: false, motivo: "No se pudo obtener datos de GA4 para este período.", insight: null, kpis: [], serie: [], hitos: [], campanas: [] };
   }
 }
 
@@ -362,19 +502,35 @@ export async function obtenerResultadosCliente(clientId: string, rango: RangoRes
 
   const servicioIdPorTipo = new Map(servicios.map((s) => [s.tipo, s.id]));
 
+  // Compartido entre SEO (funnel/KPIs de conversión) y AEO (comparar tasa de
+  // conversión IA vs. orgánica) — se pide una sola vez para no duplicar la
+  // llamada a GA4 ni cachearla dos veces bajo la misma (cliente, servicio,
+  // fuente, período) con formas distintas (ver comentarios en cada sección).
+  // Es una promesa (no `await` acá) para que corra en paralelo con Meta y
+  // Google Ads en vez de bloquear el resto de las secciones.
+  const organicoPromise: Promise<OrganicoActualAnterior | null> =
+    servicioIdPorTipo.has("seo_aeo_geo") && cliente.ga4_property_id
+      ? Promise.all([
+          obtenerTraficoOrganicoGA4(cliente.ga4_property_id, actual.desde, actual.hasta),
+          obtenerTraficoOrganicoGA4(cliente.ga4_property_id, anterior.desde, anterior.hasta),
+        ])
+          .then(([a, b]) => ({ actual: a, anterior: b }))
+          .catch(() => null)
+      : Promise.resolve(null);
+
   const [seo, aeo, meta, googleAds] = await Promise.all([
     servicioIdPorTipo.has("seo_aeo_geo")
-      ? seccionSeo(clientId, servicioIdPorTipo.get("seo_aeo_geo")!, cliente.gsc_property, actual.desde, actual.hasta, anterior.desde, anterior.hasta, hitosPorTipo.seo_aeo_geo)
-      : ({ disponible: false, motivo: "Este cliente no tiene SEO-AEO-GEO contratado.", kpis: [], serie: [], hitos: [], keywords: [] } as SeccionSeo),
+      ? seccionSeo(clientId, servicioIdPorTipo.get("seo_aeo_geo")!, cliente.gsc_property, organicoPromise, actual.desde, actual.hasta, anterior.desde, anterior.hasta, hitosPorTipo.seo_aeo_geo)
+      : ({ disponible: false, motivo: "Este cliente no tiene SEO-AEO-GEO contratado.", insight: null, kpis: [], funnel: null, serie: [], hitos: [], keywords: [] } as SeccionSeo),
     servicioIdPorTipo.has("seo_aeo_geo")
-      ? seccionAeo(clientId, servicioIdPorTipo.get("seo_aeo_geo")!, cliente.ga4_property_id, actual.desde, actual.hasta, anterior.desde, anterior.hasta)
-      : ({ disponible: false, motivo: "Este cliente no tiene SEO-AEO-GEO contratado.", totalSesiones: 0, deltaSesiones: null, porFuente: [] } as SeccionAeo),
+      ? seccionAeo(clientId, servicioIdPorTipo.get("seo_aeo_geo")!, cliente.ga4_property_id, organicoPromise, actual.desde, actual.hasta, anterior.desde, anterior.hasta)
+      : ({ disponible: false, motivo: "Este cliente no tiene SEO-AEO-GEO contratado.", insight: null, totalSesiones: 0, deltaSesiones: null, tasaConversion: null, porFuente: [], paginasDestino: [] } as SeccionAeo),
     servicioIdPorTipo.has("meta_ads")
       ? seccionMeta(clientId, servicioIdPorTipo.get("meta_ads")!, cliente.meta_ad_account_id, cliente.meta_token_key, actual.desde, actual.hasta, anterior.desde, anterior.hasta, hitosPorTipo.meta_ads)
-      : ({ disponible: false, motivo: "Este cliente no tiene Meta Ads contratado.", kpis: [], serie: [], hitos: [], campanas: [] } as SeccionMeta),
+      : ({ disponible: false, motivo: "Este cliente no tiene Meta Ads contratado.", insight: null, kpis: [], serie: [], hitos: [], campanas: [] } as SeccionMeta),
     servicioIdPorTipo.has("google_ads")
       ? seccionGoogleAds(clientId, servicioIdPorTipo.get("google_ads")!, cliente.ga4_property_id, actual.desde, actual.hasta, anterior.desde, anterior.hasta, hitosPorTipo.google_ads)
-      : ({ disponible: false, motivo: "Este cliente no tiene Google Ads contratado.", kpis: [], serie: [], hitos: [] } as SeccionGoogleAds),
+      : ({ disponible: false, motivo: "Este cliente no tiene Google Ads contratado.", insight: null, kpis: [], serie: [], hitos: [], campanas: [] } as SeccionGoogleAds),
   ]);
 
   return { clienteId: clientId, clienteNombre: cliente.nombre, rango, rangoFechas: actual, seo, aeo, meta, googleAds };

@@ -119,6 +119,61 @@ export async function obtenerTraficoPagadoGA4(propertyId: string, startDate: str
   return { sesiones: num(row?.metricValues?.[0]?.value), conversiones: num(row?.metricValues?.[1]?.value), costo: num(row?.metricValues?.[2]?.value) };
 }
 
+export interface CampanaPagadoGA4 {
+  nombre: string;
+  sesiones: number;
+  conversiones: number;
+  costo: number;
+}
+
+/** Desglose por campaña del tráfico pagado (Google Ads vía GA4) — misma lógica de "impacto en el negocio" que el informe: no solo gasto, sino qué campaña convierte. */
+export async function obtenerCampanasPagadoGA4(propertyId: string, startDate: string, endDate: string, limit = 10): Promise<CampanaPagadoGA4[]> {
+  const data = await consultarGA4(propertyId, {
+    dateRanges: [{ startDate, endDate }],
+    dimensions: [{ name: "sessionCampaignName" }],
+    metrics: [{ name: "sessions" }, { name: "conversions" }, { name: "advertiserAdCost" }],
+    dimensionFilter: filtroTraficoPagado(),
+    orderBys: [{ metric: { metricName: "sessions" }, desc: true }],
+    limit,
+  });
+  return (data.rows ?? []).map((r) => ({
+    nombre: r.dimensionValues?.[0]?.value || "(sin nombre)",
+    sesiones: num(r.metricValues?.[0]?.value),
+    conversiones: num(r.metricValues?.[1]?.value),
+    costo: num(r.metricValues?.[2]?.value),
+  }));
+}
+
+export interface PaginaDestinoIA {
+  pagina: string;
+  sesiones: number;
+  conversiones: number;
+}
+
+/** Páginas de aterrizaje del tráfico desde IA — responde "¿a qué página está llegando la gente que la IA recomienda?", no solo cuánta gente llega. */
+export async function obtenerPaginasDestinoIAGA4(propertyId: string, startDate: string, endDate: string, limit = 10): Promise<PaginaDestinoIA[]> {
+  const domainFilter = {
+    orGroup: {
+      expressions: DOMINIOS_IA.map((d) => ({
+        filter: { fieldName: "sessionSource", stringFilter: { matchType: "CONTAINS" as const, value: d, caseSensitive: false } },
+      })),
+    },
+  };
+  const data = await consultarGA4(propertyId, {
+    dateRanges: [{ startDate, endDate }],
+    dimensions: [{ name: "landingPage" }],
+    metrics: [{ name: "sessions" }, { name: "conversions" }],
+    dimensionFilter: domainFilter,
+    orderBys: [{ metric: { metricName: "sessions" }, desc: true }],
+    limit,
+  });
+  return (data.rows ?? []).map((r) => ({
+    pagina: r.dimensionValues?.[0]?.value || "/",
+    sesiones: num(r.metricValues?.[0]?.value),
+    conversiones: num(r.metricValues?.[1]?.value),
+  }));
+}
+
 export interface PuntoDiarioPagado {
   fecha: string;
   sesiones: number;

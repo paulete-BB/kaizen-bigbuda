@@ -1,4 +1,5 @@
 import type { KpiResultado } from "@/lib/data/resultados";
+import { fmtDeltaPct } from "@/lib/resultados-formato";
 
 function FlechaDelta({ tendencia }: { tendencia: "up" | "down" | "flat" }) {
   if (tendencia === "flat") return <span>·</span>;
@@ -22,7 +23,7 @@ export function KpiFila({ kpis }: { kpis: KpiResultado[] }) {
               style={{ color: k.delta.tendencia === "flat" ? "var(--color-muted-2)" : k.delta.favorable ? "var(--color-success)" : "var(--color-danger)" }}
             >
               <FlechaDelta tendencia={k.delta.tendencia} />
-              {k.delta.pct === null ? "nuevo" : `${k.delta.pct > 0 ? "+" : ""}${k.delta.pct}%`}
+              {k.delta.pct === null ? "nuevo" : fmtDeltaPct(k.delta.pct)}
               <span className="font-normal text-muted-2">vs. período anterior</span>
             </div>
           )}

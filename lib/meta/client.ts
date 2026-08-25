@@ -82,6 +82,7 @@ export interface CampanaMeta {
   clics: number;
   ctr: number;
   cpc: number;
+  resultados: number;
 }
 
 export interface PuntoDiarioMeta {
@@ -111,7 +112,7 @@ export async function obtenerCampanasMeta(config: ConfigMeta, since: string, unt
   const token = resolverTokenMeta(config.metaTokenKey);
   if (!token) throw new Error(config.metaTokenKey ? `META_TOKEN_${config.metaTokenKey} no configurado` : "META_TOKEN no configurado");
 
-  const fields = "campaign_name,spend,impressions,clicks,ctr,cpc";
+  const fields = "campaign_name,spend,impressions,clicks,ctr,cpc,actions";
   const data = await metaFetch(
     `/act_${config.adAccountId}/insights`,
     { fields, time_range: timeRange(since, until), level: "campaign", sort: "spend_descending", limit: String(limite) },
@@ -125,5 +126,6 @@ export async function obtenerCampanasMeta(config: ConfigMeta, since: string, unt
     clics: num(row.clicks),
     ctr: num(row.ctr),
     cpc: num(row.cpc),
+    resultados: contarResultados(row.actions as { action_type: string; value: string }[] | undefined),
   }));
 }

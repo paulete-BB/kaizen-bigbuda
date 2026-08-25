@@ -2,9 +2,14 @@ import { Sidebar, type SidebarUsuario } from "@/components/layout/Sidebar";
 import { SelectorResultados } from "./SelectorResultados";
 import { KpiFila } from "./KpiFila";
 import { SerieTiempo } from "./SerieTiempo";
-import { BarrasHorizontales } from "./BarrasHorizontales";
 import { BarrasCategoria } from "./BarrasCategoria";
+import { InsightCallout } from "./InsightCallout";
+import { Funnel } from "./Funnel";
+import { TablaCampanas } from "./TablaCampanas";
+import { TablaKeywords } from "./TablaKeywords";
+import { TablaPaginasIA } from "./TablaPaginasIA";
 import { fmtFecha } from "@/lib/dates";
+import { fmtDeltaPct } from "@/lib/resultados-formato";
 import type { ClienteSelectorResultados, ResultadosCliente } from "@/lib/data/resultados";
 
 const COLOR_SEO = "var(--color-svc-seo)";
@@ -12,7 +17,7 @@ const COLOR_GOOGLE = "var(--color-svc-google)";
 const COLOR_META = "#2563eb";
 
 const fmtNum = (n: number) => Math.round(n).toLocaleString("es-CL");
-const fmtMoneda = (n: number) => `$${Math.round(n).toLocaleString("es-CL")}`;
+const fmtPct = (n: number) => `${(n * 100).toFixed(1).replace(".", ",")}%`;
 
 function Panel({
   titulo,
@@ -74,40 +79,62 @@ export function ResultadosView({
           <SelectorResultados clientes={clientes} clienteId={data.clienteId} rango={data.rango} />
 
           <Panel titulo="SEO · AEO · GEO" etiqueta="Search Console" color={COLOR_SEO} disponible={data.seo.disponible} motivo={data.seo.motivo} deCache={data.seo.deCache}>
+            <InsightCallout texto={data.seo.insight} />
             <KpiFila kpis={data.seo.kpis} />
+            {data.seo.funnel && (
+              <div>
+                <div className="mb-2 text-[11.5px] font-semibold text-muted">Impresiones → clics → conversión</div>
+                <Funnel funnel={data.seo.funnel} />
+              </div>
+            )}
             <div>
               <div className="mb-2 text-[11.5px] font-semibold text-muted">Clics por día</div>
               <SerieTiempo serie={data.seo.serie} hitos={data.seo.hitos} color={COLOR_SEO} formato="numero" />
             </div>
             {data.seo.keywords.length > 0 && (
               <div>
-                <div className="mb-2 text-[11.5px] font-semibold text-muted">Top keywords por clics</div>
-                <BarrasHorizontales filas={data.seo.keywords.map((k) => ({ etiqueta: k.termino, valor: k.clics }))} color={COLOR_SEO} formato={fmtNum} />
+                <div className="mb-2 text-[11.5px] font-semibold text-muted">Top keywords</div>
+                <TablaKeywords filas={data.seo.keywords} />
               </div>
             )}
           </Panel>
 
           <Panel titulo="AEO · GEO — Tráfico desde IA" etiqueta="GA4" color="#eda100" disponible={data.aeo.disponible} motivo={data.aeo.motivo} deCache={data.aeo.deCache}>
-            <div className="flex items-baseline gap-2">
-              <span className="text-[22px] font-bold text-ink">{fmtNum(data.aeo.totalSesiones)}</span>
-              <span className="text-[12px] text-muted-2">sesiones totales desde fuentes de IA</span>
-              {data.aeo.deltaSesiones && (
-                <span
-                  className="text-[11.5px] font-semibold"
-                  style={{
-                    color:
-                      data.aeo.deltaSesiones.tendencia === "flat"
-                        ? "var(--color-muted-2)"
-                        : data.aeo.deltaSesiones.favorable
-                          ? "var(--color-success)"
-                          : "var(--color-danger)",
-                  }}
-                >
-                  {data.aeo.deltaSesiones.pct === null ? "nuevo" : `${data.aeo.deltaSesiones.pct > 0 ? "+" : ""}${data.aeo.deltaSesiones.pct}%`}
-                </span>
+            <InsightCallout texto={data.aeo.insight} />
+            <div className="flex flex-wrap items-baseline gap-x-6 gap-y-2">
+              <div className="flex items-baseline gap-2">
+                <span className="text-[22px] font-bold text-ink">{fmtNum(data.aeo.totalSesiones)}</span>
+                <span className="text-[12px] text-muted-2">sesiones desde fuentes de IA</span>
+                {data.aeo.deltaSesiones && (
+                  <span
+                    className="text-[11.5px] font-semibold"
+                    style={{
+                      color:
+                        data.aeo.deltaSesiones.tendencia === "flat"
+                          ? "var(--color-muted-2)"
+                          : data.aeo.deltaSesiones.favorable
+                            ? "var(--color-success)"
+                            : "var(--color-danger)",
+                    }}
+                  >
+                    {data.aeo.deltaSesiones.pct === null ? "nuevo" : fmtDeltaPct(data.aeo.deltaSesiones.pct)}
+                  </span>
+                )}
+              </div>
+              {data.aeo.tasaConversion !== null && (
+                <div className="flex items-baseline gap-1.5">
+                  <span className="text-[15px] font-bold text-ink">{fmtPct(data.aeo.tasaConversion)}</span>
+                  <span className="text-[12px] text-muted-2">tasa de conversión IA</span>
+                </div>
               )}
             </div>
             <BarrasCategoria filas={data.aeo.porFuente} formato={fmtNum} />
+            {data.aeo.paginasDestino.length > 0 && (
+              <div>
+                <div className="mb-2 text-[11.5px] font-semibold text-muted">Páginas de aterrizaje desde IA</div>
+                <TablaPaginasIA filas={data.aeo.paginasDestino} />
+              </div>
+            )}
             <p className="text-[10.5px] leading-relaxed text-muted-2">
               El tráfico desde IA se subestima: varias plataformas no envían Referer y caen como “directo”, y los AI Overviews de Google no son
               filtrables por separado en la API de Search Console (§3.14/§4.3).
@@ -115,6 +142,7 @@ export function ResultadosView({
           </Panel>
 
           <Panel titulo="Meta Ads" etiqueta="Meta Insights" color={COLOR_META} disponible={data.meta.disponible} motivo={data.meta.motivo} deCache={data.meta.deCache}>
+            <InsightCallout texto={data.meta.insight} />
             <KpiFila kpis={data.meta.kpis} />
             <div>
               <div className="mb-2 text-[11.5px] font-semibold text-muted">Inversión por día</div>
@@ -122,18 +150,25 @@ export function ResultadosView({
             </div>
             {data.meta.campanas.length > 0 && (
               <div>
-                <div className="mb-2 text-[11.5px] font-semibold text-muted">Campañas por inversión</div>
-                <BarrasHorizontales filas={data.meta.campanas.map((c) => ({ etiqueta: c.nombre, valor: c.gasto }))} color={COLOR_META} formato={fmtMoneda} />
+                <div className="mb-2 text-[11.5px] font-semibold text-muted">Resultados por campaña</div>
+                <TablaCampanas filas={data.meta.campanas} etiquetaInteracciones="Clics" moneda="USD" />
               </div>
             )}
           </Panel>
 
           <Panel titulo="Google Ads" etiqueta="GA4 · tráfico pagado" color={COLOR_GOOGLE} disponible={data.googleAds.disponible} motivo={data.googleAds.motivo} deCache={data.googleAds.deCache}>
+            <InsightCallout texto={data.googleAds.insight} />
             <KpiFila kpis={data.googleAds.kpis} />
             <div>
               <div className="mb-2 text-[11.5px] font-semibold text-muted">Sesiones pagas por día</div>
               <SerieTiempo serie={data.googleAds.serie} hitos={data.googleAds.hitos} color={COLOR_GOOGLE} formato="numero" />
             </div>
+            {data.googleAds.campanas.length > 0 && (
+              <div>
+                <div className="mb-2 text-[11.5px] font-semibold text-muted">Resultados por campaña</div>
+                <TablaCampanas filas={data.googleAds.campanas} etiquetaInteracciones="Sesiones" moneda="CLP" />
+              </div>
+            )}
           </Panel>
         </div>
       </main>
