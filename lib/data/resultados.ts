@@ -154,6 +154,15 @@ export interface Funnel {
   pctClicsAConversiones: number;
 }
 
+export interface DistribucionPosiciones {
+  top3: number;
+  top10: number;
+  top20: number;
+  top50: number;
+  mas50: number;
+  total: number;
+}
+
 export interface SeccionSeo {
   disponible: boolean;
   motivo?: string;
@@ -163,7 +172,8 @@ export interface SeccionSeo {
   funnel: Funnel | null;
   serie: PuntoSerie[];
   hitos: Hito[];
-  keywords: { termino: string; clics: number; impresiones: number; ctr: number; posicion: number }[];
+  keywords: { termino: string; clics: number; impresiones: number; ctr: number; posicion: number; deltaPosicion: number | null }[];
+  distribucionPosiciones: DistribucionPosiciones | null;
 }
 
 export interface SeccionAeo {
@@ -299,16 +309,31 @@ async function seccionSeo(
   hitos: Hito[],
 ): Promise<SeccionSeo> {
   if (!gscProperty) {
-    return { disponible: false, motivo: "Configura la propiedad de Search Console en la ficha del cliente.", insight: null, kpis: [], funnel: null, serie: [], hitos: [], keywords: [] };
+    return { disponible: false, motivo: "Configura la propiedad de Search Console en la ficha del cliente.", insight: null, kpis: [], funnel: null, serie: [], hitos: [], keywords: [], distribucionPosiciones: null };
   }
   try {
-    const [{ datos: actual, deCache }, { datos: anterior }, serieDiaria, keywordsTop, organico] = await Promise.all([
+    const [{ datos: actual, deCache }, { datos: anterior }, serieDiaria, keywordsActual, keywordsAnterior, organico] = await Promise.all([
       conCacheDeSnapshot<ResumenGSC>({ clientId, serviceId, fuente: "gsc", periodoInicio: desde, periodoFin: hasta, fetchLive: () => obtenerResumenGSC(gscProperty, desde, hasta) }),
       conCacheDeSnapshot<ResumenGSC>({ clientId, serviceId, fuente: "gsc", periodoInicio: desdeAnt, periodoFin: hastaAnt, fetchLive: () => obtenerResumenGSC(gscProperty, desdeAnt, hastaAnt) }),
       obtenerSerieDiariaGSC(gscProperty, desde, hasta),
-      obtenerKeywordsGSC(gscProperty, desde, hasta, 10),
+      // Límite alto (no solo el top 10 de la tabla): hace falta el conjunto
+      // completo de keywords para que la distribución de posiciones (donut)
+      // sea representativa, no solo de las 10 con más clics.
+      obtenerKeywordsGSC(gscProperty, desde, hasta, 250),
+      obtenerKeywordsGSC(gscProperty, desdeAnt, hastaAnt, 250).catch(() => []),
       organicoPromise,
     ]);
+
+    const posicionAnteriorPorQuery = new Map(keywordsAnterior.map((k) => [k.query, k.posicion]));
+    const distribucionPosiciones: DistribucionPosiciones = { top3: 0, top10: 0, top20: 0, top50: 0, mas50: 0, total: keywordsActual.length };
+    for (const k of keywordsActual) {
+      if (k.posicion <= 3) distribucionPosiciones.top3++;
+      else if (k.posicion <= 10) distribucionPosiciones.top10++;
+      else if (k.posicion <= 20) distribucionPosiciones.top20++;
+      else if (k.posicion <= 50) distribucionPosiciones.top50++;
+      else distribucionPosiciones.mas50++;
+    }
+    const keywordsTop = [...keywordsActual].sort((a, b) => b.clics - a.clics).slice(0, 10);
 
     const kpis: KpiResultado[] = [
       { etiqueta: "Clics", valor: fmtNumero(actual.clics), delta: delta(actual.clics, anterior.clics) },
@@ -345,10 +370,21 @@ async function seccionSeo(
       funnel,
       serie: rellenarDias(desde, hasta, serieDiaria.map((p) => ({ fecha: p.fecha, valor: p.clics }))),
       hitos,
-      keywords: keywordsTop.map((k) => ({ termino: k.query, clics: k.clics, impresiones: k.impresiones, ctr: k.ctr, posicion: k.posicion })),
+      keywords: keywordsTop.map((k) => {
+        const posicionAnterior = posicionAnteriorPorQuery.get(k.query);
+        return {
+          termino: k.query,
+          clics: k.clics,
+          impresiones: k.impresiones,
+          ctr: k.ctr,
+          posicion: k.posicion,
+          deltaPosicion: posicionAnterior !== undefined ? Math.round((posicionAnterior - k.posicion) * 10) / 10 : null,
+        };
+      }),
+      distribucionPosiciones,
     };
   } catch {
-    return { disponible: false, motivo: "No se pudo obtener datos de Search Console para este período.", insight: null, kpis: [], funnel: null, serie: [], hitos: [], keywords: [] };
+    return { disponible: false, motivo: "No se pudo obtener datos de Search Console para este período.", insight: null, kpis: [], funnel: null, serie: [], hitos: [], keywords: [], distribucionPosiciones: null };
   }
 }
 
@@ -521,7 +557,7 @@ export async function obtenerResultadosCliente(clientId: string, rango: RangoRes
   const [seo, aeo, meta, googleAds] = await Promise.all([
     servicioIdPorTipo.has("seo_aeo_geo")
       ? seccionSeo(clientId, servicioIdPorTipo.get("seo_aeo_geo")!, cliente.gsc_property, organicoPromise, actual.desde, actual.hasta, anterior.desde, anterior.hasta, hitosPorTipo.seo_aeo_geo)
-      : ({ disponible: false, motivo: "Este cliente no tiene SEO-AEO-GEO contratado.", insight: null, kpis: [], funnel: null, serie: [], hitos: [], keywords: [] } as SeccionSeo),
+      : ({ disponible: false, motivo: "Este cliente no tiene SEO-AEO-GEO contratado.", insight: null, kpis: [], funnel: null, serie: [], hitos: [], keywords: [], distribucionPosiciones: null } as SeccionSeo),
     servicioIdPorTipo.has("seo_aeo_geo")
       ? seccionAeo(clientId, servicioIdPorTipo.get("seo_aeo_geo")!, cliente.ga4_property_id, organicoPromise, actual.desde, actual.hasta, anterior.desde, anterior.hasta)
       : ({ disponible: false, motivo: "Este cliente no tiene SEO-AEO-GEO contratado.", insight: null, totalSesiones: 0, deltaSesiones: null, tasaConversion: null, porFuente: [], paginasDestino: [] } as SeccionAeo),

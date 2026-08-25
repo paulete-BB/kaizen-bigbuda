@@ -742,11 +742,32 @@ ya se traía):
   tabla de keywords con posición/CTR, tabla de páginas de aterrizaje IA,
   tabla de campañas de Google Ads con nombres reales de campaña. Cero
   errores de consola. Datos de prueba limpiados de la base al terminar.
-- **Falta:** distribución de posiciones de keywords (donut Top3/Top10/
-  Top20/Top50/50+, requeriría traer más de 10 keywords) y comparación de
-  posición por keyword vs. período anterior (Δ) quedaron fuera de esta
-  ronda — el dashboard de referencia las tiene, pero son fetches
-  adicionales que no se justificaban para esta iteración.
+**Distribución de posiciones de keywords + Δ vs. período anterior** —
+lo que había quedado pendiente de la ronda anterior:
+
+- `obtenerKeywordsGSC` ya soportaba `rowLimit` configurable; `seccionSeo`
+  ahora pide hasta 250 keywords (no solo las 10 de la tabla) tanto del
+  período actual como del anterior, en dos llamadas GSC en paralelo —
+  necesario porque una distribución representativa (Top3/Top10/Top20/
+  Top50/50+) no puede salir de las 10 keywords con más clics, que sesgan
+  hacia posiciones altas.
+- `DistribucionPosiciones.tsx` reusa el `Donut.tsx` del dashboard (mismo
+  patrón que el resto de Resultados: sin librería de charts nueva) con
+  paleta fija por bucket (verde/azul/rojo/ámbar/gris), más una leyenda con
+  el conteo real de cada uno.
+- El Δ de posición por keyword compara la tabla top-10 (ordenada por
+  clics, no por posición) contra un mapa `query → posición` construido
+  desde las 250 keywords del período anterior — ▲ verde si mejoró
+  (posición más baja), ▼ rojo si empeoró, "nuevo" si el término no
+  aparecía antes.
+- Verificado con datos reales de Gonfernic en dos rangos: 28 días mostró
+  deltas reales coherentes (ej. "gonfernic ▲6.2", "mokador ▼0.5") y una
+  distribución de 174 keywords; 90 días mostró "nuevo" en todas las filas
+  porque los dos períodos (cada uno de 90 días, hace más de medio año de
+  diferencia para un dominio joven) no comparten prácticamente ningún
+  término — comportamiento esperado, no un bug, confirmado antes de darlo
+  por bueno probando también con 28 días. Cero errores de consola. Datos
+  de prueba limpiados de la base al terminar.
 
 **Próximo paso:** con Fase 3 funcionalmente completa (informes + datos +
 Resultados), sigue Fase 4 — repositorio de prompts con versionado y

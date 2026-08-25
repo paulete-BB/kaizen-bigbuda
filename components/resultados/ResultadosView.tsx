@@ -5,6 +5,7 @@ import { SerieTiempo } from "./SerieTiempo";
 import { BarrasCategoria } from "./BarrasCategoria";
 import { InsightCallout } from "./InsightCallout";
 import { Funnel } from "./Funnel";
+import { DistribucionPosiciones } from "./DistribucionPosiciones";
 import { TablaCampanas } from "./TablaCampanas";
 import { TablaKeywords } from "./TablaKeywords";
 import { TablaPaginasIA } from "./TablaPaginasIA";
@@ -87,9 +88,17 @@ export function ResultadosView({
                 <Funnel funnel={data.seo.funnel} />
               </div>
             )}
-            <div>
-              <div className="mb-2 text-[11.5px] font-semibold text-muted">Clics por día</div>
-              <SerieTiempo serie={data.seo.serie} hitos={data.seo.hitos} color={COLOR_SEO} formato="numero" />
+            <div className="flex flex-wrap gap-6">
+              <div className="min-w-[280px] flex-1">
+                <div className="mb-2 text-[11.5px] font-semibold text-muted">Clics por día</div>
+                <SerieTiempo serie={data.seo.serie} hitos={data.seo.hitos} color={COLOR_SEO} formato="numero" />
+              </div>
+              {data.seo.distribucionPosiciones && (
+                <div>
+                  <div className="mb-2 text-[11.5px] font-semibold text-muted">Distribución de posiciones</div>
+                  <DistribucionPosiciones datos={data.seo.distribucionPosiciones} />
+                </div>
+              )}
             </div>
             {data.seo.keywords.length > 0 && (
               <div>
