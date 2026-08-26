@@ -931,6 +931,25 @@ conecta por token (Meta Insights API), no vía GA4.
   tests de vitest en verde. Datos de prueba limpiados de la base al
   terminar.
 
+**Bug real reportado por el usuario — "Costo por resultado"/"Costo por
+conversión" mostraba "0 USD"/"0 CLP" en vez del valor real:** con Tecny
+Stand real (302 USD de inversión / 2.167 resultados de Meta Ads),
+`fmtMoneda` (`lib/data/resultados.ts`, duplicada en
+`components/resultados/TablaCampanas.tsx` y
+`lib/informes/prellenado-apis.ts`) hacía `Math.round(n)` antes de
+formatear — 302/2.167 = USD 0,14, que al redondear a entero da 0. Distinto
+del caso de Google Ads reportado en la misma ronda (ese sí era falta de
+dato real desde GA4, `advertiserAdCost` en 0 por falta de vinculación
+Ads↔GA4): acá el dato SÍ estaba, solo se perdía al formatear. Corregido en
+las tres copias: `n.toLocaleString("es-CL", { maximumFractionDigits: 2 })`
+en vez de `Math.round(n).toLocaleString(...)` — agrega decimales solo
+cuando el valor real los tiene, así que montos grandes (inversión,
+presupuestos, "Costo" de Google Ads en CLP) se siguen mostrando como
+enteros. Verificado por cálculo directo (302/2.167 → "0,14 USD", 302 →
+"302", 900.000 → "900.000", sin necesidad de repetir el ritual de Postgres
+local + Playwright para un cambio puro de formato de texto sin lógica de
+datos de por medio). Typecheck, lint y los 17 tests de vitest en verde.
+
 **Próximo paso:** con Fase 3 funcionalmente completa (informes + datos +
 Resultados), sigue Fase 4 — repositorio de prompts con versionado y
 variables, flujo de aprobaciones (§3.11), offboarding (§3.12),

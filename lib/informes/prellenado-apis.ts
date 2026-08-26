@@ -32,7 +32,9 @@ function calcularDelta(actual: number, anterior: number): { texto: string; direc
 
 const fmtNumero = (n: number) => Math.round(n).toLocaleString("es-CL");
 const fmtPct = (n: number) => `${(n * 100).toFixed(1)}%`.replace(".", ",");
-const fmtMoneda = (n: number, moneda: string) => `${Math.round(n).toLocaleString("es-CL")} ${moneda}`;
+// Sin Math.round: el costo por resultado suele ser menor a la unidad — ver el
+// mismo comentario en lib/data/resultados.ts.
+const fmtMoneda = (n: number, moneda: string) => `${n.toLocaleString("es-CL", { maximumFractionDigits: 2 })} ${moneda}`;
 
 /**
  * Pre-llena "Punto de partida" y "Tráfico desde IA" desde GSC/GA4 reales

@@ -257,7 +257,12 @@ export interface ResultadosCliente {
 
 const fmtNumero = (n: number) => Math.round(n).toLocaleString("es-CL");
 const fmtPct = (n: number) => `${(n * 100).toFixed(1).replace(".", ",")}%`;
-const fmtMoneda = (n: number, moneda = "USD") => `${Math.round(n).toLocaleString("es-CL")} ${moneda}`;
+// Sin Math.round: costos por resultado/conversión suelen ser menores a la unidad
+// (ej. USD 0,14 por resultado) — redondear a entero los mostraba como "0 USD",
+// que en una reunión con el cliente se lee como un dato roto. maximumFractionDigits
+// solo agrega decimales cuando el valor real los tiene, así que montos grandes
+// (inversión, presupuestos) siguen mostrándose sin decimales de sobra.
+const fmtMoneda = (n: number, moneda = "USD") => `${n.toLocaleString("es-CL", { maximumFractionDigits: 2 })} ${moneda}`;
 
 /** Las APIs a veces omiten días sin actividad — se completa el rango con 0 para que el eje X del gráfico sea un calendario continuo (necesario para que los hitos se ubiquen en la posición correcta). */
 function rellenarDias(desde: string, hasta: string, puntos: { fecha: string; valor: number }[]): PuntoSerie[] {
