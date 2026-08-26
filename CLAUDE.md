@@ -950,9 +950,70 @@ enteros. Verificado por cálculo directo (302/2.167 → "0,14 USD", 302 →
 local + Playwright para un cambio puro de formato de texto sin lógica de
 datos de por medio). Typecheck, lint y los 17 tests de vitest en verde.
 
-**Próximo paso:** con Fase 3 funcionalmente completa (informes + datos +
-Resultados), sigue Fase 4 — repositorio de prompts con versionado y
-variables, flujo de aprobaciones (§3.11), offboarding (§3.12),
+**Fase 4 iniciada — llenado narrativo de informes con IA (§3.4 "asistencia
+de IA"):** pedido explícito del usuario, "la idea es que se llenen
+solos". El pre-llenado numérico (§3.14) ya cubre GSC/GA4/Meta; lo que
+faltaba era el contenido de texto libre (resumen ejecutivo, enfoque,
+insight de negocio, hoja de ruta, etc.), que hasta ahora el equipo
+escribía siempre a mano.
+
+- `lib/informes/generacion-ia.ts` (nuevo) llama a la API de Anthropic
+  (`claude-opus-5`, salidas estructuradas vía `client.messages.parse` +
+  schema de Zod — `@anthropic-ai/sdk` y `zod` agregados como dependencias
+  nuevas) para generar el contenido narrativo, enganchado en `crearInforme`
+  (`lib/data/informes-actions.ts`): se dispara **automáticamente** al crear
+  un borrador nuevo (no al duplicar, igual que el pre-llenado numérico),
+  después de calcular los datos reales del período — nunca antes, porque
+  el texto generado tiene que poder referenciar esos números tal cual.
+- **Alcance deliberado, no todo el informe**: se generan todas las
+  secciones narrativas de ambos formatos (SEO: "En una frase", "Nuestro
+  enfoque", "Lo que dejamos funcionando", "El detalle", "Impacto
+  proyectado", "Hoja de ruta"; Ads: "¿Qué mejoramos?" reescrito en
+  lenguaje de negocio y "¿Qué proyectamos?" + insight) **excepto**
+  `resultadosNumeros.cifras` y `antesDespues` (SEO) — ambas piden cifras o
+  textos "antes vs. después" puntuales (un título de página real antes y
+  después, un número base al inicio del contrato) que la plataforma no
+  captura en ningún lado todavía; pedirle a la IA que las completara de
+  todas formas habría sido fabricar datos concretos para un informe real
+  de cliente. Quedan en blanco, como antes, para que el equipo las
+  complete a mano si tiene el dato real — decisión de correctitud, no un
+  descuido.
+- **Grounding estricto contra fabricación**: el prompt de sistema prohíbe
+  explícitamente inventar cifras, nombres o hechos que no estén en los
+  datos entregados (bitácora del período — resumen/hallazgos/próximos
+  pasos de `optimizations` — más los números ya reales de GSC/GA4/Meta o
+  Meta Insights ya calculados) y pide reutilizar esos números tal cual, no
+  redondearlos distinto. Mismo motivo por el que el brief ya insistía en
+  "siempre editable; nunca se envía sin revisión humana" — acá además se
+  intenta que lo que la IA proponga ya sea fiel a los datos reales, no
+  solo revisable después.
+- **Resiliencia igual que el resto de §3.14**: si `ANTHROPIC_API_KEY` no
+  está configurada o la llamada falla, `generarNarrativaSeo`/
+  `generarNarrativaMarketing` devuelven `{}` sin lanzar — el informe se
+  crea igual, con las secciones narrativas vacías (mismo comportamiento
+  que antes de esta ronda), nunca rompe la creación del borrador.
+  `ANTHROPIC_API_KEY` ya estaba anticipada en `.env.example` desde antes
+  ("Fase 4 — asistencia de IA en informes") pero nunca se había usado.
+- **Verificado de punta a punta contra Postgres local + `next dev` real,
+  sin clave real de Anthropic en este entorno** (este sandbox no tiene
+  `ANTHROPIC_API_KEY` ni una sesión de `ant auth login` — no se pudo
+  repetir el patrón habitual de probar contra una llamada real): se creó
+  un borrador SEO y uno de Google Ads para un cliente de prueba
+  (Provetec Mining) con Playwright logueado como admin, confirmando que
+  `crearInforme` sigue funcionando exactamente igual que antes (redirige
+  al editor, sin errores de consola, sin bloquear ni demorar la creación
+  — ambas corridas bajo 2 segundos, lo que confirma que la ausencia de
+  clave hace un `return {}` inmediato en vez de intentar la llamada) y
+  que el pre-llenado numérico/de bitácora ya existente sigue intacto.
+  Typecheck, lint y los 17 tests de vitest en verde. Datos de prueba
+  (los dos informes creados) borrados de la base al terminar. **Falta:**
+  agregar `ANTHROPIC_API_KEY` en las variables de entorno de Vercel para
+  que la generación funcione en producción — sin acceso a la API de
+  Vercel desde este entorno, no se pudo hacer ni confirmar por esta vía.
+
+**Próximo paso:** con Fase 3 cerrada y el llenado narrativo con IA
+andando, sigue el resto de Fase 4 — repositorio de prompts con versionado
+y variables, flujo de aprobaciones (§3.11), offboarding (§3.12),
 retrospectiva mensual del área (§3.13) y KPIs de operación.
 
 ---

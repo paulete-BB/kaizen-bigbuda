@@ -14,6 +14,7 @@ import {
   type InformeSeoContenido,
 } from "@/lib/informes/tipos";
 import { prellenarAdsDesdeApis, prellenarSeoDesdeApis, type ConfigApisCliente } from "@/lib/informes/prellenado-apis";
+import { generarNarrativaMarketing, generarNarrativaSeo } from "@/lib/informes/generacion-ia";
 import { getSettings } from "@/lib/data/settings";
 import type { ServicioTipo } from "@/lib/data/cliente-detalle";
 
@@ -156,12 +157,19 @@ export async function crearInforme(formData: FormData): Promise<void> {
     if (inversion) marketing.inversionDelMes = inversion;
     if (acciones.length > 0) marketing.queMejoramos.acciones = acciones;
     if (ads.metricas.length > 0) marketing.comoVamosCifras.metricas = ads.metricas;
-    contenido = marketing;
+    // Asistencia de IA (§3.4, Fase 4): reescribe "¿Qué mejoramos?" en lenguaje
+    // de negocio y propone "¿Qué proyectamos?" + el insight — siempre sobre lo
+    // ya pre-llenado arriba, nunca en vez de. Degrada a no tocar nada si falla
+    // o si ANTHROPIC_API_KEY no está configurada.
+    const narrativa = await generarNarrativaMarketing(clientId, serviceId, periodoMes, periodoAnio, fmtMesAnio(periodoMes, periodoAnio), TIPO_LABEL[tipo], marketing);
+    contenido = { ...marketing, ...narrativa };
   } else if (!esFormatoAds(tipo) && serviceId) {
     const config = await obtenerConfigApisCliente(clientId);
     const seo = contenidoSeoVacio();
     const prellenado = await prellenarSeoDesdeApis(clientId, serviceId, config, periodoMes, periodoAnio);
-    contenido = { ...seo, ...prellenado };
+    const conNumeros = { ...seo, ...prellenado };
+    const narrativa = await generarNarrativaSeo(clientId, serviceId, periodoMes, periodoAnio, fmtMesAnio(periodoMes, periodoAnio), conNumeros);
+    contenido = { ...conNumeros, ...narrativa };
   } else {
     contenido = esFormatoAds(tipo) ? contenidoMarketingVacio() : contenidoSeoVacio();
   }
