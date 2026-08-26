@@ -769,6 +769,45 @@ lo que había quedado pendiente de la ronda anterior:
   por bueno probando también con 28 días. Cero errores de consola. Datos
   de prueba limpiados de la base al terminar.
 
+**Bug real reportado por el usuario — los números de Resultados no
+coinciden con Search Console/GA4/Google Ads directos**, con capturas de
+los cuatro paneles reales como evidencia. Dos causas distintas, una
+corregible y otra estructural:
+
+- **GSC (corregible, corregido):** comparando las capturas, la propia UI
+  de Search Console terminaba su ventana de "últimos 28 días" ~2 días
+  antes de hoy, no en hoy — confirmado que es el retraso de procesamiento
+  de 2-3 días que Google documenta para la API de Search Console. El
+  código pedía el rango terminando literalmente hoy; esos últimos días
+  vuelven parciales o vacíos sin ningún error, subcontando clics/
+  impresiones sin aviso. `desplazarParaGsc` (`lib/data/resultados.ts`)
+  desplaza el rango 3 días atrás **solo para las llamadas a GSC** (no
+  para GA4/Meta, que no tienen este mismo retraso) — resumen, serie
+  diaria y keywords. El gráfico de clics por día ahora rellena hasta la
+  fecha desplazada, no hasta la nominal (rellenar con ceros los días
+  todavía no procesados los haría ver como una caída real a cero). Nueva
+  nota al pie visible en la sección SEO con la fecha real hasta la que
+  llegan los datos, mismo criterio que la nota de limitaciones de tráfico
+  IA ya existente. Verificado contra datos reales de Gonfernic: antes del
+  fix, 81 clics/3.425 impresiones/CTR 2,4% vs. los 85/3,62 mil/2,3% que
+  mostraba Search Console directo para la misma ventana nominal; después
+  del fix, 88/3.549/2,5% — mucho más cerca (la diferencia restante es
+  variación normal día a día, no un desfase sistemático).
+- **Google Ads vía GA4 (estructural, no corregible sin la integración
+  real de Ads):** la sección Google Ads nunca tuvo una conexión directa a
+  la API de Google Ads (§3.14 lo documenta como decisión deliberada,
+  "requiere vinculación Ads↔GA4") — usa GA4 filtrado por
+  `sessionMedium=cpc/paid` como proxy. La captura del usuario mostró una
+  diferencia grande (122,5 conversiones en Google Ads nativo vs. 1 en GA4
+  para un rango de fechas parecido pero no idéntico): Google Ads tiene su
+  propio seguimiento de conversiones con modelado estadístico y
+  atribución entre dispositivos que GA4 no replica — son dos sistemas de
+  medición distintos, no un bug de esta app. Se agregó una nota al pie
+  visible en la sección explicando esto y recomendando revisar Google Ads
+  directo para el número oficial — mismo tratamiento que la nota de
+  limitaciones de IA. Resolver esto de verdad requeriría conectar la API
+  real de Google Ads, fuera del alcance de este fix.
+
 **Próximo paso:** con Fase 3 funcionalmente completa (informes + datos +
 Resultados), sigue Fase 4 — repositorio de prompts con versionado y
 variables, flujo de aprobaciones (§3.11), offboarding (§3.12),

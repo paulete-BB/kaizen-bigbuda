@@ -106,6 +106,13 @@ export function ResultadosView({
                 <TablaKeywords filas={data.seo.keywords} />
               </div>
             )}
+            {data.seo.gscHasta && (
+              <p className="text-[10.5px] leading-relaxed text-muted-2">
+                Datos de Search Console hasta el {fmtFecha(data.seo.gscHasta)}: la API tarda 2-3 días en procesar, así que los últimos días del
+                período todavía no están disponibles — es normal que estos números no coincidan exactamente con lo que se ve en Search Console si
+                se mira un rango que termine hoy.
+              </p>
+            )}
           </Panel>
 
           <Panel titulo="AEO · GEO — Tráfico desde IA" etiqueta="GA4" color="#eda100" disponible={data.aeo.disponible} motivo={data.aeo.motivo} deCache={data.aeo.deCache}>
@@ -177,6 +184,14 @@ export function ResultadosView({
                 <div className="mb-2 text-[11.5px] font-semibold text-muted">Resultados por campaña</div>
                 <TablaCampanas filas={data.googleAds.campanas} etiquetaInteracciones="Sesiones" moneda="CLP" />
               </div>
+            )}
+            {data.googleAds.disponible && (
+              <p className="text-[10.5px] leading-relaxed text-muted-2">
+                Estas cifras vienen de GA4 (sesiones con <code>sessionMedium = cpc/paid</code>), no de una conexión directa a Google Ads — todavía
+                no existe esa integración (§3.14). Las conversiones y el costo pueden no coincidir con lo que reporta Google Ads directamente: Ads
+                usa su propio seguimiento de conversiones (con modelado y atribución entre dispositivos) que GA4 no replica. Para el número
+                oficial de conversiones y costo, revisar Google Ads directamente.
+              </p>
             )}
           </Panel>
         </div>

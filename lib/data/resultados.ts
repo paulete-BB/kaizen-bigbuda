@@ -69,12 +69,27 @@ export interface RangoFechas {
   hasta: string;
 }
 
+/**
+ * Search Console tarda 2-3 días en terminar de procesar datos (documentado
+ * por Google) — es por lo que la propia UI de Search Console, al elegir
+ * "últimos 28 días", termina la ventana 2-3 días antes de hoy, no en hoy.
+ * Pedirle a la API el rango terminando literalmente hoy no da un error,
+ * pero esos últimos días vuelven con datos parciales o vacíos — subcuenta
+ * clics/impresiones reales sin que se note, y el número deja de coincidir
+ * con lo que el equipo ve mirando Search Console directamente.
+ */
+const GSC_LATENCIA_DIAS = 3;
+
 function calcularRangos(rango: RangoResultados): { actual: RangoFechas; anterior: RangoFechas } {
   const hasta = toIso(hoySantiago());
   const desde = addDaysIso(hasta, -(rango - 1));
   const hastaAnterior = addDaysIso(desde, -1);
   const desdeAnterior = addDaysIso(hastaAnterior, -(rango - 1));
   return { actual: { desde, hasta }, anterior: { desde: desdeAnterior, hasta: hastaAnterior } };
+}
+
+function desplazarParaGsc(fechas: RangoFechas): RangoFechas {
+  return { desde: addDaysIso(fechas.desde, -GSC_LATENCIA_DIAS), hasta: addDaysIso(fechas.hasta, -GSC_LATENCIA_DIAS) };
 }
 
 export interface Hito {
@@ -174,6 +189,8 @@ export interface SeccionSeo {
   hitos: Hito[];
   keywords: { termino: string; clics: number; impresiones: number; ctr: number; posicion: number; deltaPosicion: number | null }[];
   distribucionPosiciones: DistribucionPosiciones | null;
+  /** Última fecha real consultada a Search Console (desplazada por GSC_LATENCIA_DIAS) — se muestra para que el equipo entienda por qué estos números no coinciden con el rango nominal si mira Search Console directo. */
+  gscHasta: string | null;
 }
 
 export interface SeccionAeo {
@@ -309,18 +326,26 @@ async function seccionSeo(
   hitos: Hito[],
 ): Promise<SeccionSeo> {
   if (!gscProperty) {
-    return { disponible: false, motivo: "Configura la propiedad de Search Console en la ficha del cliente.", insight: null, kpis: [], funnel: null, serie: [], hitos: [], keywords: [], distribucionPosiciones: null };
+    return { disponible: false, motivo: "Configura la propiedad de Search Console en la ficha del cliente.", insight: null, kpis: [], funnel: null, serie: [], hitos: [], keywords: [], distribucionPosiciones: null, gscHasta: null };
   }
   try {
+    // Todas las llamadas a GSC (no las de GA4 más abajo) usan el rango
+    // desplazado GSC_LATENCIA_DIAS días atrás — ver el comentario de
+    // `desplazarParaGsc` más arriba. Pedirle a la API el rango nominal
+    // (terminando hoy) no falla, pero devuelve los últimos días vacíos o
+    // parciales, subcontando clics/impresiones reales sin ningún aviso.
+    const { desde: desdeGsc, hasta: hastaGsc } = desplazarParaGsc({ desde, hasta });
+    const { desde: desdeAntGsc, hasta: hastaAntGsc } = desplazarParaGsc({ desde: desdeAnt, hasta: hastaAnt });
+
     const [{ datos: actual, deCache }, { datos: anterior }, serieDiaria, keywordsActual, keywordsAnterior, organico] = await Promise.all([
-      conCacheDeSnapshot<ResumenGSC>({ clientId, serviceId, fuente: "gsc", periodoInicio: desde, periodoFin: hasta, fetchLive: () => obtenerResumenGSC(gscProperty, desde, hasta) }),
-      conCacheDeSnapshot<ResumenGSC>({ clientId, serviceId, fuente: "gsc", periodoInicio: desdeAnt, periodoFin: hastaAnt, fetchLive: () => obtenerResumenGSC(gscProperty, desdeAnt, hastaAnt) }),
-      obtenerSerieDiariaGSC(gscProperty, desde, hasta),
+      conCacheDeSnapshot<ResumenGSC>({ clientId, serviceId, fuente: "gsc", periodoInicio: desdeGsc, periodoFin: hastaGsc, fetchLive: () => obtenerResumenGSC(gscProperty, desdeGsc, hastaGsc) }),
+      conCacheDeSnapshot<ResumenGSC>({ clientId, serviceId, fuente: "gsc", periodoInicio: desdeAntGsc, periodoFin: hastaAntGsc, fetchLive: () => obtenerResumenGSC(gscProperty, desdeAntGsc, hastaAntGsc) }),
+      obtenerSerieDiariaGSC(gscProperty, desdeGsc, hastaGsc),
       // Límite alto (no solo el top 10 de la tabla): hace falta el conjunto
       // completo de keywords para que la distribución de posiciones (donut)
       // sea representativa, no solo de las 10 con más clics.
-      obtenerKeywordsGSC(gscProperty, desde, hasta, 250),
-      obtenerKeywordsGSC(gscProperty, desdeAnt, hastaAnt, 250).catch(() => []),
+      obtenerKeywordsGSC(gscProperty, desdeGsc, hastaGsc, 250),
+      obtenerKeywordsGSC(gscProperty, desdeAntGsc, hastaAntGsc, 250).catch(() => []),
       organicoPromise,
     ]);
 
@@ -368,7 +393,11 @@ async function seccionSeo(
       insight,
       kpis,
       funnel,
-      serie: rellenarDias(desde, hasta, serieDiaria.map((p) => ({ fecha: p.fecha, valor: p.clics }))),
+      // El gráfico usa el rango ya desplazado (desdeGsc/hastaGsc): rellenar
+      // hasta la fecha nominal con ceros haría ver los últimos días como una
+      // caída real a cero, cuando en realidad es que la API todavía no los
+      // procesó — mejor no mostrar esos puntos que mostrarlos mal.
+      serie: rellenarDias(desdeGsc, hastaGsc, serieDiaria.map((p) => ({ fecha: p.fecha, valor: p.clics }))),
       hitos,
       keywords: keywordsTop.map((k) => {
         const posicionAnterior = posicionAnteriorPorQuery.get(k.query);
@@ -382,9 +411,10 @@ async function seccionSeo(
         };
       }),
       distribucionPosiciones,
+      gscHasta: hastaGsc,
     };
   } catch {
-    return { disponible: false, motivo: "No se pudo obtener datos de Search Console para este período.", insight: null, kpis: [], funnel: null, serie: [], hitos: [], keywords: [], distribucionPosiciones: null };
+    return { disponible: false, motivo: "No se pudo obtener datos de Search Console para este período.", insight: null, kpis: [], funnel: null, serie: [], hitos: [], keywords: [], distribucionPosiciones: null, gscHasta: null };
   }
 }
 
@@ -557,7 +587,7 @@ export async function obtenerResultadosCliente(clientId: string, rango: RangoRes
   const [seo, aeo, meta, googleAds] = await Promise.all([
     servicioIdPorTipo.has("seo_aeo_geo")
       ? seccionSeo(clientId, servicioIdPorTipo.get("seo_aeo_geo")!, cliente.gsc_property, organicoPromise, actual.desde, actual.hasta, anterior.desde, anterior.hasta, hitosPorTipo.seo_aeo_geo)
-      : ({ disponible: false, motivo: "Este cliente no tiene SEO-AEO-GEO contratado.", insight: null, kpis: [], funnel: null, serie: [], hitos: [], keywords: [], distribucionPosiciones: null } as SeccionSeo),
+      : ({ disponible: false, motivo: "Este cliente no tiene SEO-AEO-GEO contratado.", insight: null, kpis: [], funnel: null, serie: [], hitos: [], keywords: [], distribucionPosiciones: null, gscHasta: null } as SeccionSeo),
     servicioIdPorTipo.has("seo_aeo_geo")
       ? seccionAeo(clientId, servicioIdPorTipo.get("seo_aeo_geo")!, cliente.ga4_property_id, organicoPromise, actual.desde, actual.hasta, anterior.desde, anterior.hasta)
       : ({ disponible: false, motivo: "Este cliente no tiene SEO-AEO-GEO contratado.", insight: null, totalSesiones: 0, deltaSesiones: null, tasaConversion: null, porFuente: [], paginasDestino: [] } as SeccionAeo),
