@@ -1,16 +1,18 @@
 import { sql } from "@/lib/db";
-import { addDaysIso, hoySantiago, toIso } from "@/lib/dates";
+import { addDaysIso, fmtSemana, hoySantiago, isoSemana, toIso } from "@/lib/dates";
 import { conCacheDeSnapshot } from "@/lib/metricas/snapshot";
 import { obtenerKeywordsGSC, obtenerResumenGSC, obtenerSerieDiariaGSC, type ResumenGSC } from "@/lib/google/gsc";
 import {
   DOMINIOS_IA,
   obtenerCampanasPagadoGA4,
   obtenerPaginasDestinoIAGA4,
+  obtenerTraficoIADiarioGA4,
   obtenerTraficoIAGA4,
   obtenerTraficoOrganicoDiarioGA4,
   obtenerTraficoOrganicoGA4,
   obtenerTraficoPagadoDiarioGA4,
   obtenerTraficoPagadoGA4,
+  type PuntoDiarioFuenteIA,
   type ResumenGA4Organico,
   type ResumenTraficoIA,
   type ResumenTraficoPagado,
@@ -196,6 +198,17 @@ export interface SeccionSeo {
   gscHasta: string | null;
 }
 
+export interface PuntoSemanalFuente {
+  semana: string;
+  etiqueta: string;
+  valor: number;
+}
+
+export interface SerieFuenteIA {
+  fuente: string;
+  puntos: PuntoSemanalFuente[];
+}
+
 export interface SeccionAeo {
   disponible: boolean;
   motivo?: string;
@@ -204,7 +217,8 @@ export interface SeccionAeo {
   totalSesiones: number;
   deltaSesiones: Delta | null;
   tasaConversion: number | null;
-  porFuente: { fuente: string; sesiones: number }[];
+  /** Sesiones por semana ISO y por fuente de IA — panel de referencia: tendencia semanal por modelo, no una foto fija del período. */
+  tendenciaSemanal: SerieFuenteIA[];
   paginasDestino: { pagina: string; sesiones: number; conversiones: number }[];
 }
 
@@ -255,6 +269,44 @@ function rellenarDias(desde: string, hasta: string, puntos: { fecha: string; val
     cursor = addDaysIso(cursor, 1);
   }
   return resultado;
+}
+
+/**
+ * Agrupa sesiones diarias por fuente de IA en semanas ISO — el panel de
+ * referencia muestra la tendencia semanal por modelo, no un total del
+ * período. Todas las fuentes comparten la misma grilla de semanas
+ * (rellenada con 0) para que las líneas del gráfico alineen en el mismo
+ * eje X, incluso si una fuente no tuvo sesiones en alguna semana.
+ */
+function armarTendenciaSemanal(desde: string, hasta: string, filas: PuntoDiarioFuenteIA[]): SerieFuenteIA[] {
+  const semanas: string[] = [];
+  const vistas = new Set<string>();
+  let cursor = desde;
+  while (cursor <= hasta) {
+    const { semana } = isoSemana(cursor);
+    if (!vistas.has(semana)) {
+      vistas.add(semana);
+      semanas.push(semana);
+    }
+    cursor = addDaysIso(cursor, 1);
+  }
+
+  const porFuente = new Map<string, Map<string, number>>();
+  const totalPorFuente = new Map<string, number>();
+  for (const f of filas) {
+    const { semana } = isoSemana(f.fecha);
+    if (!porFuente.has(f.fuente)) porFuente.set(f.fuente, new Map());
+    const semanasDeFuente = porFuente.get(f.fuente)!;
+    semanasDeFuente.set(semana, (semanasDeFuente.get(semana) ?? 0) + f.sesiones);
+    totalPorFuente.set(f.fuente, (totalPorFuente.get(f.fuente) ?? 0) + f.sesiones);
+  }
+
+  return [...porFuente.keys()]
+    .sort((a, b) => (totalPorFuente.get(b) ?? 0) - (totalPorFuente.get(a) ?? 0))
+    .map((fuente) => ({
+      fuente,
+      puntos: semanas.map((semana) => ({ semana, etiqueta: fmtSemana(semana), valor: porFuente.get(fuente)!.get(semana) ?? 0 })),
+    }));
 }
 
 function armarCampanas(filas: { nombre: string; interacciones: number; conversiones: number; gastoOCosto: number }[]): FilaCampana[] {
@@ -438,14 +490,19 @@ async function seccionAeo(
   hastaAnt: string,
 ): Promise<SeccionAeo> {
   if (!ga4PropertyId) {
-    return { disponible: false, motivo: "Configura el GA4 Property ID en la ficha del cliente.", insight: null, totalSesiones: 0, deltaSesiones: null, tasaConversion: null, porFuente: [], paginasDestino: [] };
+    return { disponible: false, motivo: "Configura el GA4 Property ID en la ficha del cliente.", insight: null, totalSesiones: 0, deltaSesiones: null, tasaConversion: null, tendenciaSemanal: [], paginasDestino: [] };
   }
   try {
-    const [{ datos: actual, deCache }, { datos: anterior }, paginasDestino, organico] = await Promise.all([
+    const [{ datos: actual, deCache }, { datos: anterior }, paginasDestino, organico, diarioPorFuente] = await Promise.all([
       conCacheDeSnapshot<ResumenTraficoIA>({ clientId, serviceId, fuente: "ga4", periodoInicio: desde, periodoFin: hasta, fetchLive: () => obtenerTraficoIAGA4(ga4PropertyId, desde, hasta) }),
       conCacheDeSnapshot<ResumenTraficoIA>({ clientId, serviceId, fuente: "ga4", periodoInicio: desdeAnt, periodoFin: hastaAnt, fetchLive: () => obtenerTraficoIAGA4(ga4PropertyId, desdeAnt, hastaAnt) }),
       obtenerPaginasDestinoIAGA4(ga4PropertyId, desde, hasta).catch(() => []),
       organicoPromise,
+      // Sin conCacheDeSnapshot: mismo motivo que las conversiones orgánicas de
+      // SEO y el desglose por campaña de Google Ads — esta forma (por día y
+      // por fuente) es distinta del resumen actual/anterior de arriba, y
+      // ambos comparten (cliente, servicio, fuente:'ga4', período).
+      obtenerTraficoIADiarioGA4(ga4PropertyId, desde, hasta).catch(() => []),
     ]);
     const conversionesIA = actual.filas.reduce((s, f) => s + f.conversiones, 0);
     const tasaConversion = actual.totalSesiones > 0 ? conversionesIA / actual.totalSesiones : null;
@@ -457,11 +514,11 @@ async function seccionAeo(
       totalSesiones: actual.totalSesiones,
       deltaSesiones: delta(actual.totalSesiones, anterior.totalSesiones),
       tasaConversion,
-      porFuente: actual.filas.map((f) => ({ fuente: f.fuente, sesiones: f.sesiones })).sort((a, b) => b.sesiones - a.sesiones),
+      tendenciaSemanal: armarTendenciaSemanal(desde, hasta, diarioPorFuente),
       paginasDestino: paginasDestino.map((p) => ({ pagina: p.pagina, sesiones: p.sesiones, conversiones: p.conversiones })),
     };
   } catch {
-    return { disponible: false, motivo: "No se pudo obtener datos de GA4 para este período.", insight: null, totalSesiones: 0, deltaSesiones: null, tasaConversion: null, porFuente: [], paginasDestino: [] };
+    return { disponible: false, motivo: "No se pudo obtener datos de GA4 para este período.", insight: null, totalSesiones: 0, deltaSesiones: null, tasaConversion: null, tendenciaSemanal: [], paginasDestino: [] };
   }
 }
 
@@ -599,7 +656,7 @@ export async function obtenerResultadosCliente(clientId: string, rango: RangoRes
       : ({ disponible: false, motivo: "Este cliente no tiene SEO-AEO-GEO contratado.", insight: null, kpis: [], funnel: null, serie: [], serieConversiones: [], hitos: [], keywords: [], distribucionPosiciones: null, gscHasta: null } as SeccionSeo),
     servicioIdPorTipo.has("seo_aeo_geo")
       ? seccionAeo(clientId, servicioIdPorTipo.get("seo_aeo_geo")!, cliente.ga4_property_id, organicoPromise, actual.desde, actual.hasta, anterior.desde, anterior.hasta)
-      : ({ disponible: false, motivo: "Este cliente no tiene SEO-AEO-GEO contratado.", insight: null, totalSesiones: 0, deltaSesiones: null, tasaConversion: null, porFuente: [], paginasDestino: [] } as SeccionAeo),
+      : ({ disponible: false, motivo: "Este cliente no tiene SEO-AEO-GEO contratado.", insight: null, totalSesiones: 0, deltaSesiones: null, tasaConversion: null, tendenciaSemanal: [], paginasDestino: [] } as SeccionAeo),
     servicioIdPorTipo.has("meta_ads")
       ? seccionMeta(clientId, servicioIdPorTipo.get("meta_ads")!, cliente.meta_ad_account_id, cliente.meta_token_key, actual.desde, actual.hasta, anterior.desde, anterior.hasta, hitosPorTipo.meta_ads)
       : ({ disponible: false, motivo: "Este cliente no tiene Meta Ads contratado.", insight: null, kpis: [], serie: [], hitos: [], campanas: [] } as SeccionMeta),

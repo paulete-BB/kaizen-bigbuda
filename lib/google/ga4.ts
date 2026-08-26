@@ -113,6 +113,35 @@ export async function obtenerTraficoIAGA4(propertyId: string, startDate: string,
   return { totalSesiones: filas.reduce((s, f) => s + f.sesiones, 0), filas };
 }
 
+export interface PuntoDiarioFuenteIA {
+  fecha: string;
+  fuente: string;
+  sesiones: number;
+}
+
+/** Tráfico desde IA por día y por fuente — pestaña Resultados (§3.15), para la tendencia semanal por modelo del panel de referencia. */
+export async function obtenerTraficoIADiarioGA4(propertyId: string, startDate: string, endDate: string): Promise<PuntoDiarioFuenteIA[]> {
+  const domainFilter = {
+    orGroup: {
+      expressions: DOMINIOS_IA.map((d) => ({
+        filter: { fieldName: "sessionSource", stringFilter: { matchType: "CONTAINS" as const, value: d, caseSensitive: false } },
+      })),
+    },
+  };
+  const data = await consultarGA4(propertyId, {
+    dateRanges: [{ startDate, endDate }],
+    dimensions: [{ name: "date" }, { name: "sessionSource" }],
+    metrics: [{ name: "sessions" }],
+    dimensionFilter: domainFilter,
+    limit: 1000,
+  });
+  return (data.rows ?? []).map((r) => ({
+    fecha: fechaGa4AIso(r.dimensionValues?.[0]?.value ?? ""),
+    fuente: r.dimensionValues?.[1]?.value ?? "",
+    sesiones: num(r.metricValues?.[0]?.value),
+  }));
+}
+
 export interface ResumenTraficoPagado {
   sesiones: number;
   conversiones: number;

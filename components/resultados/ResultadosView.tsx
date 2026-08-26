@@ -2,7 +2,7 @@ import { Sidebar, type SidebarUsuario } from "@/components/layout/Sidebar";
 import { SelectorResultados } from "./SelectorResultados";
 import { KpiFila } from "./KpiFila";
 import { SerieTiempo } from "./SerieTiempo";
-import { BarrasCategoria } from "./BarrasCategoria";
+import { TendenciaFuentesIA } from "./TendenciaFuentesIA";
 import { InsightCallout } from "./InsightCallout";
 import { Funnel } from "./Funnel";
 import { DistribucionPosiciones } from "./DistribucionPosiciones";
@@ -153,7 +153,10 @@ export function ResultadosView({
                 </div>
               )}
             </div>
-            <BarrasCategoria filas={data.aeo.porFuente} formato={fmtNum} />
+            <div>
+              <div className="mb-2 text-[11.5px] font-semibold text-muted">Sesiones por fuente IA — tendencia semanal</div>
+              <TendenciaFuentesIA series={data.aeo.tendenciaSemanal} />
+            </div>
             {data.aeo.paginasDestino.length > 0 && (
               <div>
                 <div className="mb-2 text-[11.5px] font-semibold text-muted">Páginas de aterrizaje desde IA</div>

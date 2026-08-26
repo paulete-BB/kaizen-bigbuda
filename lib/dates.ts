@@ -58,6 +58,25 @@ export function addDaysIso(iso: string, delta: number): string {
   return toIso(d);
 }
 
+/** Semana ISO 8601 (lunes a domingo, la semana 1 es la que contiene el primer jueves del año) — usada para agrupar series diarias en tendencias semanales. */
+export function isoSemana(iso: string): { anio: number; semana: string } {
+  const d = parseIso(iso);
+  const diaLunes = (d.getDay() + 6) % 7; // lunes = 0
+  const jueves = new Date(d);
+  jueves.setDate(d.getDate() - diaLunes + 3);
+  const primerJueves = new Date(jueves.getFullYear(), 0, 4);
+  const diaLunesPrimerJueves = (primerJueves.getDay() + 6) % 7;
+  primerJueves.setDate(primerJueves.getDate() - diaLunesPrimerJueves + 3);
+  const semana = 1 + Math.round((jueves.getTime() - primerJueves.getTime()) / (7 * 86_400_000));
+  return { anio: jueves.getFullYear(), semana: `${jueves.getFullYear()}-W${String(semana).padStart(2, "0")}` };
+}
+
+/** "S32 '26" — etiqueta corta de semana ISO para ejes de gráficos. */
+export function fmtSemana(semanaKey: string): string {
+  const [anio, semana] = semanaKey.split("-W");
+  return `S${Number(semana)} '${anio.slice(2)}`;
+}
+
 /** Grilla mensual completa (lunes a domingo), incluyendo días de meses adyacentes. */
 export function buildMonthGrid(year: number, month: number): string[] {
   const first = new Date(year, month - 1, 1);

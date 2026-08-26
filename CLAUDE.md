@@ -825,6 +825,66 @@ vez de inventar uno nuevo. Verificado con datos reales de Gonfernic:
 leyenda, ambas líneas con datos reales, tooltip con los dos valores al
 hacer hover — capturado con Playwright.
 
+**Tendencia semanal por modelo de IA** — pedido explícito del usuario
+tras comparar dos capturas: la barra horizontal "Sesiones por fuente IA"
+no se parecía al panel original, que muestra un gráfico de línea semanal
+con un marcador circular por semana, una línea por modelo (ChatGPT,
+Claude, etc.), eje X en formato de semana ISO ("S31 '26"). Se reemplazó
+`BarrasCategoria.tsx` (eliminado, sin otros usos) por
+`TendenciaFuentesIA.tsx`, un componente nuevo — no una extensión de
+`SerieTiempo` — porque el número de series ahí es variable (una por
+fuente detectada en el período) mientras que `SerieTiempo` está acotado a
+dos series fijas (principal/secundaria).
+
+- `lib/dates.ts` agrega `isoSemana`/`fmtSemana` (semana ISO 8601, lunes a
+  domingo, semana 1 = la que contiene el primer jueves del año — mismo
+  criterio que usa el panel de referencia para su eje X).
+- `lib/resultados-colores-ia.ts` (nuevo) extrae la paleta categórica fija
+  por dominio de IA que antes vivía privada dentro de `BarrasCategoria`,
+  para que el nuevo componente de línea use los mismos colores.
+- `obtenerTraficoIADiarioGA4` (`lib/google/ga4.ts`) trae sesiones por día
+  y por fuente (antes solo existía el total del período,
+  `obtenerTraficoIAGA4`). `armarTendenciaSemanal` (`lib/data/resultados.ts`)
+  agrupa esas filas diarias en semanas ISO por fuente, con una grilla de
+  semanas común (rellenada con 0) para que todas las líneas alineen en el
+  mismo eje X aunque una fuente no haya tenido sesiones en alguna semana.
+  Sin `conCacheDeSnapshot`: mismo motivo que las conversiones orgánicas de
+  SEO y el desglose de campañas de Google Ads — esta forma (por día y por
+  fuente) es distinta al resumen actual/anterior que ya se cachea bajo
+  `(cliente, servicio, fuente:'ga4', período)`, cachearla ahí generaría la
+  misma colisión ya documentada en rondas anteriores.
+- `SeccionAeo.porFuente` (el total por fuente, ya sin ningún consumidor
+  tras el reemplazo) se eliminó del modelo en vez de dejarlo sin uso;
+  `SeccionAeo.tendenciaSemanal` lo reemplaza.
+- **Bug real encontrado y corregido durante la verificación visual, no
+  antes:** las etiquetas del eje X en la primera y última semana quedaban
+  cortadas contra el borde del SVG (`textAnchor="middle"` centra el texto
+  sobre un punto que ya está en el borde del área de trazado). Corregido
+  usando `textAnchor="start"` en la primera etiqueta y `"end"` en la
+  última, `"middle"` en las intermedias.
+- **Verificación sin credenciales reales de Google en este entorno:**
+  este sandbox no tiene acceso a la API de Vercel para recuperar
+  `GOOGLE_OAUTH_CLIENT_ID`/`GOOGLE_OAUTH_CLIENT_SECRET` de producción (a
+  diferencia del refresh token, que sí se pudo traer de la fila de
+  `settings` vía la Management API de Supabase, como en rondas
+  anteriores) — sin esas credenciales, `obtenerAccessTokenGoogle` no
+  puede canjear el refresh token real, así que no se pudo repetir el
+  patrón habitual de probar contra la cuenta real de Gonfernic para este
+  cambio puntual. En su lugar se montó una ruta temporal
+  (`app/resultados/tmptest`, eliminada al terminar) que renderizó
+  `TendenciaFuentesIA` con datos representativos de dos fuentes y cuatro
+  semanas, logueado como usuario real (`marcel@bigbuda.com`) contra
+  Postgres local con Playwright: layout, colores por fuente, leyenda,
+  marcadores circulares, etiquetas de semana (incluido el fix de recorte)
+  y tooltip con crosshair al hacer hover confirmados visualmente contra
+  el diseño del panel de referencia. La lógica de agrupamiento en sí
+  (`armarTendenciaSemanal`, `isoSemana`) es determinística y no depende de
+  ninguna API — el riesgo real quedaba en el componente visual, que sí se
+  verificó. Typecheck, lint y los 17 tests de vitest en verde. Si se
+  necesita repetir la verificación contra datos reales de Gonfernic más
+  adelante, hace falta acceso a las credenciales OAuth de Google de
+  producción (Vercel) desde el entorno que la corra.
+
 **Próximo paso:** con Fase 3 funcionalmente completa (informes + datos +
 Resultados), sigue Fase 4 — repositorio de prompts con versionado y
 variables, flujo de aprobaciones (§3.11), offboarding (§3.12),
