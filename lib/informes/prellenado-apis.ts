@@ -36,11 +36,31 @@ const fmtPct = (n: number) => `${(n * 100).toFixed(1)}%`.replace(".", ",");
 // mismo comentario en lib/data/resultados.ts.
 const fmtMoneda = (n: number, moneda: string) => `${n.toLocaleString("es-CL", { maximumFractionDigits: 2 })} ${moneda}`;
 
+/** "Posición media" es más intuitiva como diferencia absoluta que como %, y bajar es mejorar — distinto criterio que `calcularDelta`. */
+function deltaPosicion(actual: number, anterior: number): string {
+  if (!anterior) return "sin dato del mes anterior";
+  const diff = Math.round((anterior - actual) * 10) / 10;
+  if (Math.abs(diff) < 0.1) return "estable vs. mes anterior";
+  return `${diff > 0 ? "mejoró" : "empeoró"} ${Math.abs(diff)} posiciones vs. mes anterior`;
+}
+
+function deltaTextoPct(actual: number, anterior: number): string {
+  if (!anterior) return "sin dato del mes anterior";
+  const { texto, direccion } = calcularDelta(actual, anterior);
+  return `${direccion === "up" ? "+" : "-"}${texto} vs. mes anterior`;
+}
+
 /**
  * Pre-llena "Punto de partida" y "Tráfico desde IA" desde GSC/GA4 reales
  * (§3.14) — mejor esfuerzo: si el cliente no tiene las propiedades
  * configuradas, o la API falla y no hay snapshot previo, deja esas
- * secciones tal como venían (vacías o del informe duplicado).
+ * secciones tal como venían (vacías o del informe duplicado). Cada métrica
+ * de "Punto de partida" trae también su comparación contra el mes
+ * anterior en `descripcion` — pedido explícito del usuario: los números
+ * sueltos, sin contexto de hacia dónde van, no dicen nada en un informe de
+ * cliente. Ese mismo texto lo lee después la generación narrativa con IA
+ * (`generarNarrativaSeo`), así el insight también queda anclado al cambio
+ * real, no solo a la foto del mes.
  */
 export async function prellenarSeoDesdeApis(
   clientId: string,
@@ -50,24 +70,21 @@ export async function prellenarSeoDesdeApis(
   periodoAnio: number,
 ): Promise<Partial<InformeSeoContenido>> {
   const { inicio, fin } = limitesMes(periodoMes, periodoAnio);
+  const { inicio: inicioAnt, fin: finAnt } = limitesMesAnterior(periodoMes, periodoAnio);
   const resultado: Partial<InformeSeoContenido> = {};
 
   if (config.gscProperty) {
     try {
-      const { datos } = await conCacheDeSnapshot({
-        clientId,
-        serviceId,
-        fuente: "gsc",
-        periodoInicio: inicio,
-        periodoFin: fin,
-        fetchLive: () => obtenerResumenGSC(config.gscProperty!, inicio, fin),
-      });
+      const [{ datos: actual }, { datos: anterior }] = await Promise.all([
+        conCacheDeSnapshot({ clientId, serviceId, fuente: "gsc", periodoInicio: inicio, periodoFin: fin, fetchLive: () => obtenerResumenGSC(config.gscProperty!, inicio, fin) }),
+        conCacheDeSnapshot({ clientId, serviceId, fuente: "gsc", periodoInicio: inicioAnt, periodoFin: finAnt, fetchLive: () => obtenerResumenGSC(config.gscProperty!, inicioAnt, finAnt) }),
+      ]);
       resultado.puntoDePartida = {
         metricas: [
-          { valor: fmtPct(datos.ctr), etiqueta: "CTR global", descripcion: "" },
-          { valor: datos.posicionMedia.toFixed(1).replace(".", ","), etiqueta: "Posición media", descripcion: "" },
-          { valor: fmtNumero(datos.impresiones), etiqueta: "Impresiones", descripcion: "" },
-          { valor: fmtNumero(datos.clics), etiqueta: "Clics", descripcion: "" },
+          { valor: fmtPct(actual.ctr), etiqueta: "CTR global", descripcion: deltaTextoPct(actual.ctr, anterior.ctr) },
+          { valor: actual.posicionMedia.toFixed(1).replace(".", ","), etiqueta: "Posición media", descripcion: deltaPosicion(actual.posicionMedia, anterior.posicionMedia) },
+          { valor: fmtNumero(actual.impresiones), etiqueta: "Impresiones", descripcion: deltaTextoPct(actual.impresiones, anterior.impresiones) },
+          { valor: fmtNumero(actual.clics), etiqueta: "Clics", descripcion: deltaTextoPct(actual.clics, anterior.clics) },
         ],
       };
     } catch {

@@ -4,6 +4,10 @@
     {
       "path": "/api/cron/reintentar-sync",
       "schedule": "0 12 * * *"
+    },
+    {
+      "path": "/api/cron/generar-informes",
+      "schedule": "0 13 * * *"
     }
   ]
 }

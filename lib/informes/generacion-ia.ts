@@ -35,6 +35,7 @@ const REGLAS_SISTEMA = `Eres redactor senior de contenido para informes de clien
 Reglas:
 - No inventar cifras, nombres, hechos ni resultados que no estén en los datos entregados. Si falta información para una sección, escribir algo breve y genérico basado solo en lo disponible.
 - Reutilizar tal cual los números ya calculados que se entregan — no redondear distinto ni inventar otros.
+- Los datos entregados incluyen la comparación contra el período anterior: usar esa dirección (subió/bajó/se mantuvo) al armar el insight y las proyecciones — nunca presentar una cifra sin decir hacia dónde va, y nunca inventar una comparación si el dato entregado dice "sin dato del mes anterior".
 - Tono de negocio: conectar el trabajo técnico con el resultado para el cliente, no usar jerga sin explicarla.
 - Español neutro (Chile), sin voseo — mismo registro que el resto de la plataforma.
 - Nunca prometer resultados garantizados en las proyecciones — usar lenguaje prudente ("se espera", "la tendencia sugiere").
@@ -138,8 +139,10 @@ export async function generarNarrativaSeo(
     const [contexto, bitacora] = await Promise.all([obtenerContextoCliente(clientId), obtenerBitacoraTexto(serviceId, periodoMes, periodoAnio)]);
     if (!contexto) return {};
 
+    // `descripcion` ya trae la comparación vs. mes anterior (prellenarSeoDesdeApis) —
+    // sin esto, la IA (y el informe) solo verían una cifra suelta, sin dirección.
     const metricas = prellenado.puntoDePartida?.metricas.length
-      ? prellenado.puntoDePartida.metricas.map((m) => `${m.etiqueta}: ${m.valor}`).join("; ")
+      ? prellenado.puntoDePartida.metricas.map((m) => `${m.etiqueta}: ${m.valor} (${m.descripcion || "sin comparación"})`).join("; ")
       : "sin datos de Search Console para este período";
     const traficoIA = prellenado.traficoIA
       ? `${prellenado.traficoIA.totalSesiones} sesiones desde fuentes de IA (${prellenado.traficoIA.filas.map((f) => `${f.fuente}: ${f.sesiones}`).join(", ")})`

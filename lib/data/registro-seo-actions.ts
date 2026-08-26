@@ -5,6 +5,8 @@ import { redirect } from "next/navigation";
 import { sql } from "@/lib/db";
 import { requireUser } from "@/lib/auth/server";
 import { syncLogEntryToClickUp, syncOptimizationTaskToClickUp } from "@/lib/clickup/client";
+import { crearInformeInterno } from "@/lib/data/informes-actions";
+import { hoySantiago } from "@/lib/dates";
 
 export async function toggleChecklistItemSeo(formData: FormData) {
   await requireUser();
@@ -82,6 +84,19 @@ export async function guardarRegistroSeo(formData: FormData) {
       fechaProgramada: proximaFecha,
       responsableId,
     });
+  }
+
+  // Generación automática del informe (§3.4 → §3.2: "cada optimización
+  // incluye el envío de informe al cliente ese mismo día") — nunca bloquea
+  // ni rompe el registro de la optimización si falla: la optimización ya
+  // quedó guardada arriba, esto es un paso adicional, no una condición.
+  // Idempotente (`crearInformeInterno`): si el equipo ya había creado el
+  // informe a mano para este período, no se duplica.
+  try {
+    const hoy = hoySantiago();
+    await crearInformeInterno(clientId, "seo_aeo_geo", hoy.getMonth() + 1, hoy.getFullYear(), null);
+  } catch {
+    // el informe queda pendiente de crear a mano — no es motivo para fallar el registro
   }
 
   revalidatePath(`/clientes/${clientId}`);

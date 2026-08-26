@@ -1011,10 +1011,95 @@ escribía siempre a mano.
   que la generación funcione en producción — sin acceso a la API de
   Vercel desde este entorno, no se pudo hacer ni confirmar por esta vía.
 
-**Próximo paso:** con Fase 3 cerrada y el llenado narrativo con IA
-andando, sigue el resto de Fase 4 — repositorio de prompts con versionado
-y variables, flujo de aprobaciones (§3.11), offboarding (§3.12),
-retrospectiva mensual del área (§3.13) y KPIs de operación.
+**Generación de informes completamente automática, sin botón** — feedback
+directo del usuario tras la ronda anterior: "aun queda muy manual, necesito
+que sea completamente automático... es importante que se haga la
+comparación con el período anterior para que los números tengan contexto
+y no sean solo cifras sueltas". Dos cambios: (1) crear el borrador deja de
+depender de que alguien apriete "Crear borrador", y (2) las cifras de
+"Punto de partida" (SEO) ahora llevan la comparación contra el mes
+anterior, tanto en el informe como en lo que lee la IA.
+
+- `crearInforme` (`lib/data/informes-actions.ts`) se partió en dos: la
+  lógica real —consulta de existente, pre-llenado numérico, generación
+  narrativa, insert— queda en `crearInformeInterno` (exportada, sin
+  `redirect()` ni `requireUser()`, así la puede llamar tanto el formulario
+  manual como un cron o un hook sin sesión de usuario ni contexto de
+  página); `crearInforme(formData)` queda como un wrapper delgado sobre
+  ella para el botón "Crear borrador", que se mantiene por si alguien
+  necesita forzar la creación de uno puntual (ej. para duplicar un
+  informe viejo como base).
+- **SEO-AEO-GEO: se genera el mismo día, enganchado en el registro real**
+  (§3.2: "cada optimización incluye el envío de informe... ese mismo
+  día"), no con un cron — `guardarRegistroSeo` (`lib/data/registro-seo-actions.ts`)
+  llama a `crearInformeInterno` justo después de marcar la optimización
+  como realizada, con el mes/año de hoy (`hoySantiago()`). Nunca bloquea
+  ni revierte el registro si falla (try/catch): la optimización ya quedó
+  guardada, el informe es un paso adicional.
+- **Meta/Google Ads: cron diario, primera semana del mes** (§3.2: "la
+  plataforma genera el evento... en la primera semana de cada mes
+  (configurable)") — no hay un evento único que dispare el informe de Ads
+  como sí lo hay para SEO (el trabajo es semanal, el informe es mensual),
+  así que necesita un cron real. `lib/informes/auto-generar.ts` +
+  `app/api/cron/generar-informes/route.ts` (mismo patrón de auth que
+  `reintentar-sync`: `Authorization: Bearer $CRON_SECRET`), agregado a
+  `vercel.json` en un horario distinto al cron existente (13:00 UTC, ~09:00
+  Chile, contra las 12:00 UTC del otro) para no competir por el mismo
+  minuto. "Primera semana" queda hardcodeado a 7 días (default del brief,
+  sin pedido de hacerlo configurable — `DIAS_PRIMERA_SEMANA` en el mismo
+  archivo). Ambos caminos son idempotentes por el mismo motivo que ya
+  usaba `crearInforme`: el índice único (cliente, tipo, período) hace que
+  una segunda llamada devuelva el informe existente en vez de duplicar,
+  así que el cron puede correr todos los días sin control de estado
+  propio — simplemente no encuentra nada pendiente la mayoría de los
+  días.
+- **Comparación contra el mes anterior en "Punto de partida" (SEO)** —
+  hasta esta ronda, `prellenarSeoDesdeApis` solo traía el mes actual de
+  GSC; el campo `descripcion` de cada métrica (pensado en el modelo de
+  datos para "explicación de una línea") quedaba siempre vacío. Ahora trae
+  también el mes anterior (mismo patrón que ya usaba Resultados,
+  `limitesMesAnterior` ya existía en este archivo) y llena `descripcion`
+  con el delta: porcentaje para CTR/impresiones/clics, diferencia absoluta
+  con "mejoró"/"empeoró" para posición media (bajar el número es mejorar,
+  a diferencia de las otras tres). Ese mismo texto lo lee después
+  `generarNarrativaSeo` (antes solo mandaba `etiqueta: valor` a la IA, sin
+  ningún contexto de dirección) — la regla del prompt de sistema también
+  se actualizó para exigir explícitamente que el insight use esa dirección
+  y nunca invente una comparación si el dato entregado dice "sin dato del
+  mes anterior". El resumen de Ads (`comoVamosCifras`) ya traía deltas
+  desde la ronda de pre-llenado original — no necesitó cambios.
+- **Alcance deliberado, no tocado en esta ronda**: `traficoIA` (tráfico
+  desde fuentes de IA en el informe SEO) sigue sin delta — el tipo
+  `InformeSeoContenido.traficoIA` no tiene un campo de texto libre donde
+  ponerlo sin una migración de datos, y el usuario pidió "más simple";
+  queda como mejora futura si hace falta.
+- **Verificado de punta a punta contra Postgres local + `next dev` real**
+  (sin `ANTHROPIC_API_KEY` ni credenciales OAuth de Google reales en este
+  entorno, mismo motivo de siempre): el flujo real "Registrar optimización
+  SEO" (Provetec Mining, vía Playwright) creó el informe de agosto
+  automáticamente sin ningún clic adicional, en ~1,4s; una segunda llamada
+  directa a `crearInformeInterno` para el mismo cliente/período devolvió
+  el mismo id sin duplicar. Las fórmulas de delta se verificaron por
+  cálculo directo (clics 120 vs. 100 → "+20%", posición 4.2 vs. 6.5 →
+  "mejoró 2.3 posiciones", sin mes anterior → "sin dato del mes
+  anterior"). El cron de Ads se probó contra el endpoint HTTP real (no
+  invocando la función directamente, para no repetir el bug ya documentado
+  de `proxy.ts`/`revalidatePath` fuera de contexto de request): sin auth y
+  con secret incorrecto devuelve 401; con el secret correcto detectó
+  correctamente los 3 servicios de Ads sin informe de agosto (Provetec
+  Mining · Google Ads, Tecny Stand · Meta Ads y Google Ads), los creó, y
+  una segunda corrida no volvió a crear nada; con el gate de "primera
+  semana" en su valor real (7 días) y la fecha real de hoy (26 de agosto),
+  el cron correctamente no evaluó ni creó nada. Typecheck, lint y los 17
+  tests de vitest en verde. Datos y configuración de prueba (informes,
+  estado de la optimización de registro, `gsc_property` temporal)
+  revertidos al terminar.
+
+**Próximo paso:** con Fase 3 cerrada y la generación de informes
+completamente automática, sigue el resto de Fase 4 — repositorio de
+prompts con versionado y variables, flujo de aprobaciones (§3.11),
+offboarding (§3.12), retrospectiva mensual del área (§3.13) y KPIs de
+operación.
 
 ---
 

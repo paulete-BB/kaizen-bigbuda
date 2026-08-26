@@ -117,25 +117,36 @@ async function prellenarAccionesDesdeBitacora(serviceId: string, mes: number, an
   return rows.map((r) => ({ accion: r.resumen, efecto: "" }));
 }
 
-/**
- * Crea un borrador nuevo, o lo duplica desde otro informe (§3.4: "duplicar
- * informe del mes anterior como base"). Idempotente respecto al índice
- * único (client_id, tipo, periodo_mes, periodo_anio): si ya existe,
- * redirige al existente en vez de fallar o duplicar.
- */
-export async function crearInforme(formData: FormData): Promise<void> {
-  await requireUser();
-  const clientId = String(formData.get("clientId") ?? "");
-  const tipo = String(formData.get("tipo") ?? "") as ServicioTipo;
-  const periodoMes = Number(formData.get("periodoMes"));
-  const periodoAnio = Number(formData.get("periodoAnio"));
-  const duplicarDeId = String(formData.get("duplicarDeId") ?? "") || null;
-  if (!clientId || !tipo || !periodoMes || !periodoAnio) return;
+export interface InformeCreado {
+  id: string;
+  /** false si ya existía un informe para ese (cliente, tipo, período) y se devolvió ese en vez de crear uno nuevo. */
+  creado: boolean;
+}
 
+/**
+ * Núcleo de la creación de informes — usado tanto por el formulario manual
+ * (`crearInforme`, abajo) como por la generación automática (§3.4 → "que se
+ * llenen solos"): el hook en `guardarRegistroSeo` para SEO-AEO-GEO (el mismo
+ * día que se registra la optimización mensual) y el cron de Ads
+ * (`generarInformesAutomaticos`, primera semana del mes). Ninguno de los dos
+ * llama `requireUser()` acá — cada llamador resuelve su propia
+ * autenticación (sesión de usuario o `CRON_SECRET`).
+ *
+ * Idempotente respecto al índice único (client_id, tipo, periodo_mes,
+ * periodo_anio): si ya existe, devuelve ese id en vez de crear o fallar —
+ * así el cron puede correr todos los días sin duplicar informes.
+ */
+export async function crearInformeInterno(
+  clientId: string,
+  tipo: ServicioTipo,
+  periodoMes: number,
+  periodoAnio: number,
+  duplicarDeId: string | null,
+): Promise<InformeCreado> {
   const [existente] = await sql<{ id: string }[]>`
     select id from reports where client_id = ${clientId} and tipo = ${tipo} and periodo_mes = ${periodoMes} and periodo_anio = ${periodoAnio}
   `;
-  if (existente) redirect(`/informes/${existente.id}`);
+  if (existente) return { id: existente.id, creado: false };
 
   const [servicio] = await sql<{ id: string }[]>`select id from services where client_id = ${clientId} and tipo = ${tipo}`;
   const serviceId = servicio?.id ?? null;
@@ -180,7 +191,21 @@ export async function crearInforme(formData: FormData): Promise<void> {
     returning id
   `;
   revalidatePath(`/clientes/${clientId}/informes`);
-  redirect(`/informes/${creado.id}`);
+  return { id: creado.id, creado: true };
+}
+
+/** Wrapper del formulario manual "Crear borrador" (ficha de cliente → Informes) sobre `crearInformeInterno`. */
+export async function crearInforme(formData: FormData): Promise<void> {
+  await requireUser();
+  const clientId = String(formData.get("clientId") ?? "");
+  const tipo = String(formData.get("tipo") ?? "") as ServicioTipo;
+  const periodoMes = Number(formData.get("periodoMes"));
+  const periodoAnio = Number(formData.get("periodoAnio"));
+  const duplicarDeId = String(formData.get("duplicarDeId") ?? "") || null;
+  if (!clientId || !tipo || !periodoMes || !periodoAnio) return;
+
+  const { id } = await crearInformeInterno(clientId, tipo, periodoMes, periodoAnio, duplicarDeId);
+  redirect(`/informes/${id}`);
 }
 
 export async function guardarContenidoInforme(reportId: string, contenido: InformeSeoContenido | InformeMarketingContenido): Promise<AccionInformeResultado> {
