@@ -1095,6 +1095,30 @@ anterior, tanto en el informe como en lo que lee la IA.
   estado de la optimización de registro, `gsc_property` temporal)
   revertidos al terminar.
 
+**Bug real reportado por el usuario — la bajada de la portada no se
+generaba sola:** al revisar el borrador automático, la sección "Portada"
+quedaba con "Bajada" vacía, a pesar de que el resto del contenido
+narrativo sí se generaba. Causa: un descuido de alcance en la ronda
+anterior — `NarrativaSeoSchema`/`NarrativaMarketingSchema`
+(`lib/informes/generacion-ia.ts`) nunca incluyeron el campo `bajada`, así
+que la IA nunca lo generaba aunque estuviera dentro del alcance previsto
+("todo el contenido narrativo"). Corregido agregando `bajada` a ambos
+schemas y al objeto que devuelven `generarNarrativaSeo`/
+`generarNarrativaMarketing`, preservando los `chips` ya existentes del
+contenido pre-llenado (`{ ...prellenado.portada, bajada: parsed.bajada }`
+— la IA no genera chips, son etiquetas fijas de servicio). Mismo
+aprovechado para confirmar que ningún cambio reciente tocó el diseño del
+informe (plantilla dorada/oscura de Claude Design): `lib/informes/slides-seo.ts`/
+`slides-marketing.ts` no se modificaron desde que se construyeron
+originalmente (11 de agosto) — lo que el usuario veía en la captura era
+el panel del editor (formulario claro, consistente con el resto de la
+plataforma), no la plantilla del informe en sí. Typecheck, lint y los 17
+tests de vitest en verde — sin repetir el ritual de Postgres local +
+Playwright porque el cambio reutiliza exactamente el mismo mecanismo
+(schema de Zod + merge en el objeto de retorno) ya verificado
+end-to-end en la ronda anterior, y este entorno sigue sin
+`ANTHROPIC_API_KEY` real para probar la llamada en vivo de todas formas.
+
 **Próximo paso:** con Fase 3 cerrada y la generación de informes
 completamente automática, sigue el resto de Fase 4 — repositorio de
 prompts con versionado y variables, flujo de aprobaciones (§3.11),

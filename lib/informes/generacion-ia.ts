@@ -71,6 +71,7 @@ async function obtenerContextoCliente(clientId: string): Promise<ContextoCliente
 }
 
 const NarrativaSeoSchema = z.object({
+  bajada: z.string().describe("Portada: una frase corta (una línea) que resuma el período, la primera impresión del informe. Admite **negrita**."),
   enUnaFrase: z.object({
     principal: z.string().describe("Resumen ejecutivo del período, 1-2 líneas, con palabras clave que se puedan destacar en negrita usando **así**."),
     secundario: z.string().describe("Segunda línea, complementa la primera."),
@@ -110,6 +111,7 @@ const NarrativaSeoSchema = z.object({
 });
 
 const NarrativaMarketingSchema = z.object({
+  bajada: z.string().describe("Portada: una frase corta (una línea) que resuma el período, la primera impresión del informe. Admite **negrita**."),
   queMejoramos: z
     .array(z.object({ accion: z.string().describe("En lenguaje de negocio, sin detalle técnico."), efecto: z.string().describe("Qué efecto tuvo o se espera, una línea.") }))
     .min(1)
@@ -159,7 +161,7 @@ Tráfico desde IA: ${traficoIA}
 Bitácora de optimizaciones del período:
 ${bitacora || "sin registros de optimización para este período"}
 
-Completar el contenido narrativo del informe (resumen ejecutivo, enfoque, qué se dejó funcionando, detalle de acciones, impacto proyectado y hoja de ruta) según el schema, usando solo la información entregada arriba.`;
+Completar el contenido narrativo del informe (bajada de portada, resumen ejecutivo, enfoque, qué se dejó funcionando, detalle de acciones, impacto proyectado y hoja de ruta) según el schema, usando solo la información entregada arriba.`;
 
     const client = new Anthropic();
     const response = await client.messages.parse({
@@ -173,6 +175,7 @@ Completar el contenido narrativo del informe (resumen ejecutivo, enfoque, qué s
     if (!parsed) return {};
 
     return {
+      portada: { ...(prellenado.portada ?? { chips: [] as string[] }), bajada: parsed.bajada },
       enUnaFrase: parsed.enUnaFrase,
       nuestroEnfoque: { cita: "", citaAutor: "", contexto: parsed.nuestroEnfoque.contexto, decisiones: parsed.nuestroEnfoque.decisiones },
       loQueDejamosFuncionando: {
@@ -220,7 +223,7 @@ ${cifras}
 Bitácora de optimizaciones del período (resúmenes tal como los escribió el equipo):
 ${bitacora}
 
-Completar "¿Qué mejoramos?" (reescribir la bitácora en lenguaje de negocio) y "¿Qué proyectamos?" (qué esperar + el insight de negocio) según el schema, usando solo la información entregada arriba.`;
+Completar la bajada de portada, "¿Qué mejoramos?" (reescribir la bitácora en lenguaje de negocio) y "¿Qué proyectamos?" (qué esperar + el insight de negocio) según el schema, usando solo la información entregada arriba.`;
 
     const client = new Anthropic();
     const response = await client.messages.parse({
@@ -234,6 +237,7 @@ Completar "¿Qué mejoramos?" (reescribir la bitácora en lenguaje de negocio) y
     if (!parsed) return {};
 
     return {
+      portada: { ...(prellenado.portada ?? { chips: [] as string[] }), bajada: parsed.bajada },
       queMejoramos: { acciones: parsed.queMejoramos },
       queProyectamos: parsed.queProyectamos,
     };
