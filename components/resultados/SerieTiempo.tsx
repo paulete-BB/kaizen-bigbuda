@@ -15,36 +15,47 @@ function construirPath(puntos: { x: number; y: number }[]) {
 
 export function SerieTiempo({
   serie,
+  serieSecundaria,
+  etiquetaPrincipal,
+  etiquetaSecundaria,
   hitos,
   color,
+  colorSecundario = "var(--color-svc-google)",
   formato = "numero",
 }: {
   serie: PuntoSerie[];
+  /** Segunda serie opcional, mismo eje (nunca dual-axis) — se dibuja punteada, sin relleno, para comparar contra la principal (ej. clics vs. conversiones). */
+  serieSecundaria?: PuntoSerie[];
+  etiquetaPrincipal?: string;
+  etiquetaSecundaria?: string;
   hitos: Hito[];
   color: string;
+  colorSecundario?: string;
   formato?: FormatoValor;
 }) {
   const [hoverIdx, setHoverIdx] = useState<number | null>(null);
   const svgRef = useRef<SVGSVGElement>(null);
+  const tieneSecundaria = !!serieSecundaria && serieSecundaria.length === serie.length && serieSecundaria.length > 0;
 
-  const { puntos, hitosPorFecha } = useMemo(() => {
-    const maxValor = Math.max(1, ...serie.map((p) => p.valor));
+  const { puntos, puntosSecundaria, hitosPorFecha } = useMemo(() => {
+    const maxValor = Math.max(1, ...serie.map((p) => p.valor), ...(tieneSecundaria ? serieSecundaria!.map((p) => p.valor) : []));
     const anchoUtil = ANCHO - PAD.left - PAD.right;
     const altoUtil = ALTO - PAD.top - PAD.bottom;
-    const puntos = serie.map((p, i) => ({
-      x: PAD.left + (serie.length > 1 ? (i / (serie.length - 1)) * anchoUtil : anchoUtil / 2),
-      y: PAD.top + altoUtil - (p.valor / maxValor) * altoUtil,
-      valor: p.valor,
-    }));
+    const x = (i: number) => PAD.left + (serie.length > 1 ? (i / (serie.length - 1)) * anchoUtil : anchoUtil / 2);
+    const y = (valor: number) => PAD.top + altoUtil - (valor / maxValor) * altoUtil;
+    const puntos = serie.map((p, i) => ({ x: x(i), y: y(p.valor), valor: p.valor }));
+    const puntosSecundaria = tieneSecundaria ? serieSecundaria!.map((p, i) => ({ x: x(i), y: y(p.valor), valor: p.valor })) : [];
     const hitosPorFecha = new Map(hitos.map((h) => [h.fecha, h]));
-    return { puntos, hitosPorFecha };
-  }, [serie, hitos]);
+    return { puntos, puntosSecundaria, hitosPorFecha };
+  }, [serie, serieSecundaria, tieneSecundaria, hitos]);
 
   if (serie.length === 0) return null;
 
   const linea = construirPath(puntos);
   const area = `${linea} L${puntos[puntos.length - 1].x.toFixed(1)},${ALTO - PAD.bottom} L${puntos[0].x.toFixed(1)},${ALTO - PAD.bottom} Z`;
+  const lineaSecundaria = tieneSecundaria ? construirPath(puntosSecundaria) : null;
   const activo = hoverIdx !== null ? puntos[hoverIdx] : null;
+  const activoSecundario = hoverIdx !== null && tieneSecundaria ? puntosSecundaria[hoverIdx] : null;
   const activoFecha = hoverIdx !== null ? serie[hoverIdx] : null;
   const activoHito = activoFecha ? hitosPorFecha.get(activoFecha.fecha) : null;
 
@@ -61,6 +72,18 @@ export function SerieTiempo({
 
   return (
     <div className="relative w-full" style={{ maxWidth: ANCHO }}>
+      {tieneSecundaria && (
+        <div className="mb-1.5 flex items-center gap-4 text-[11px] text-muted">
+          <span className="flex items-center gap-1.5">
+            <svg width="14" height="2"><line x1="0" y1="1" x2="14" y2="1" stroke={color} strokeWidth="2" /></svg>
+            {etiquetaPrincipal}
+          </span>
+          <span className="flex items-center gap-1.5">
+            <svg width="14" height="2"><line x1="0" y1="1" x2="14" y2="1" stroke={colorSecundario} strokeWidth="2" strokeDasharray="3,2" /></svg>
+            {etiquetaSecundaria}
+          </span>
+        </div>
+      )}
       <svg
         ref={svgRef}
         viewBox={`0 0 ${ANCHO} ${ALTO}`}
@@ -86,11 +109,15 @@ export function SerieTiempo({
 
         <path d={area} fill={color} opacity={0.1} stroke="none" />
         <path d={linea} fill="none" stroke={color} strokeWidth={2} strokeLinejoin="round" strokeLinecap="round" />
+        {lineaSecundaria && (
+          <path d={lineaSecundaria} fill="none" stroke={colorSecundario} strokeWidth={2} strokeDasharray="4,3" strokeLinejoin="round" strokeLinecap="round" />
+        )}
 
         {activo && (
           <>
             <line x1={activo.x} x2={activo.x} y1={PAD.top} y2={ALTO - PAD.bottom} stroke="var(--color-muted-2)" strokeWidth={1} />
             <circle cx={activo.x} cy={activo.y} r={4} fill={color} stroke="var(--color-surface)" strokeWidth={2} />
+            {activoSecundario && <circle cx={activoSecundario.x} cy={activoSecundario.y} r={4} fill={colorSecundario} stroke="var(--color-surface)" strokeWidth={2} />}
           </>
         )}
       </svg>
@@ -104,8 +131,17 @@ export function SerieTiempo({
             transform: activo.x / ANCHO > 0.7 ? "translateX(-100%)" : undefined,
           }}
         >
-          <div className="font-semibold text-ink">{formatearValor(activoFecha.valor, formato)}</div>
-          <div className="text-muted-2">{fmtFecha(activoFecha.fecha)}</div>
+          <div className="flex items-center gap-1.5 font-semibold text-ink">
+            <span className="h-0.5 w-2.5 flex-none" style={{ background: color }} />
+            {formatearValor(activoFecha.valor, formato)}
+          </div>
+          {activoSecundario && (
+            <div className="mt-0.5 flex items-center gap-1.5 font-semibold text-ink">
+              <span className="h-0.5 w-2.5 flex-none" style={{ background: colorSecundario }} />
+              {formatearValor(activoSecundario.valor, "numero")}
+            </div>
+          )}
+          <div className="mt-0.5 text-muted-2">{fmtFecha(activoFecha.fecha)}</div>
           {activoHito && <div className="mt-0.5 font-semibold text-accent">{activoHito.etiqueta}</div>}
         </div>
       )}

@@ -90,8 +90,17 @@ export function ResultadosView({
             )}
             <div className="flex flex-wrap gap-6">
               <div className="min-w-[280px] flex-1">
-                <div className="mb-2 text-[11.5px] font-semibold text-muted">Clics por día</div>
-                <SerieTiempo serie={data.seo.serie} hitos={data.seo.hitos} color={COLOR_SEO} formato="numero" />
+                <div className="mb-2 text-[11.5px] font-semibold text-muted">Clics y conversiones por día</div>
+                <SerieTiempo
+                  serie={data.seo.serie}
+                  serieSecundaria={data.seo.serieConversiones}
+                  etiquetaPrincipal="Clics"
+                  etiquetaSecundaria="Conversiones"
+                  hitos={data.seo.hitos}
+                  color={COLOR_SEO}
+                  colorSecundario="var(--color-success)"
+                  formato="numero"
+                />
               </div>
               {data.seo.distribucionPosiciones && (
                 <div>

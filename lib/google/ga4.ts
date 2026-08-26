@@ -54,6 +54,28 @@ export async function obtenerTraficoOrganicoGA4(propertyId: string, startDate: s
   return { sesiones: num(row?.metricValues?.[0]?.value), conversiones: num(row?.metricValues?.[1]?.value) };
 }
 
+export interface PuntoDiarioOrganico {
+  fecha: string;
+  sesiones: number;
+  conversiones: number;
+}
+
+/** Serie diaria de conversiones orgánicas — pestaña Resultados (§3.15), para comparar clics (GSC) vs. conversiones (GA4) en el mismo gráfico. */
+export async function obtenerTraficoOrganicoDiarioGA4(propertyId: string, startDate: string, endDate: string): Promise<PuntoDiarioOrganico[]> {
+  const data = await consultarGA4(propertyId, {
+    dateRanges: [{ startDate, endDate }],
+    dimensions: [{ name: "date" }],
+    metrics: [{ name: "sessions" }, { name: "conversions" }],
+    dimensionFilter: { filter: { fieldName: "sessionDefaultChannelGroup", stringFilter: { matchType: "EXACT", value: "Organic Search" } } },
+    orderBys: [{ dimension: { dimensionName: "date" } }],
+  });
+  return (data.rows ?? []).map((r) => ({
+    fecha: fechaGa4AIso(r.dimensionValues?.[0]?.value ?? ""),
+    sesiones: num(r.metricValues?.[0]?.value),
+    conversiones: num(r.metricValues?.[1]?.value),
+  }));
+}
+
 export interface FilaTraficoIA {
   fuente: string;
   sesiones: number;

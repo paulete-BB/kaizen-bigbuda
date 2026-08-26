@@ -808,6 +808,23 @@ corregible y otra estructural:
   limitaciones de IA. Resolver esto de verdad requeriría conectar la API
   real de Google Ads, fuera del alcance de este fix.
 
+**Gráfico "Clics y conversiones por día"** — pedido explícito del
+usuario tras ver el gráfico de solo-clics: `SerieTiempo.tsx` ahora acepta
+una segunda serie opcional (`serieSecundaria`), punteada y sin relleno,
+en el mismo eje que la principal — nunca dual-axis, siguiendo la skill de
+dataviz del entorno ("two measures of different scale → same axis o
+small multiples, nunca dos escalas"). Leyenda con línea de muestra (no
+cuadro de color, "line keys not boxes") cuando hay segunda serie, y el
+tooltip al hacer hover muestra ambos valores. Nueva
+`obtenerTraficoOrganicoDiarioGA4` (`lib/google/ga4.ts`) trae la serie
+diaria de conversiones orgánicas en el mismo rango ya desplazado que la
+serie de clics de GSC (`desdeGsc`/`hastaGsc`), para que ambas series
+compartan el mismo eje de fechas. Color de la serie de conversiones:
+`--color-success` (verde), reutilizando el token semántico existente en
+vez de inventar uno nuevo. Verificado con datos reales de Gonfernic:
+leyenda, ambas líneas con datos reales, tooltip con los dos valores al
+hacer hover — capturado con Playwright.
+
 **Próximo paso:** con Fase 3 funcionalmente completa (informes + datos +
 Resultados), sigue Fase 4 — repositorio de prompts con versionado y
 variables, flujo de aprobaciones (§3.11), offboarding (§3.12),

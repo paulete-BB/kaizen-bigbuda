@@ -7,6 +7,7 @@ import {
   obtenerCampanasPagadoGA4,
   obtenerPaginasDestinoIAGA4,
   obtenerTraficoIAGA4,
+  obtenerTraficoOrganicoDiarioGA4,
   obtenerTraficoOrganicoGA4,
   obtenerTraficoPagadoDiarioGA4,
   obtenerTraficoPagadoGA4,
@@ -186,6 +187,8 @@ export interface SeccionSeo {
   kpis: KpiResultado[];
   funnel: Funnel | null;
   serie: PuntoSerie[];
+  /** Conversiones orgánicas por día (GA4), mismo rango de fechas que `serie` — se grafican juntas para comparar clics vs. conversiones. Vacío si el cliente no tiene GA4 configurado. */
+  serieConversiones: PuntoSerie[];
   hitos: Hito[];
   keywords: { termino: string; clics: number; impresiones: number; ctr: number; posicion: number; deltaPosicion: number | null }[];
   distribucionPosiciones: DistribucionPosiciones | null;
@@ -318,6 +321,7 @@ async function seccionSeo(
   clientId: string,
   serviceId: string | null,
   gscProperty: string | null,
+  ga4PropertyId: string | null,
   organicoPromise: Promise<OrganicoActualAnterior | null>,
   desde: string,
   hasta: string,
@@ -326,7 +330,7 @@ async function seccionSeo(
   hitos: Hito[],
 ): Promise<SeccionSeo> {
   if (!gscProperty) {
-    return { disponible: false, motivo: "Configura la propiedad de Search Console en la ficha del cliente.", insight: null, kpis: [], funnel: null, serie: [], hitos: [], keywords: [], distribucionPosiciones: null, gscHasta: null };
+    return { disponible: false, motivo: "Configura la propiedad de Search Console en la ficha del cliente.", insight: null, kpis: [], funnel: null, serie: [], serieConversiones: [], hitos: [], keywords: [], distribucionPosiciones: null, gscHasta: null };
   }
   try {
     // Todas las llamadas a GSC (no las de GA4 más abajo) usan el rango
@@ -337,7 +341,7 @@ async function seccionSeo(
     const { desde: desdeGsc, hasta: hastaGsc } = desplazarParaGsc({ desde, hasta });
     const { desde: desdeAntGsc, hasta: hastaAntGsc } = desplazarParaGsc({ desde: desdeAnt, hasta: hastaAnt });
 
-    const [{ datos: actual, deCache }, { datos: anterior }, serieDiaria, keywordsActual, keywordsAnterior, organico] = await Promise.all([
+    const [{ datos: actual, deCache }, { datos: anterior }, serieDiaria, keywordsActual, keywordsAnterior, organico, serieConversionesDiaria] = await Promise.all([
       conCacheDeSnapshot<ResumenGSC>({ clientId, serviceId, fuente: "gsc", periodoInicio: desdeGsc, periodoFin: hastaGsc, fetchLive: () => obtenerResumenGSC(gscProperty, desdeGsc, hastaGsc) }),
       conCacheDeSnapshot<ResumenGSC>({ clientId, serviceId, fuente: "gsc", periodoInicio: desdeAntGsc, periodoFin: hastaAntGsc, fetchLive: () => obtenerResumenGSC(gscProperty, desdeAntGsc, hastaAntGsc) }),
       obtenerSerieDiariaGSC(gscProperty, desdeGsc, hastaGsc),
@@ -347,6 +351,10 @@ async function seccionSeo(
       obtenerKeywordsGSC(gscProperty, desdeGsc, hastaGsc, 250),
       obtenerKeywordsGSC(gscProperty, desdeAntGsc, hastaAntGsc, 250).catch(() => []),
       organicoPromise,
+      // Serie diaria de conversiones orgánicas (GA4), en el mismo rango ya
+      // desplazado que la serie de clics (GSC) — para poder comparar ambas
+      // en un solo gráfico con el mismo eje de fechas.
+      ga4PropertyId ? obtenerTraficoOrganicoDiarioGA4(ga4PropertyId, desdeGsc, hastaGsc).catch(() => []) : Promise.resolve([]),
     ]);
 
     const posicionAnteriorPorQuery = new Map(keywordsAnterior.map((k) => [k.query, k.posicion]));
@@ -398,6 +406,7 @@ async function seccionSeo(
       // caída real a cero, cuando en realidad es que la API todavía no los
       // procesó — mejor no mostrar esos puntos que mostrarlos mal.
       serie: rellenarDias(desdeGsc, hastaGsc, serieDiaria.map((p) => ({ fecha: p.fecha, valor: p.clics }))),
+      serieConversiones: rellenarDias(desdeGsc, hastaGsc, serieConversionesDiaria.map((p) => ({ fecha: p.fecha, valor: p.conversiones }))),
       hitos,
       keywords: keywordsTop.map((k) => {
         const posicionAnterior = posicionAnteriorPorQuery.get(k.query);
@@ -414,7 +423,7 @@ async function seccionSeo(
       gscHasta: hastaGsc,
     };
   } catch {
-    return { disponible: false, motivo: "No se pudo obtener datos de Search Console para este período.", insight: null, kpis: [], funnel: null, serie: [], hitos: [], keywords: [], distribucionPosiciones: null, gscHasta: null };
+    return { disponible: false, motivo: "No se pudo obtener datos de Search Console para este período.", insight: null, kpis: [], funnel: null, serie: [], serieConversiones: [], hitos: [], keywords: [], distribucionPosiciones: null, gscHasta: null };
   }
 }
 
@@ -586,8 +595,8 @@ export async function obtenerResultadosCliente(clientId: string, rango: RangoRes
 
   const [seo, aeo, meta, googleAds] = await Promise.all([
     servicioIdPorTipo.has("seo_aeo_geo")
-      ? seccionSeo(clientId, servicioIdPorTipo.get("seo_aeo_geo")!, cliente.gsc_property, organicoPromise, actual.desde, actual.hasta, anterior.desde, anterior.hasta, hitosPorTipo.seo_aeo_geo)
-      : ({ disponible: false, motivo: "Este cliente no tiene SEO-AEO-GEO contratado.", insight: null, kpis: [], funnel: null, serie: [], hitos: [], keywords: [], distribucionPosiciones: null, gscHasta: null } as SeccionSeo),
+      ? seccionSeo(clientId, servicioIdPorTipo.get("seo_aeo_geo")!, cliente.gsc_property, cliente.ga4_property_id, organicoPromise, actual.desde, actual.hasta, anterior.desde, anterior.hasta, hitosPorTipo.seo_aeo_geo)
+      : ({ disponible: false, motivo: "Este cliente no tiene SEO-AEO-GEO contratado.", insight: null, kpis: [], funnel: null, serie: [], serieConversiones: [], hitos: [], keywords: [], distribucionPosiciones: null, gscHasta: null } as SeccionSeo),
     servicioIdPorTipo.has("seo_aeo_geo")
       ? seccionAeo(clientId, servicioIdPorTipo.get("seo_aeo_geo")!, cliente.ga4_property_id, organicoPromise, actual.desde, actual.hasta, anterior.desde, anterior.hasta)
       : ({ disponible: false, motivo: "Este cliente no tiene SEO-AEO-GEO contratado.", insight: null, totalSesiones: 0, deltaSesiones: null, tasaConversion: null, porFuente: [], paginasDestino: [] } as SeccionAeo),
