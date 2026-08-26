@@ -885,6 +885,52 @@ dos series fijas (principal/secundaria).
   adelante, hace falta acceso a las credenciales OAuth de Google de
   producción (Vercel) desde el entorno que la corra.
 
+**GA4 de la landing de Google Ads, separado del GA4 del sitio** — pedido
+explícito del usuario: las campañas de Google Ads no apuntan al sitio
+principal del cliente sino a una landing page propia, con su propia
+propiedad GA4 para medir el tráfico pagado. Hasta esta ronda la sección
+Google Ads (Resultados §3.15 y el pre-llenado de informes §3.4) reusaba
+`ga4_property_id` (la propiedad del sitio, usada por SEO/AEO) — de ahí la
+discrepancia grande ya documentada más arriba (122,5 conversiones en
+Google Ads nativo vs. 1 en GA4). Meta Ads no tiene este problema porque se
+conecta por token (Meta Insights API), no vía GA4.
+
+- Migración `0013_google_ads_ga4_property.sql`: nueva columna
+  `clients.google_ads_ga4_property_id`, aditiva (`ga4_property_id` sigue
+  existiendo tal cual, para SEO/AEO). Aplicada contra producción vía la
+  Management API de Supabase, igual que las migraciones anteriores.
+- `IntegracionesPanel.tsx` separa el campo en dos: "GA4 Property ID
+  (sitio principal)" y "GA4 Property ID (landing de Google Ads)", con una
+  nota explicando por qué son distintos. `guardarConfigApis`
+  (`lib/data/cliente-actions.ts`) persiste ambos por separado.
+- `seccionGoogleAds` (`lib/data/resultados.ts`) y la rama `google_ads` de
+  `prellenarAdsDesdeApis` (`lib/informes/prellenado-apis.ts`) ahora leen
+  `google_ads_ga4_property_id` — **sin fallback** al GA4 del sitio: si no
+  está configurado, la sección/el pre-llenado de Google Ads muestra
+  "configura el GA4 de la landing" en vez de seguir mostrando datos del
+  GA4 equivocado. El importador de JSON del dashboard anterior
+  (`integraciones-actions.ts`) no se tocó — el export del dashboard viejo
+  nunca tuvo este campo separado, así que no hay nada que mapear todavía.
+- **Cambio de comportamiento en clientes reales existentes:** en
+  producción, Tecny Stand y Gonfernic tienen Google Ads activo y
+  `ga4_property_id` configurado (el del sitio) pero no
+  `google_ads_ga4_property_id` — con este cambio, su sección Google Ads en
+  Resultados y el pre-llenado del informe de Google Ads van a mostrar
+  "configura el GA4 de la landing" hasta que se complete ese campo con la
+  propiedad GA4 real de cada landing, desde la ficha de cada cliente.
+- Verificado de punta a punta contra Postgres local + `next dev` real: con
+  un cliente de prueba (Provetec Mining, mismo shape SEO+Google Ads) que
+  tenía el GA4 del sitio configurado pero no el de la landing, la sección
+  Google Ads mostró correctamente "Configura el GA4 Property ID de la
+  landing de Google Ads en la ficha del cliente" (no reusó el GA4 del
+  sitio); tras completar el campo nuevo desde el panel de integraciones y
+  confirmar el guardado en la base, la misma sección pasó a intentar la
+  llamada real a la API (degradando a "no se pudo obtener datos", esperado
+  sin credenciales OAuth de Google en este entorno — mismo comportamiento
+  que la sección AEO con la propiedad del sitio). Typecheck, lint y los 17
+  tests de vitest en verde. Datos de prueba limpiados de la base al
+  terminar.
+
 **Próximo paso:** con Fase 3 funcionalmente completa (informes + datos +
 Resultados), sigue Fase 4 — repositorio de prompts con versionado y
 variables, flujo de aprobaciones (§3.11), offboarding (§3.12),

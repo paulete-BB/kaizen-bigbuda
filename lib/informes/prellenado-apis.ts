@@ -7,6 +7,8 @@ import type { InformeMarketingContenido, InformeSeoContenido } from "@/lib/infor
 export interface ConfigApisCliente {
   gscProperty: string | null;
   ga4PropertyId: string | null;
+  /** Propiedad GA4 de la landing de Google Ads, distinta de `ga4PropertyId` (sitio principal) — las campañas no apuntan al sitio del cliente. */
+  googleAdsGa4PropertyId: string | null;
   metaAdAccountId: string | null;
   metaTokenKey: string | null;
 }
@@ -148,11 +150,11 @@ export async function prellenarAdsDesdeApis(
     }
   }
 
-  if (servicioTipo === "google_ads" && config.ga4PropertyId) {
+  if (servicioTipo === "google_ads" && config.googleAdsGa4PropertyId) {
     try {
       const [{ datos: actual }, { datos: anterior }] = await Promise.all([
-        conCacheDeSnapshot({ clientId, serviceId, fuente: "ga4", periodoInicio: inicio, periodoFin: fin, fetchLive: () => obtenerTraficoPagadoGA4(config.ga4PropertyId!, inicio, fin) }),
-        conCacheDeSnapshot({ clientId, serviceId, fuente: "ga4", periodoInicio: inicioAnt, periodoFin: finAnt, fetchLive: () => obtenerTraficoPagadoGA4(config.ga4PropertyId!, inicioAnt, finAnt) }),
+        conCacheDeSnapshot({ clientId, serviceId, fuente: "ga4", periodoInicio: inicio, periodoFin: fin, fetchLive: () => obtenerTraficoPagadoGA4(config.googleAdsGa4PropertyId!, inicio, fin) }),
+        conCacheDeSnapshot({ clientId, serviceId, fuente: "ga4", periodoInicio: inicioAnt, periodoFin: finAnt, fetchLive: () => obtenerTraficoPagadoGA4(config.googleAdsGa4PropertyId!, inicioAnt, finAnt) }),
       ]);
       const d = (a: number, b: number) => {
         const { texto, direccion } = calcularDelta(a, b);

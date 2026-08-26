@@ -35,11 +35,18 @@ function esFormatoAds(tipo: ServicioTipo) {
 /** Config de GSC/GA4/Meta del cliente (§3.14) usada para pre-llenar el informe con datos en vivo. */
 async function obtenerConfigApisCliente(clientId: string): Promise<ConfigApisCliente> {
   const [cliente] = await sql<
-    { gsc_property: string | null; ga4_property_id: string | null; meta_ad_account_id: string | null; meta_token_key: string | null }[]
-  >`select gsc_property, ga4_property_id, meta_ad_account_id, meta_token_key from clients where id = ${clientId}`;
+    {
+      gsc_property: string | null;
+      ga4_property_id: string | null;
+      google_ads_ga4_property_id: string | null;
+      meta_ad_account_id: string | null;
+      meta_token_key: string | null;
+    }[]
+  >`select gsc_property, ga4_property_id, google_ads_ga4_property_id, meta_ad_account_id, meta_token_key from clients where id = ${clientId}`;
   return {
     gscProperty: cliente?.gsc_property ?? null,
     ga4PropertyId: cliente?.ga4_property_id ?? null,
+    googleAdsGa4PropertyId: cliente?.google_ads_ga4_property_id ?? null,
     metaAdAccountId: cliente?.meta_ad_account_id ?? null,
     metaTokenKey: cliente?.meta_token_key ?? null,
   };

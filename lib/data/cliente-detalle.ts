@@ -53,6 +53,8 @@ export interface TareaDetalle {
 export interface ConfigApis {
   gscProperty: string | null;
   ga4PropertyId: string | null;
+  /** Propiedad GA4 de la landing de Google Ads — distinta de `ga4PropertyId` (sitio principal, usado por SEO/AEO) porque las campañas de Google Ads no apuntan al sitio del cliente sino a una landing con su propio GA4. */
+  googleAdsGa4PropertyId: string | null;
   metaAdAccountId: string | null;
   fbPageId: string | null;
   igAccountId: string | null;
@@ -93,13 +95,14 @@ export async function getClienteDetalle(id: string): Promise<ClienteDetalleCompl
       contacto_telefono: string | null;
       gsc_property: string | null;
       ga4_property_id: string | null;
+      google_ads_ga4_property_id: string | null;
       meta_ad_account_id: string | null;
       fb_page_id: string | null;
       ig_account_id: string | null;
       meta_token_key: string | null;
     }[]
   >`select id, nombre, empresa, industria, sitio_web, estado, contacto_nombre, contacto_email, contacto_telefono,
-       gsc_property, ga4_property_id, meta_ad_account_id, fb_page_id, ig_account_id, meta_token_key
+       gsc_property, ga4_property_id, google_ads_ga4_property_id, meta_ad_account_id, fb_page_id, ig_account_id, meta_token_key
      from clients where id = ${id}`;
   if (!cliente) return null;
 
@@ -169,6 +172,7 @@ export async function getClienteDetalle(id: string): Promise<ClienteDetalleCompl
     configApis: {
       gscProperty: cliente.gsc_property,
       ga4PropertyId: cliente.ga4_property_id,
+      googleAdsGa4PropertyId: cliente.google_ads_ga4_property_id,
       metaAdAccountId: cliente.meta_ad_account_id,
       fbPageId: cliente.fb_page_id,
       igAccountId: cliente.ig_account_id,

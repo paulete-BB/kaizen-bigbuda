@@ -569,15 +569,21 @@ async function seccionMeta(
 async function seccionGoogleAds(
   clientId: string,
   serviceId: string | null,
-  ga4PropertyId: string | null,
+  googleAdsGa4PropertyId: string | null,
   desde: string,
   hasta: string,
   desdeAnt: string,
   hastaAnt: string,
   hitos: Hito[],
 ): Promise<SeccionGoogleAds> {
+  // No usa `ga4_property_id` (sitio principal, compartido con SEO/AEO):
+  // las campañas de Google Ads apuntan a una landing page propia, con su
+  // propia propiedad GA4 — reusar la del sitio daba números que no
+  // coincidían con Google Ads directo (confirmado con datos reales de
+  // Gonfernic). `googleAdsGa4PropertyId` es ese campo dedicado.
+  const ga4PropertyId = googleAdsGa4PropertyId;
   if (!ga4PropertyId) {
-    return { disponible: false, motivo: "Configura el GA4 Property ID en la ficha del cliente.", insight: null, kpis: [], serie: [], hitos: [], campanas: [] };
+    return { disponible: false, motivo: "Configura el GA4 Property ID de la landing de Google Ads en la ficha del cliente.", insight: null, kpis: [], serie: [], hitos: [], campanas: [] };
   }
   try {
     const [{ datos: actual, deCache }, { datos: anterior }, serieDiaria, campanas] = await Promise.all([
@@ -625,8 +631,15 @@ export async function obtenerResultadosCliente(clientId: string, rango: RangoRes
 
   const [[cliente], servicios, hitosPorTipo] = await Promise.all([
     sql<
-      { nombre: string; gsc_property: string | null; ga4_property_id: string | null; meta_ad_account_id: string | null; meta_token_key: string | null }[]
-    >`select nombre, gsc_property, ga4_property_id, meta_ad_account_id, meta_token_key from clients where id = ${clientId}`,
+      {
+        nombre: string;
+        gsc_property: string | null;
+        ga4_property_id: string | null;
+        google_ads_ga4_property_id: string | null;
+        meta_ad_account_id: string | null;
+        meta_token_key: string | null;
+      }[]
+    >`select nombre, gsc_property, ga4_property_id, google_ads_ga4_property_id, meta_ad_account_id, meta_token_key from clients where id = ${clientId}`,
     sql<{ id: string; tipo: ServicioTipo }[]>`select id, tipo from services where client_id = ${clientId} and not pausado`,
     obtenerTodosLosHitos(clientId, actual.desde, actual.hasta),
   ]);
@@ -661,7 +674,7 @@ export async function obtenerResultadosCliente(clientId: string, rango: RangoRes
       ? seccionMeta(clientId, servicioIdPorTipo.get("meta_ads")!, cliente.meta_ad_account_id, cliente.meta_token_key, actual.desde, actual.hasta, anterior.desde, anterior.hasta, hitosPorTipo.meta_ads)
       : ({ disponible: false, motivo: "Este cliente no tiene Meta Ads contratado.", insight: null, kpis: [], serie: [], hitos: [], campanas: [] } as SeccionMeta),
     servicioIdPorTipo.has("google_ads")
-      ? seccionGoogleAds(clientId, servicioIdPorTipo.get("google_ads")!, cliente.ga4_property_id, actual.desde, actual.hasta, anterior.desde, anterior.hasta, hitosPorTipo.google_ads)
+      ? seccionGoogleAds(clientId, servicioIdPorTipo.get("google_ads")!, cliente.google_ads_ga4_property_id, actual.desde, actual.hasta, anterior.desde, anterior.hasta, hitosPorTipo.google_ads)
       : ({ disponible: false, motivo: "Este cliente no tiene Google Ads contratado.", insight: null, kpis: [], serie: [], hitos: [], campanas: [] } as SeccionGoogleAds),
   ]);
 

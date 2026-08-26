@@ -10,6 +10,7 @@ export function IntegracionesPanel({ clientId, configApis }: { clientId: string;
   const [draft, setDraft] = useState({
     gscProperty: configApis.gscProperty ?? "",
     ga4PropertyId: configApis.ga4PropertyId ?? "",
+    googleAdsGa4PropertyId: configApis.googleAdsGa4PropertyId ?? "",
     metaAdAccountId: configApis.metaAdAccountId ?? "",
     fbPageId: configApis.fbPageId ?? "",
     igAccountId: configApis.igAccountId ?? "",
@@ -58,7 +59,13 @@ export function IntegracionesPanel({ clientId, configApis }: { clientId: string;
         </p>
         <div className="grid grid-cols-2 gap-3">
           <Campo label="Propiedad GSC (sc-domain: o URL)" value={draft.gscProperty} onChange={(v) => set("gscProperty", v)} placeholder="sc-domain:ejemplo.cl" />
-          <Campo label="GA4 Property ID" value={draft.ga4PropertyId} onChange={(v) => set("ga4PropertyId", v)} placeholder="123456789" />
+          <Campo label="GA4 Property ID (sitio principal)" value={draft.ga4PropertyId} onChange={(v) => set("ga4PropertyId", v)} placeholder="123456789" />
+          <Campo
+            label="GA4 Property ID (landing de Google Ads)"
+            value={draft.googleAdsGa4PropertyId}
+            onChange={(v) => set("googleAdsGa4PropertyId", v)}
+            placeholder="Solo si las campañas apuntan a una landing con GA4 propio"
+          />
           <Campo label="Meta Ad Account ID" value={draft.metaAdAccountId} onChange={(v) => set("metaAdAccountId", v)} placeholder="act_123456789 o 123456789" />
           <Campo label="Facebook Page ID" value={draft.fbPageId} onChange={(v) => set("fbPageId", v)} placeholder="" />
           <Campo label="Instagram Account ID" value={draft.igAccountId} onChange={(v) => set("igAccountId", v)} placeholder="" />
@@ -69,6 +76,11 @@ export function IntegracionesPanel({ clientId, configApis }: { clientId: string;
             placeholder="Solo si este cliente usa su propio System User"
           />
         </div>
+        <p className="text-[11px] text-muted-2">
+          La sección Google Ads (informes y Resultados) usa la propiedad de la landing si está configurada; si no, no
+          muestra datos de Google Ads — las campañas de Google Ads no apuntan al sitio principal, así que reusar esa
+          propiedad daba números que no coincidían con Google Ads directo.
+        </p>
         <div className="flex items-center gap-3">
           <button onClick={guardar} disabled={pending} className="btn-primary self-start rounded-lg border-none bg-accent px-4 py-2 text-[12.5px] font-semibold text-white disabled:opacity-60">
             {pending ? "Guardando…" : "Guardar"}
