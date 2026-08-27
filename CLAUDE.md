@@ -1176,6 +1176,28 @@ original) no se leían en absoluto.
   el informe correctamente. Typecheck, lint y los 17 tests de vitest en
   verde. Datos de prueba limpiados de la base al terminar.
 
+**Bug real reportado por el usuario — "Registrar optimización" tiraba 404
+en Tecny Stand:** el botón del encabezado de la ficha de cliente
+(`ClienteView.tsx`) apuntaba a `/clientes/{id}/registro-seo` — una ruta
+que **nunca existió**. Rastreado hasta el primer import del diseño de
+Claude Design (3 de agosto): quedó como link de maqueta sin conectar a
+una página real, y como toda verificación anterior entraba al flujo de
+registro por el calendario (`/optimizaciones/{id}/registro`, con el id
+correcto) o directo por id desde la base, nunca se probó este botón
+específico — rompía para **todos los clientes**, no solo Tecny Stand, que
+además no tiene servicio SEO contratado (ahí el botón nunca debería
+aparecer). Corregido: `getClienteDetalle` (`lib/data/cliente-detalle.ts`)
+ahora trae `proximaOptimizacionSeoId` (la próxima optimización SEO
+`programada` de ese cliente, si tiene una) y el botón usa ese id para
+armar el link real (`/optimizaciones/{id}/registro`) — si no hay ninguna
+pendiente (cliente sin SEO contratado, o con SEO pero nada programado
+todavía por onboarding sin completar), el botón no se muestra en vez de
+llevar a un 404. Verificado con Playwright contra Postgres local: Provetec
+Mining (con una optimización SEO pendiente) muestra el botón, el link
+apunta al id real, y el clic llega a la página de registro real, no a un
+404; Tecny Stand (solo Ads, sin SEO contratado) no muestra el botón.
+Typecheck, lint y los 17 tests de vitest en verde.
+
 **Próximo paso:** con Fase 3 cerrada y la generación de informes
 completamente automática, sigue el resto de Fase 4 — repositorio de
 prompts con versionado y variables, flujo de aprobaciones (§3.11),

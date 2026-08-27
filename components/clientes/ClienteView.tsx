@@ -64,15 +64,17 @@ export function ClienteView({
             </svg>
             Informes
           </Link>
-          <Link
-            href={`/clientes/${cliente.id}/registro-seo`}
-            className="btn-primary flex items-center gap-2 rounded-[9px] bg-accent px-[15px] py-2.5 text-[13px] font-semibold text-white"
-          >
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-              <path d="M12 5v14M5 12h14" />
-            </svg>
-            Registrar optimización
-          </Link>
+          {cliente.proximaOptimizacionSeoId && (
+            <Link
+              href={`/optimizaciones/${cliente.proximaOptimizacionSeoId}/registro`}
+              className="btn-primary flex items-center gap-2 rounded-[9px] bg-accent px-[15px] py-2.5 text-[13px] font-semibold text-white"
+            >
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <path d="M12 5v14M5 12h14" />
+              </svg>
+              Registrar optimización
+            </Link>
+          )}
         </header>
 
         <div className="flex w-full max-w-[1360px] flex-col gap-5 px-[26px] pb-10 pt-[22px]">
