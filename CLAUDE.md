@@ -1119,6 +1119,63 @@ Playwright porque el cambio reutiliza exactamente el mismo mecanismo
 end-to-end en la ronda anterior, y este entorno sigue sin
 `ANTHROPIC_API_KEY` real para probar la llamada en vivo de todas formas.
 
+**La IA ahora lee toda la bitácora real y las reuniones con el cliente,
+no solo los resúmenes de optimización** — pedido explícito del usuario
+tras confirmar que `ANTHROPIC_API_KEY` ya estaba activa en producción:
+"crea un informe y ve cómo puedes automatizarlo completo, pensando que en
+la bitácora estará anotado todo lo que hemos hecho y también están
+adjuntas las reuniones que hemos tenido con el cliente". Hasta esta
+ronda, el contexto que recibía la IA (`obtenerBitacoraTexto`) solo leía
+`optimizations.resumen/hallazgos/proximos_pasos` del servicio — se perdía
+todo lo demás que ya vive en la bitácora real: informes enviados,
+descuentos terminados, hitos de onboarding, avances del bloque de
+miércoles (todo lo que ya escribe `log_entries`, el espejo interno de
+§3.3), y las reuniones con notas (`meetings`, §4.2 fuera del brief
+original) no se leían en absoluto.
+
+- `obtenerBitacoraCompleta` (`lib/informes/generacion-ia.ts`) reemplaza a
+  `obtenerBitacoraTexto`: trae `log_entries` completo del cliente en el
+  período (no filtrado por servicio — ni `log_entries` ni `meetings` se
+  registran por servicio en el modelo de datos) más las reuniones ya
+  `realizada`s con `notas`, como dos bloques separados en el prompt
+  ("Bitácora del período" y "Reuniones con el cliente en el período") —
+  separados a propósito, para que la IA pueda distinguir trabajo operativo
+  de conversaciones con el cliente. `generarNarrativaSeo`/
+  `generarNarrativaMarketing` dejan de recibir `serviceId` (ya no se usa
+  para nada dentro de esta función) — mismo motivo, alcance client-wide.
+- Regla nueva en el prompt de sistema: las notas de reuniones son
+  información interna para dar contexto (qué pidió el cliente, qué se
+  acordó), no texto para copiar tal cual ni para mencionar explícitamente
+  que hubo una reunión — evita que el informe termine sonando a "leímos
+  el acta de la llamada" en vez de un informe de resultados.
+- **Intentando "crear un informe" real en producción para probarlo de
+  punta a punta:** con el token de Vercel que compartió el usuario para
+  esta ronda se confirmó que `ANTHROPIC_API_KEY` existe, apunta a
+  `production`, y que el último deployment (el de esta misma rama) se
+  construyó *después* de que se agregó la variable — no hace falta
+  redeploy. Pero generar un informe real requiere invocar la acción real
+  del servidor (con sesión de usuario) o el cron real (con
+  `CRON_SECRET`) — ninguno de los dos accesibles con el token de Vercel
+  (que no puede desencriptar env vars "sensitive": se probó
+  `?decrypt=true` contra `ANTHROPIC_API_KEY` y devolvió vacío, 200 pero
+  sin valor). Además el cron de Ads no habría creado nada de todas formas
+  hoy (26 de agosto, fuera de la primera semana del mes, el gate
+  `DIAS_PRIMERA_SEMANA` lo bloquea a propósito). Queda pendiente que el
+  usuario dispare la creación real (un clic en "Crear borrador", o
+  registrar una optimización SEO real) para poder confirmar el resultado
+  contra producción.
+- Verificado localmente lo que sí se pudo probar sin la API real de
+  Anthropic: la consulta SQL de `obtenerBitacoraCompleta` corrida directo
+  contra Postgres local con datos de prueba (una entrada de bitácora +
+  una reunión con notas para Provetec Mining, agosto 2026) devolvió las
+  filas esperadas con el cast `creado_en::date` correcto (mismo cuidado
+  que ya documentado para el cron de reintento, §4.3); el formato final
+  del texto se confirmó por cálculo directo. `crearInformeInterno` se
+  volvió a probar de punta a punta contra Postgres local + `next dev`
+  real con las nuevas firmas de función (sin `serviceId`) — sigue creando
+  el informe correctamente. Typecheck, lint y los 17 tests de vitest en
+  verde. Datos de prueba limpiados de la base al terminar.
+
 **Próximo paso:** con Fase 3 cerrada y la generación de informes
 completamente automática, sigue el resto de Fase 4 — repositorio de
 prompts con versionado y variables, flujo de aprobaciones (§3.11),

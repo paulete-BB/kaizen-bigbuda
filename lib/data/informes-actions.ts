@@ -172,14 +172,14 @@ export async function crearInformeInterno(
     // de negocio y propone "¿Qué proyectamos?" + el insight — siempre sobre lo
     // ya pre-llenado arriba, nunca en vez de. Degrada a no tocar nada si falla
     // o si ANTHROPIC_API_KEY no está configurada.
-    const narrativa = await generarNarrativaMarketing(clientId, serviceId, periodoMes, periodoAnio, fmtMesAnio(periodoMes, periodoAnio), TIPO_LABEL[tipo], marketing);
+    const narrativa = await generarNarrativaMarketing(clientId, periodoMes, periodoAnio, fmtMesAnio(periodoMes, periodoAnio), TIPO_LABEL[tipo], marketing);
     contenido = { ...marketing, ...narrativa };
   } else if (!esFormatoAds(tipo) && serviceId) {
     const config = await obtenerConfigApisCliente(clientId);
     const seo = contenidoSeoVacio();
     const prellenado = await prellenarSeoDesdeApis(clientId, serviceId, config, periodoMes, periodoAnio);
     const conNumeros = { ...seo, ...prellenado };
-    const narrativa = await generarNarrativaSeo(clientId, serviceId, periodoMes, periodoAnio, fmtMesAnio(periodoMes, periodoAnio), conNumeros);
+    const narrativa = await generarNarrativaSeo(clientId, periodoMes, periodoAnio, fmtMesAnio(periodoMes, periodoAnio), conNumeros);
     contenido = { ...conNumeros, ...narrativa };
   } else {
     contenido = esFormatoAds(tipo) ? contenidoMarketingVacio() : contenidoSeoVacio();

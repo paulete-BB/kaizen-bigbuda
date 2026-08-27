@@ -22,6 +22,15 @@ import type { InformeMarketingContenido, InformeSeoContenido } from "@/lib/infor
  * lado; pedirle a la IA que las complete de todas formas sería fabricar
  * datos concretos para un informe de cliente. Quedan en blanco, igual que
  * antes, para que el equipo las complete a mano si tiene el dato real.
+ *
+ * Grounding: `obtenerBitacoraCompleta` trae toda la bitácora real del
+ * cliente en el período (`log_entries` — optimizaciones, informes
+ * enviados, descuentos, onboarding, avances del bloque de miércoles, no
+ * solo `optimizations.resumen`) más las reuniones con el cliente ya
+ * realizadas y sus notas (`meetings`) — pedido explícito del usuario:
+ * "en la bitácora estará anotado todo lo que hemos hecho y también están
+ * adjuntas las reuniones". Client-wide, no por servicio: ni `log_entries`
+ * ni `meetings` se registran por servicio en el modelo de datos.
  */
 
 const MODEL = "claude-opus-5";
@@ -39,24 +48,46 @@ Reglas:
 - Tono de negocio: conectar el trabajo técnico con el resultado para el cliente, no usar jerga sin explicarla.
 - Español neutro (Chile), sin voseo — mismo registro que el resto de la plataforma.
 - Nunca prometer resultados garantizados en las proyecciones — usar lenguaje prudente ("se espera", "la tendencia sugiere").
+- Las notas de reuniones con el cliente son información interna del equipo, no texto para copiar tal cual — usarlas como contexto (qué pidió el cliente, qué se acordó) para que el enfoque y las decisiones del informe tengan sentido, nunca citarlas literalmente ni mencionar que hubo una reunión si el cliente no lo espera ver reflejado así.
 - Responder únicamente completando el schema pedido.`;
 
-async function obtenerBitacoraTexto(serviceId: string, mes: number, anio: number): Promise<string> {
-  const rows = await sql<{ fecha_realizada: string; resumen: string | null; hallazgos: string | null; proximos_pasos: string | null }[]>`
-    select fecha_realizada, resumen, hallazgos, proximos_pasos from optimizations
-    where service_id = ${serviceId} and resumen is not null and resumen != ''
-      and extract(year from fecha_realizada) = ${anio} and extract(month from fecha_realizada) = ${mes}
-    order by fecha_realizada
-  `;
-  if (rows.length === 0) return "";
-  return rows
-    .map((r) => {
-      const partes = [`Resumen: ${r.resumen}`];
-      if (r.hallazgos) partes.push(`Hallazgos: ${r.hallazgos}`);
-      if (r.proximos_pasos) partes.push(`Próximos pasos: ${r.proximos_pasos}`);
-      return `- ${r.fecha_realizada} — ${partes.join(" · ")}`;
-    })
-    .join("\n");
+interface BitacoraCompleta {
+  entradas: string;
+  reuniones: string;
+}
+
+/**
+ * Trae toda la bitácora del cliente en el período — no solo los resúmenes
+ * de `optimizations` (como hacía antes), sino `log_entries` completo (el
+ * espejo interno de §3.3: optimizaciones, informes enviados, descuentos
+ * terminados, hitos de onboarding, avances del bloque de miércoles — todo
+ * lo que ya escribe el equipo en la bitácora real) más las reuniones con
+ * el cliente ya realizadas (§4.2 `meetings`, fuera del brief original)
+ * con sus notas — pedido explícito del usuario: "en la bitácora estará
+ * anotado todo lo que hemos hecho y también están adjuntas las
+ * reuniones". Client-wide, no por servicio — ni `log_entries` ni
+ * `meetings` se registran por servicio en el modelo de datos, y el
+ * prompt ya le dice a la IA para qué servicio es este informe.
+ */
+async function obtenerBitacoraCompleta(clientId: string, mes: number, anio: number): Promise<BitacoraCompleta> {
+  const [entradasRows, reunionesRows] = await Promise.all([
+    sql<{ fecha: string; titulo: string; tipo: string; contenido: string }[]>`
+      select creado_en::date as fecha, titulo, tipo, contenido from log_entries
+      where client_id = ${clientId}
+        and extract(year from creado_en) = ${anio} and extract(month from creado_en) = ${mes}
+      order by creado_en
+    `,
+    sql<{ fecha: string; titulo: string; notas: string }[]>`
+      select fecha, titulo, notas from meetings
+      where client_id = ${clientId} and estado = 'realizada' and notas is not null and notas != ''
+        and extract(year from fecha) = ${anio} and extract(month from fecha) = ${mes}
+      order by fecha
+    `,
+  ]);
+  return {
+    entradas: entradasRows.map((r) => `- ${r.fecha} [${r.tipo || "Registro"}] ${r.titulo}: ${r.contenido}`).join("\n"),
+    reuniones: reunionesRows.map((r) => `- ${r.fecha} — ${r.titulo}: ${r.notas}`).join("\n"),
+  };
 }
 
 interface ContextoCliente {
@@ -130,7 +161,6 @@ const NarrativaMarketingSchema = z.object({
 /** Genera las secciones narrativas del informe SEO-AEO-GEO. Nunca lanza — degrada a `{}` si falla o si no hay API key configurada. */
 export async function generarNarrativaSeo(
   clientId: string,
-  serviceId: string,
   periodoMes: number,
   periodoAnio: number,
   periodoLabel: string,
@@ -138,7 +168,7 @@ export async function generarNarrativaSeo(
 ): Promise<Partial<InformeSeoContenido>> {
   if (!clienteConfigurado()) return {};
   try {
-    const [contexto, bitacora] = await Promise.all([obtenerContextoCliente(clientId), obtenerBitacoraTexto(serviceId, periodoMes, periodoAnio)]);
+    const [contexto, bitacora] = await Promise.all([obtenerContextoCliente(clientId), obtenerBitacoraCompleta(clientId, periodoMes, periodoAnio)]);
     if (!contexto) return {};
 
     // `descripcion` ya trae la comparación vs. mes anterior (prellenarSeoDesdeApis) —
@@ -158,8 +188,11 @@ Datos reales del período (Search Console / GA4):
 ${metricas}
 Tráfico desde IA: ${traficoIA}
 
-Bitácora de optimizaciones del período:
-${bitacora || "sin registros de optimización para este período"}
+Bitácora del período (todo lo que se hizo y registró):
+${bitacora.entradas || "sin registros de bitácora para este período"}
+
+Reuniones con el cliente en el período:
+${bitacora.reuniones || "sin reuniones registradas para este período"}
 
 Completar el contenido narrativo del informe (bajada de portada, resumen ejecutivo, enfoque, qué se dejó funcionando, detalle de acciones, impacto proyectado y hoja de ruta) según el schema, usando solo la información entregada arriba.`;
 
@@ -197,7 +230,6 @@ Completar el contenido narrativo del informe (bajada de portada, resumen ejecuti
 /** Genera las secciones narrativas del informe de Ads (Meta/Google). Nunca lanza — degrada a `{}` si falla o si no hay API key configurada. */
 export async function generarNarrativaMarketing(
   clientId: string,
-  serviceId: string,
   periodoMes: number,
   periodoAnio: number,
   periodoLabel: string,
@@ -206,8 +238,8 @@ export async function generarNarrativaMarketing(
 ): Promise<Partial<InformeMarketingContenido>> {
   if (!clienteConfigurado()) return {};
   try {
-    const [contexto, bitacora] = await Promise.all([obtenerContextoCliente(clientId), obtenerBitacoraTexto(serviceId, periodoMes, periodoAnio)]);
-    if (!contexto || !bitacora) return {};
+    const [contexto, bitacora] = await Promise.all([obtenerContextoCliente(clientId), obtenerBitacoraCompleta(clientId, periodoMes, periodoAnio)]);
+    if (!contexto || (!bitacora.entradas && !bitacora.reuniones)) return {};
 
     const cifras = prellenado.comoVamosCifras?.metricas.length
       ? prellenado.comoVamosCifras.metricas.map((m) => `${m.etiqueta}: ${m.valor} (${m.deltaDireccion === "up" ? "+" : "-"}${m.deltaTexto} vs. mes anterior)`).join("; ")
@@ -220,8 +252,11 @@ Período del informe: ${periodoLabel}
 Cifras reales del período:
 ${cifras}
 
-Bitácora de optimizaciones del período (resúmenes tal como los escribió el equipo):
-${bitacora}
+Bitácora del período (todo lo que se hizo y registró):
+${bitacora.entradas || "sin registros de bitácora para este período"}
+
+Reuniones con el cliente en el período:
+${bitacora.reuniones || "sin reuniones registradas para este período"}
 
 Completar la bajada de portada, "¿Qué mejoramos?" (reescribir la bitácora en lenguaje de negocio) y "¿Qué proyectamos?" (qué esperar + el insight de negocio) según el schema, usando solo la información entregada arriba.`;
 
