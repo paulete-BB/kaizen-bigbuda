@@ -48,7 +48,7 @@ export async function getOnboardingCliente(clientId: string): Promise<Onboarding
   };
 }
 
-async function instanciarOnboarding(clientId: string) {
+export async function instanciarOnboarding(clientId: string) {
   const serviciosActivos = await sql<{ tipo: string }[]>`
     select distinct tipo from services where client_id = ${clientId} and not pausado
   `;

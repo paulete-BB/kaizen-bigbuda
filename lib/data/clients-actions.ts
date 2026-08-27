@@ -5,6 +5,7 @@ import { redirect } from "next/navigation";
 import { sql } from "@/lib/db";
 import { requireUser } from "@/lib/auth/server";
 import { addMeses } from "@/lib/dates";
+import { instanciarOnboarding } from "@/lib/data/onboarding";
 
 const TIPOS_SERVICIO = ["seo_aeo_geo", "meta_ads", "google_ads"] as const;
 
@@ -14,12 +15,17 @@ export interface CrearClienteResultado {
 }
 
 /**
- * Alta de cliente (§3.1): crea el cliente y sus servicios iniciales. No
- * programa ninguna optimización todavía — eso lo dispara
+ * Alta de cliente (§3.1): crea el cliente, sus servicios iniciales y el
+ * checklist de onboarding de cada uno — pedido explícito del usuario:
+ * "todos los clientes al darles de alta se debe crear el checklist de
+ * onboarding automáticamente". Antes se instanciaba recién al abrir la
+ * ficha por primera vez; ahora ya existe y es visible desde el momento
+ * del alta, sin depender de que alguien entre a la ficha. No programa
+ * ninguna optimización todavía — eso sigue disparándolo
  * `activarPrimeraOptimizacionSiCorresponde` (lib/data/onboarding-actions.ts)
- * una vez que los ítems bloqueantes del onboarding estén completos. El
- * checklist de onboarding se instancia solo al abrir la ficha del cliente
- * por primera vez (mismo patrón perezoso que ya usa getOnboardingCliente).
+ * una vez que los ítems bloqueantes del onboarding estén completos (o un
+ * admin lo fuerce): sigue existiendo esa traba a propósito, para no
+ * agendar trabajo real antes de tener accesos/contrato listos (§3.8).
  */
 export async function crearCliente(formData: FormData): Promise<CrearClienteResultado> {
   await requireUser();
@@ -62,6 +68,10 @@ export async function crearCliente(formData: FormData): Promise<CrearClienteResu
       values (${cliente.id}, ${tipo}, ${fechaInicio}, ${periodoMeses}, ${fechaTermino}, ${presupuesto}, ${moneda}, ${responsableId})
     `;
   }
+
+  // Necesita las filas de `services` ya insertadas arriba: instanciarOnboarding
+  // decide qué plantillas aplican leyendo los servicios activos del cliente.
+  await instanciarOnboarding(cliente.id);
 
   revalidatePath("/clientes");
   redirect(`/clientes/${cliente.id}`);

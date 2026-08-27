@@ -1198,6 +1198,44 @@ apunta al id real, y el clic llega a la página de registro real, no a un
 404; Tecny Stand (solo Ads, sin SEO contratado) no muestra el botón.
 Typecheck, lint y los 17 tests de vitest en verde.
 
+**El checklist de onboarding se crea al dar de alta, no al abrir la
+ficha** — pedido explícito del usuario: "todos los clientes al darles de
+alta se debe crear el checklist de onboarding automáticamente y las
+listas de optimización, después vamos a refinar el checklist". Se
+consultó el alcance antes de tocar nada, porque programar la primera
+optimización sin esperar el onboarding revierte una protección explícita
+del brief (§3.8: "la primera optimización no se programa hasta que los
+ítems bloqueantes estén completos") — el usuario confirmó que solo quiere
+el checklist inmediato; la traba sobre la primera optimización se
+mantiene tal cual.
+
+- `instanciarOnboarding` (`lib/data/onboarding.ts`) ahora se exporta y se
+  llama desde `crearCliente` (`lib/data/clients-actions.ts`) justo
+  después de insertar los servicios del cliente nuevo (la función decide
+  qué plantillas aplican leyendo esos servicios, por eso el orden
+  importa). Antes solo se llamaba perezosamente desde
+  `getOnboardingCliente`, al abrir la ficha por primera vez — se mantiene
+  como fallback idempotente (ya lo era: revisa `checklist_instances`
+  existentes antes de insertar) para clientes viejos que nunca abrieron
+  su ficha, y para cuando se agrega un servicio nuevo a un cliente
+  existente.
+- No cambia nada más: el checklist instanciado queda igual de "en
+  progreso" con sus ítems en `pendiente`/`bloqueante` según la plantilla;
+  `activarPrimeraOptimizacionSiCorresponde` sigue siendo el único que
+  programa la primera optimización, y sigue exigiendo que los ítems
+  bloqueantes estén completos (o que un admin lo fuerce).
+- Verificado con Playwright contra Postgres local: se dio de alta un
+  cliente de prueba nuevo con servicio SEO-AEO-GEO desde el formulario
+  real ("Nuevo cliente"), y sin abrir la ficha después del alta (la
+  redirección automática a la ficha no cuenta para esto — la instancia ya
+  quedó creada dentro de la propia acción `crearCliente`, antes del
+  `redirect()`, por el orden determinístico de ejecución) se confirmó
+  directo en la base: 2 `checklist_instances` (`Onboarding común` +
+  `Onboarding SEO · AEO · GEO`), ambas `en_progreso`, con sus ítems en
+  `pendiente` — nada programado en `optimizations` todavía, como
+  corresponde. Typecheck, lint y los 17 tests de vitest en verde. Cliente
+  de prueba borrado (cascada a servicios/checklist) al terminar.
+
 **Próximo paso:** con Fase 3 cerrada y la generación de informes
 completamente automática, sigue el resto de Fase 4 — repositorio de
 prompts con versionado y variables, flujo de aprobaciones (§3.11),
