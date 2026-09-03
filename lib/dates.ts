@@ -5,6 +5,16 @@ const MESES = [
   "jul", "ago", "sep", "oct", "nov", "dic",
 ];
 
+const MESES_LARGO = [
+  "enero", "febrero", "marzo", "abril", "mayo", "junio",
+  "julio", "agosto", "septiembre", "octubre", "noviembre", "diciembre",
+];
+
+/** "julio" — nombre completo del mes en minúscula, para armar frases ("informe de julio 2026"). */
+export function mesLargo(mes: number): string {
+  return MESES_LARGO[mes - 1] ?? "";
+}
+
 export function hoySantiago(): Date {
   const parts = new Intl.DateTimeFormat("en-CA", {
     timeZone: "America/Santiago",

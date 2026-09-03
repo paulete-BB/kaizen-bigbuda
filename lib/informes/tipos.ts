@@ -12,6 +12,8 @@
  * cambia entre informes") y quedan hardcodeadas en el componente de slide.
  */
 
+import { mesLargo } from "@/lib/dates";
+
 export interface MetricaSimple {
   valor: string;
   etiqueta: string;
@@ -144,13 +146,8 @@ export function contenidoMarketingVacio(): InformeMarketingContenido {
   };
 }
 
-const MESES_LARGO = [
-  "enero", "febrero", "marzo", "abril", "mayo", "junio",
-  "julio", "agosto", "septiembre", "octubre", "noviembre", "diciembre",
-];
-
 /** "Julio 2026" — usado en la portada y el pie de la plantilla de informes. */
 export function fmtMesAnio(mes: number, anio: number): string {
-  const nombre = MESES_LARGO[mes - 1] ?? "";
+  const nombre = mesLargo(mes);
   return `${nombre.charAt(0).toUpperCase()}${nombre.slice(1)} ${anio}`;
 }

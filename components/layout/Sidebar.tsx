@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { logout } from "@/lib/auth/actions";
 
-type NavKey = "dashboard" | "calendario" | "clientes" | "resultados" | "ajustes";
+type NavKey = "dashboard" | "calendario" | "clientes" | "resultados" | "prompts" | "ajustes";
 
 export interface SidebarUsuario {
   nombre: string;
@@ -17,6 +17,7 @@ const NAV_ITEMS: { key: NavKey; label: string; href: string }[] = [
   { key: "clientes", label: "Clientes", href: "/clientes" },
   { key: "resultados", label: "Resultados", href: "/resultados" },
   { key: "ajustes", label: "Ajustes", href: "/ajustes" },
+  { key: "prompts", label: "Prompts", href: "/prompts" },
 ];
 
 function NavIcon({ item }: { item: NavKey }) {
@@ -59,6 +60,13 @@ function NavIcon({ item }: { item: NavKey }) {
           <path d="M12 2.5v3M12 18.5v3M2.5 12h3M18.5 12h3M5.2 5.2l2.1 2.1M16.7 16.7l2.1 2.1M18.8 5.2l-2.1 2.1M7.3 16.7l-2.1 2.1" />
         </>
       );
+    case "prompts":
+      return (
+        <>
+          <path d="M4 4.5h16v11H8l-4 3.5z" />
+          <path d="M8 9h8M8 12h5" />
+        </>
+      );
   }
 }
 
@@ -69,15 +77,6 @@ const PLACEHOLDER_ITEMS: { label: string; icon: React.ReactNode }[] = [
       <>
         <path d="M6 2.5h8l4 4V21a.5.5 0 0 1-.5.5h-11A.5.5 0 0 1 6 21z" />
         <path d="M13.5 2.5V7h4.5M9 12.5h6M9 16h6" />
-      </>
-    ),
-  },
-  {
-    label: "Prompts",
-    icon: (
-      <>
-        <path d="M4 4.5h16v11H8l-4 3.5z" />
-        <path d="M8 9h8M8 12h5" />
       </>
     ),
   },

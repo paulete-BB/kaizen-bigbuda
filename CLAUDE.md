@@ -1236,11 +1236,105 @@ mantiene tal cual.
   corresponde. Typecheck, lint y los 17 tests de vitest en verde. Cliente
   de prueba borrado (cascada a servicios/checklist) al terminar.
 
-**Próximo paso:** con Fase 3 cerrada y la generación de informes
-completamente automática, sigue el resto de Fase 4 — repositorio de
-prompts con versionado y variables, flujo de aprobaciones (§3.11),
-offboarding (§3.12), retrospectiva mensual del área (§3.13) y KPIs de
-operación.
+**Repositorio de prompts (§3.6)** — primer ítem real de Fase 4, a
+pedido explícito del usuario ("dale avancemos con eso" tras preguntar
+qué faltaba del plan inicial).
+
+- **Modelo de datos ya existía, sin UI conectada**: la migración 0006 ya
+  traía `prompts` (con `busqueda`, columna generada `tsvector` en
+  español sobre título+contenido+notas, GIN-indexada) y `prompt_versions`
+  — no hizo falta ninguna migración nueva. `lib/data/prompts.ts` (listar
+  con filtro de categoría + búsqueda full-text vía
+  `websearch_to_tsquery('spanish', …)`, ordenado por `ts_rank` cuando hay
+  término de búsqueda; detalle; historial de versiones; listado de
+  clientes activos para el selector de variables) y
+  `lib/data/prompts-actions.ts` (`crearPrompt`, `editarPrompt`,
+  `restaurarVersionPrompt`, `eliminarPrompt`, esta última exigiendo
+  `rol = admin`, mismo patrón que el resto de acciones destructivas de
+  la plataforma).
+- **Versionado real** (§3.6: "cada edición guarda versión anterior"):
+  `prompts.contenido`/`version` es siempre el estado vigente; cada
+  edición archiva el contenido ANTERIOR en `prompt_versions` (con su
+  número de versión viejo) antes de sobrescribir la fila de `prompts`
+  con el contenido nuevo y `version + 1`. Restaurar una versión pasada
+  sigue exactamente el mismo patrón (archiva la vigente, sube el
+  número) — nunca reescribe el historial, restaurar es en sí misma otra
+  edición más.
+- **Nuevo ítem real del Sidebar** (`/prompts`, entre Ajustes e Informes
+  — reemplaza el placeholder sin `href` que existía ahí). Lista con
+  buscador (debounce 300ms) + filtro por categoría, ambos vía query
+  params en la URL (mismo patrón que `CalendarioPage`/`ResultadosPage`,
+  sin `useSearchParams` del lado cliente en el componente de filtros —
+  sí lo usa por ser client component, pero el patrón de navegación es
+  el mismo). Ficha de detalle con editor de todos los campos, panel de
+  "Copiar con variables resueltas" (selector de cliente, resuelve
+  `{{cliente}}`/`{{url}}`/`{{mes}}` y copia con `navigator.clipboard`) y
+  panel de historial de versiones (ver contenido de una versión pasada,
+  restaurar).
+- **Bug real encontrado y corregido, mismo patrón ya documentado varias
+  veces en el proyecto**: `NuevoPromptDrawer.tsx`/`FiltrosPrompts.tsx`/
+  `PromptEditor.tsx` (client components) importaban la constante
+  `CATEGORIAS_PROMPT` desde `lib/data/prompts.ts`, que a su vez importa
+  `lib/db` (el cliente de `postgres`, que usa `fs`/`net`) — Next.js
+  tiró `Module not found: Can't resolve 'fs'` al intentar incluir ese
+  árbol en el bundle del navegador. Corregido extrayendo la constante a
+  `lib/prompts-categorias.ts` (sin dependencias de servidor), que
+  `lib/data/prompts.ts` re-exporta para el lado servidor y los tres
+  componentes cliente importan directo.
+- **Segundo bug real, mismo patrón ya documentado para
+  `log_entries.creado_en`**: `prompts.actualizado_en` es `timestamptz`,
+  no `date` — el parser de tipos de `lib/db.ts` solo intercepta el OID
+  de `date`, así que llegaba como objeto `Date` de JS pese a que la
+  interfaz TS decía `string`, y `PromptsListView.tsx` explotaba en
+  `p.actualizadoEn.slice(0, 10)`. Corregido casteando en la consulta
+  (`actualizado_en::date as actualizado_en` en `listarPrompts` y
+  `getPrompt`); aplicado el mismo cuidado preventivo a
+  `guardado_en` de `prompt_versions` en `getVersionesPrompt`
+  (`to_char(… at time zone 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS"Z"')`, porque
+  ese campo sí necesita hora además de fecha).
+- **Tercer bug real, encontrado en la propia verificación visual con
+  Playwright (no en el primer pase, en una revisión posterior de las
+  capturas)**: tras una sola edición sobre un prompt recién creado (v1),
+  la UI mostraba "Guardado — versión 3." en vez de "versión 2" — el
+  dato en la base era correcto (v2, un solo registro en
+  `prompt_versions`), el bug era solo de UI. Causa: `PromptEditor.tsx`
+  calculaba el número a mostrar como `prompt.version + 1` a partir de la
+  prop `prompt`, pero `router.refresh()` (llamado justo después de
+  guardar, para refrescar el resto de la página) podía actualizar esa
+  prop al nuevo valor real (ya v2) antes de que se pintara el mensaje de
+  confirmación — sumando +1 sobre un número que ya era el nuevo.
+  Corregido devolviendo el número de versión real desde la propia acción
+  (`editarPrompt` ahora retorna `{ok, version}`) y mostrando ese valor
+  directo, sin derivarlo de la prop.
+- Verificado de punta a punta contra Postgres local + `next dev` real,
+  logueado como admin (Marcel) vía Playwright: crear un prompt SEO desde
+  el drawer, editar su contenido y confirmar "versión 2" (no "versión
+  3", tras el fix del tercer bug) con el historial mostrando la v1
+  original con fecha y autor correctos, copiar con variables resueltas
+  (cliente Filtrocentro → "Copiado al portapapeles", con `{{cliente}}`/
+  `{{url}}` resueltos), volver a la lista y confirmar el prompt visible
+  con su versión y fecha correctas, y buscar por texto ("auditoría")
+  confirmando que la búsqueda full-text lo encuentra. Cero errores de
+  consola en las seis capturas. Typecheck, lint (en los archivos de esta
+  ronda) y los 17 tests de vitest en verde. Prompt de prueba borrado de
+  la base al terminar.
+- **Falta:** vincular prompts a tipos de optimización (§3.6, último
+  punto: "la optimización SEO mensual sugiere los prompts de su
+  categoría") — no se construyó esta ronda; el modelo de datos ya tiene
+  el enganche listo (`checklist_items_template.prompt_id`, nullable,
+  desde la migración 0006) pero no existe todavía ningún editor de
+  plantillas de checklist en la app para asignarlo desde la UI, así que
+  requeriría esa pieza adicional primero.
+
+**Próximo paso:** sigue el resto de Fase 4 — flujo de aprobaciones
+(§3.11), offboarding (§3.12), retrospectiva mensual del área (§3.13),
+KPIs de operación, vincular prompts a checklists de optimización (ver
+arriba), y los ítems de deuda técnica menores ya documentados (umbrales
+hardcodeados en `ServiciosPanel`/`DescuentosPanel`, cierre automático de
+la tarea de ClickUp al marcar una optimización `realizada`, generación
+semanal real de las optimizaciones de Ads como server action, y
+persistencia de la reprogramación automática por feriado/ausencia,
+regla D).
 
 ---
 
