@@ -55,7 +55,7 @@ async function ensureChecklist(optimizationId: string, clientId: string, service
   return rows.map((r) => ({ id: r.id, descripcion: r.descripcion, completado: r.estado === "completado" }));
 }
 
-export async function getBloqueMiercoles(fecha: string): Promise<ItemBloque[]> {
+export async function getBloqueDelDia(fecha: string): Promise<ItemBloque[]> {
   const rows = await sql<
     {
       optimization_id: string;

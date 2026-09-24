@@ -22,7 +22,7 @@ const holidays = [
 
 describe("construirCalendarioMes — septiembre 2026 (mes de demo, con feriado real)", () => {
   it("genera optimizaciones SEO y Ads sin exceder los límites de cada regla", () => {
-    const { optimizaciones, advertencias } = construirCalendarioMes({
+    const { optimizaciones, asignacionesDiaSemanaAds, advertencias } = construirCalendarioMes({
       serviciosSeo,
       serviciosAds,
       holidays,
@@ -34,7 +34,14 @@ describe("construirCalendarioMes — septiembre 2026 (mes de demo, con feriado r
     const seo = optimizaciones.filter((o) => o.tipo === "seo_aeo_geo");
     const ads = optimizaciones.filter((o) => o.tipo !== "seo_aeo_geo");
     expect(seo).toHaveLength(2);
-    expect(ads).toHaveLength(15); // 5 miércoles × 3 servicios ads
+    // Reparto bucket-fill de los 3 servicios ads (ninguno con día previo):
+    // google-provetec→lunes (4 en sep-2026), meta-tecnystand→martes (5), google-tecnystand→miércoles (5).
+    expect(ads).toHaveLength(14);
+    expect(asignacionesDiaSemanaAds).toEqual([
+      { serviceId: "google-provetec", diaSemana: 1 },
+      { serviceId: "meta-tecnystand", diaSemana: 2 },
+      { serviceId: "google-tecnystand", diaSemana: 3 },
+    ]);
 
     const porViernes = new Map<string, number>();
     for (const o of seo) porViernes.set(o.fechaProgramada, (porViernes.get(o.fechaProgramada) ?? 0) + 1);

@@ -2,6 +2,10 @@
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "crons": [
     {
+      "path": "/api/cron/snapshot-conversiones-ayer",
+      "schedule": "0 11 * * *"
+    },
+    {
       "path": "/api/cron/reintentar-sync",
       "schedule": "0 12 * * *"
     },

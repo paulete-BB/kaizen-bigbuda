@@ -47,9 +47,12 @@ async function seedUsers() {
     values ('Paulete', 'paulete@bigbuda.com', 'miembro', 'PA', '#0f766e', ${hash})
     returning id
   `;
+  // Andrés ya no trabaja en la agencia — se mantiene el usuario (con historial
+  // real de datos de prueba) pero desactivado, mismo criterio que producción
+  // (migración 0015: `listResponsables()` deja de ofrecerlo para trabajo nuevo).
   const [andres] = await sql`
-    insert into users (nombre, email, rol, iniciales, color, password_hash)
-    values ('Andrés', 'andres@bigbuda.com', 'miembro', 'AN', '#2563eb', ${hash})
+    insert into users (nombre, email, rol, iniciales, color, password_hash, activo)
+    values ('Andrés', 'andres@bigbuda.com', 'miembro', 'AN', '#2563eb', ${hash}, false)
     returning id
   `;
   return { marcel: marcel.id as string, paulete: paulete.id as string, andres: andres.id as string };
@@ -110,19 +113,20 @@ async function seedServices(
     values (${clients.provetec.id}, 'seo_aeo_geo', '2026-03-12', 12, '2027-03-12', 3, ${responsables.marcel})
     returning id
   `;
+  // Los servicios de Ads los revisa Paulete (Andrés ya no trabaja en la agencia).
   const [googleProvetec] = await sql`
     insert into services (client_id, tipo, fecha_inicio, periodo_meses, fecha_termino, presupuesto_mensual, moneda, responsable_id)
-    values (${clients.provetec.id}, 'google_ads', '2026-04-15', 12, '2027-04-15', 900000, 'CLP', ${responsables.andres})
+    values (${clients.provetec.id}, 'google_ads', '2026-04-15', 12, '2027-04-15', 900000, 'CLP', ${responsables.paulete})
     returning id
   `;
   const [metaTecnyStand] = await sql`
     insert into services (client_id, tipo, fecha_inicio, periodo_meses, fecha_termino, presupuesto_mensual, moneda, responsable_id)
-    values (${clients.tecnyStand.id}, 'meta_ads', '2026-05-01', 6, '2026-11-01', 1200000, 'CLP', ${responsables.andres})
+    values (${clients.tecnyStand.id}, 'meta_ads', '2026-05-01', 6, '2026-11-01', 1200000, 'CLP', ${responsables.paulete})
     returning id
   `;
   const [googleTecnyStand] = await sql`
     insert into services (client_id, tipo, fecha_inicio, periodo_meses, fecha_termino, presupuesto_mensual, moneda, responsable_id)
-    values (${clients.tecnyStand.id}, 'google_ads', '2026-05-01', 6, '2026-11-01', 800000, 'CLP', ${responsables.andres})
+    values (${clients.tecnyStand.id}, 'google_ads', '2026-05-01', 6, '2026-11-01', 800000, 'CLP', ${responsables.paulete})
     returning id
   `;
 
@@ -137,9 +141,9 @@ async function seedServices(
     },
   ];
   const serviciosAds: ServicioActivo[] = [
-    { id: googleProvetec.id, clientId: clients.provetec.id, tipo: "google_ads", responsableId: responsables.andres },
-    { id: metaTecnyStand.id, clientId: clients.tecnyStand.id, tipo: "meta_ads", responsableId: responsables.andres },
-    { id: googleTecnyStand.id, clientId: clients.tecnyStand.id, tipo: "google_ads", responsableId: responsables.andres },
+    { id: googleProvetec.id, clientId: clients.provetec.id, tipo: "google_ads", responsableId: responsables.paulete },
+    { id: metaTecnyStand.id, clientId: clients.tecnyStand.id, tipo: "meta_ads", responsableId: responsables.paulete },
+    { id: googleTecnyStand.id, clientId: clients.tecnyStand.id, tipo: "google_ads", responsableId: responsables.paulete },
   ];
 
   return { serviciosSeo, serviciosAds, googleProvetec: googleProvetec.id as string, metaTecnyStand: metaTecnyStand.id as string, googleTecnyStand: googleTecnyStand.id as string };
@@ -163,7 +167,7 @@ async function seedClientTasks(clients: Awaited<ReturnType<typeof seedClients>>,
   `;
   await sql`
     insert into client_tasks (client_id, titulo, destino, frecuencia, servicio_tipo, responsable_id)
-    values (${clients.provetec.id}, 'Chequear negativas nuevas y términos de búsqueda del mes', 'recurrente', 'Cada mes', 'google_ads', ${responsables.andres})
+    values (${clients.provetec.id}, 'Chequear negativas nuevas y términos de búsqueda del mes', 'recurrente', 'Cada mes', 'google_ads', ${responsables.paulete})
   `;
 }
 
@@ -235,20 +239,22 @@ async function seedCalendario(
   absences: Absence[],
 ) {
   let serviciosSeo = servicios.serviciosSeo;
+  let serviciosAds = servicios.serviciosAds;
   const idsPorMes = new Map<string, string[]>();
 
   for (const { year, month } of MESES_A_GENERAR) {
-    const { optimizaciones, asignacionesOrdinal, advertencias } = construirCalendarioMes({
+    const { optimizaciones, asignacionesOrdinal, asignacionesDiaSemanaAds, advertencias } = construirCalendarioMes({
       serviciosSeo,
-      serviciosAds: servicios.serviciosAds,
+      serviciosAds,
       holidays,
       absences,
       year,
       month,
     });
 
-    // Persistir los ordinales recién asignados y llevarlos al siguiente mes
-    // (estables: nunca se reasignan una vez fijados).
+    // Persistir los ordinales/días recién asignados y llevarlos al siguiente
+    // mes (estables: nunca se reasignan una vez fijados) — mismo patrón para
+    // Regla A (viernes) y Regla B (día de semana de Ads).
     const ordinalPorServicio = new Map(asignacionesOrdinal.map((a) => [a.serviceId, a.ordinal]));
     for (const a of asignacionesOrdinal) {
       await sql`update services set viernes_ordinal_asignado = ${a.ordinal} where id = ${a.serviceId}`;
@@ -256,6 +262,15 @@ async function seedCalendario(
     serviciosSeo = serviciosSeo.map((s) => ({
       ...s,
       viernesOrdinalAsignado: ordinalPorServicio.get(s.id) ?? s.viernesOrdinalAsignado,
+    }));
+
+    const diaSemanaPorServicio = new Map(asignacionesDiaSemanaAds.map((a) => [a.serviceId, a.diaSemana]));
+    for (const a of asignacionesDiaSemanaAds) {
+      await sql`update services set dia_semana_ads_asignado = ${a.diaSemana} where id = ${a.serviceId}`;
+    }
+    serviciosAds = serviciosAds.map((s) => ({
+      ...s,
+      diaSemanaAdsAsignado: diaSemanaPorServicio.get(s.id) ?? s.diaSemanaAdsAsignado,
     }));
 
     const ids: string[] = [];
@@ -341,7 +356,8 @@ async function main() {
 
   console.log("\nListo. Login de prueba:");
   console.log(`  marcel@bigbuda.com / ${DEV_PASSWORD}  (admin)`);
-  console.log(`  andres@bigbuda.com / ${DEV_PASSWORD}  (miembro)`);
+  console.log(`  paulete@bigbuda.com / ${DEV_PASSWORD}  (miembro — revisa los clientes de campañas)`);
+  console.log(`  andres@bigbuda.com / ${DEV_PASSWORD}  (miembro, inactivo — ya no trabaja en la agencia)`);
 
   await sql.end();
 }

@@ -1,7 +1,7 @@
-import { generarOptimizacionesAdsDelMes } from "./ads";
+import { asignarDiaSemanaAds, generarOptimizacionesAdsDelMes } from "./ads";
 import { detectarConflictoAusencia } from "./ausencias";
 import { asignarViernesOrdinal, generarOptimizacionesSeoDelMes } from "./seo";
-import type { Advertencia, AsignacionOrdinal, Absence, Holiday, OptimizacionGenerada, ServicioActivo } from "./types";
+import type { Advertencia, AsignacionDiaSemana, AsignacionOrdinal, Absence, Holiday, OptimizacionGenerada, ServicioActivo } from "./types";
 
 export interface ConstruirCalendarioMesInput {
   serviciosSeo: ServicioActivo[];
@@ -16,14 +16,15 @@ export interface ConstruirCalendarioMesInput {
 export interface ConstruirCalendarioMesOutput {
   optimizaciones: OptimizacionGenerada[];
   asignacionesOrdinal: AsignacionOrdinal[];
+  asignacionesDiaSemanaAds: AsignacionDiaSemana[];
   advertencias: Advertencia[];
 }
 
 /**
  * Orquesta las reglas A + B + D para un mes: resuelve los viernes ordinales
- * pendientes, genera las optimizaciones SEO (viernes) y Ads (miércoles
- * 16:00) reprogramando por feriado, y marca conflictos de ausencia del
- * responsable (sin reasignar solo).
+ * de SEO y el día de semana de cada servicio de Ads (ambos estables, bucket-
+ * fill), genera las optimizaciones reprogramando por feriado, y marca
+ * conflictos de ausencia del responsable (sin reasignar solo).
  */
 export function construirCalendarioMes(input: ConstruirCalendarioMesInput): ConstruirCalendarioMesOutput {
   const { asignaciones, advertencias: advertenciasOrdinal } = asignarViernesOrdinal(input.serviciosSeo);
@@ -41,8 +42,15 @@ export function construirCalendarioMes(input: ConstruirCalendarioMesInput): Cons
     { direccionFeriado: input.direccionFeriadoSeo },
   );
 
+  const { asignaciones: asignacionesDiaSemanaAds } = asignarDiaSemanaAds(input.serviciosAds);
+  const diaSemanaPorServicio = new Map(asignacionesDiaSemanaAds.map((a) => [a.serviceId, a.diaSemana]));
+  const serviciosAdsResueltos = input.serviciosAds.map((s) => ({
+    ...s,
+    diaSemanaAdsAsignado: diaSemanaPorServicio.get(s.id) ?? null,
+  }));
+
   const { optimizaciones: ads } = generarOptimizacionesAdsDelMes(
-    input.serviciosAds,
+    serviciosAdsResueltos,
     input.holidays,
     input.year,
     input.month,
@@ -65,6 +73,7 @@ export function construirCalendarioMes(input: ConstruirCalendarioMesInput): Cons
   return {
     optimizaciones: todas,
     asignacionesOrdinal: asignaciones,
+    asignacionesDiaSemanaAds,
     advertencias: [...advertenciasOrdinal, ...advertenciasSeo, ...advertenciasAusencia],
   };
 }

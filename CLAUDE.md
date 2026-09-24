@@ -22,10 +22,12 @@
   agrega la tabla de reuniones (fuera del brief original, ver más abajo).
 - Auth propia por email con roles `admin`/`miembro` (bcrypt + cookie de
   sesión firmada) — `lib/auth/`.
-- Motor de scheduling puro (`lib/scheduling/`, 17 tests vitest en verde):
-  reglas A (viernes SEO, máx. 2/viernes, estable mes a mes), B (bloque Ads
-  miércoles 16:00, Meta/Google como ítems separados) y D (reprogramación por
-  feriado, detección de conflicto por ausencia).
+- Motor de scheduling puro (`lib/scheduling/`, 21 tests vitest en verde):
+  reglas A (viernes SEO, máx. 2/viernes, estable mes a mes), B (cada
+  servicio de Ads en su propio día de la semana, lunes a viernes, sin
+  hora fija — reparto automático parejo, bucket-fill estable, igual
+  criterio que A; Meta/Google como ítems separados) y D (reprogramación
+  por feriado, detección de conflicto por ausencia).
 - 6 pantallas conectadas a datos reales (sin mocks): Dashboard, Calendario
   (drag & drop), Clientes, ficha de Cliente, BloqueMiercoles, RegistroSEO,
   Bitácora. Sidebar y tokens de diseño (`app/globals.css`, tema Kaizen
@@ -1415,29 +1417,117 @@ sigue con el flujo de aprobaciones").
   el token de Management API a una sesión futura) antes de que el
   feature funcione ahí.
 
-**Pedido del usuario, todavía sin implementar — requiere aclarar alcance
-antes de tocar el motor de scheduling**: cambios a la Regla B (§3.2,
-optimización de campañas) —
+**Reparto diario de campañas (nueva Regla B) + salida de Andrés + alerta
+"sin conversiones ayer"** — pedido explícito del usuario, tres cambios
+relacionados. Antes de tocar código se aclararon 4 puntos con
+`AskUserQuestion`: reparto automático y parejo (bucket-fill, mismo criterio
+que Regla A); viernes también puede tener campañas (ya no exclusivo de
+SEO); Andrés desactivado y reasignado a Paulete (solo lo pendiente/futuro,
+historial intacto); la alerta de conversiones usa datos cacheados, nunca
+llamadas en vivo por carga del dashboard.
 
-1. Los clientes de campañas (Meta/Google Ads) se distribuirían todos los
-   días de la semana (no solo miércoles 16:00), una revisión/optimización
-   por semana por cliente, sin hora fija — el dashboard debería mostrar
-   como alerta qué clientes tocan cada día para que el usuario organice
-   su revisión dentro del día.
-2. Estos clientes de campañas los revisa el propio usuario
-   (`paulete@bigbuda.com`) — Andrés ya no trabaja en la empresa.
-3. Los clientes de SEO siguen siendo revisados los viernes, por Marcel
-   (confirma la Regla A tal cual está, sin cambios).
-4. Nueva alerta de dashboard en rojo: cliente con campaña activa que no
-   recibió conversiones el día anterior, para priorizar su revisión.
-
-Esto toca el corazón del motor de scheduling (Regla B), el bloque de
-miércoles (`BloqueCard`/`bloque-actions.ts`), la sincronización de tareas
-a ClickUp (día/hora), el dashboard de alertas, y la gestión de usuarios
-(offboarding de Andrés — sus ausencias/asignaciones previas). Antes de
-tocar código hace falta que el usuario confirme el reparto de días
-(¿todos los días hábiles? ¿algún criterio de asignación o solo orden de
-alta?) y qué pasa con el registro histórico de Andrés como responsable.
+- **Regla B rediseñada** (`lib/scheduling/ads.ts`): cada servicio de Ads
+  activo (Meta/Google, tratados por separado incluso del mismo cliente)
+  se revisa una vez por semana en **su propio día de la semana asignado**
+  (lunes a viernes), **sin hora fija** — reemplaza "todos los miércoles
+  16:00". `asignarDiaSemanaAds()` es el mismo patrón bucket-fill estable
+  que `asignarViernesOrdinal()` (Regla A): un servicio ya asignado nunca
+  se mueve solo, los nuevos van al día con menos carga (empate → el día
+  más bajo), sin tope máximo por día (no pedido, a diferencia del "máx. 2
+  por viernes" de SEO). Persistido en `services.dia_semana_ads_asignado`
+  (migración `0015`, mismo criterio que `viernes_ordinal_asignado`).
+  `lib/scheduling/dates.ts` expone `weekdayDatesOfMonth` (antes privada,
+  usada fija en 5 para `fridaysOfMonth`) para cualquier día 1-5.
+- **Reprogramación por feriado generalizada**: `juevesSiguiente()`
+  (`lib/scheduling/holidays.ts`) asumía que Ads siempre caía en miércoles
+  y avanzaba un día fijo sin revisar si el destino también era feriado —
+  bug menor preexistente, encontrado leyendo el código antes de tocarlo.
+  Reemplazada por `diaHabilSiguiente()`, genérica: avanza de a un día
+  saltando fin de semana y feriados, aplicable al día que le toque a
+  cada servicio (ej. un viernes feriado ahora salta al lunes siguiente,
+  no a un jueves fijo que ya no tiene sentido).
+- **Dos call sites reales actualizados**, no uno: `lib/scheduling/engine.ts`
+  `construirCalendarioMes()` (usado solo por `scripts/seed.ts`) y —el
+  camino real de producción— `lib/data/onboarding-actions.ts`
+  `activarPrimeraOptimizacionSiCorresponde()`, que ya resolvía el ordinal
+  de SEO inline antes de generar; se agregó el mismo bloque para Ads
+  (traer servicios activos con día ya asignado, correr
+  `asignarDiaSemanaAds`, persistir, recién ahí generar la primera
+  optimización) — sin este paso, un servicio de Ads nuevo no habría
+  generado nada.
+- **ClickUp sync** (`lib/clickup/client.ts`): sin `horaProgramada` (Ads,
+  ahora la norma), la tarea se crea con `due_date_time`/`start_date_time`
+  en `false` (fecha sola) en vez de caer a una hora inventada. SEO
+  conserva su hora fija de mediodía, sin cambios.
+- **UI ya estaba lista para esto, no hizo falta reestructurarla**:
+  `lib/data/bloque.ts` `getBloqueDelDia` (renombrado de
+  `getBloqueMiercoles`) ya filtraba por `fecha_programada`, no por
+  "miércoles" — funciona igual para cualquier día. Solo se actualizó
+  copy hardcodeada ("miércoles 16:00") en `BloqueView.tsx`/
+  `CalendarioView.tsx`. El dashboard "Hoy"/"Esta semana" y `MonthGrid`
+  tampoco necesitaron cambios — ya eran genéricos por fecha y ya
+  manejaban `hora` nula sin romper.
+- **Salida de Andrés** (migración `0015`): nueva columna `users.activo`
+  (no existía ningún concepto de activo/inactivo, ni UI de administración
+  de usuarios en el proyecto — se resolvió por SQL, igual que el resto de
+  datos de producción tocados directo esta sesión). `listResponsables()`
+  filtra `where activo` — deja de ofrecerlo para trabajo nuevo sin tocar
+  lo ya asignado. Reasignados a Paulete: `services.responsable_id` (para
+  que las optimizaciones nuevas nazcan con el responsable correcto) y
+  `optimizations.responsable_id` de las **no realizadas todavía**
+  (`programada`/`bloqueada`/`atrasada`) — el historial ya `realizada` y
+  la bitácora quedan con el nombre de Andrés, intactos. Paulete ya
+  existía como usuario real con `clickup_user_id` mapeado desde antes
+  (migración `0009`) — no hizo falta nada de ClickUp para él; Andrés
+  seguía deliberadamente sin mapear ahí (su email no calzaba), así que
+  desactivarlo no rompe nada.
+- **Alerta "sin conversiones ayer"** (dashboard, roja, primera de la
+  lista): nuevo cron diario `snapshot-conversiones-ayer`
+  (`vercel.json`, 11:00 UTC, ~07:00 Chile, antes que los otros dos crons
+  existentes) + `lib/metricas/conversiones-ayer.ts` — única llamada en
+  vivo del feature: por cada servicio Ads activo con su config cargada,
+  guarda un snapshot de "ayer" (`periodo_inicio = periodo_fin`, un solo
+  día) vía `conCacheDeSnapshot` — combinación de período que ningún otro
+  llamador usa hoy (todos piden rangos de 14/28/90 días o mes calendario),
+  así que no colisiona con los snapshots agregados ya existentes bajo la
+  misma clave. El dashboard (`lib/data/dashboard.ts`) solo **lee** el
+  snapshot más reciente de ese tipo por servicio — sigue siendo 100%
+  Postgres, cero llamadas a Meta/GA4 por carga, mismo criterio ya
+  establecido tras el bug de fan-out de Resultados/Gonfernic. Sin
+  snapshot de ayer todavía (cron no corrió, o servicio sin config) →
+  no alerta, mejor un falso negativo que un falso positivo.
+- **Confirmado antes de sumar un tercer cron**: se verificó por
+  búsqueda web que Vercel levantó el límite de cantidad de cron jobs a
+  100 por proyecto en todos los planes (enero 2026) — el plan Hobby solo
+  sigue limitando la *frecuencia* a una vez al día por cron, ya respetada
+  por los tres. Sin este chequeo, el tercer cron podría haber roto el
+  deploy si el límite viejo (históricamente 2) siguiera vigente.
+- Verificado de punta a punta contra Postgres local + `next dev` real +
+  Playwright, logueado como Marcel: tras aplicar la migración y re-sembrar,
+  los 3 servicios de Ads reales del seed quedaron en 3 días distintos
+  (lunes/martes/miércoles, reparto parejo confirmado en la base) con
+  `responsable_id` = Paulete y Andrés `activo = false`; 14 optimizaciones
+  de Ads en septiembre repartidas Mon/Tue/Wed sin `hora_programada`
+  (antes: 15, todas miércoles); el calendario mensual muestra "Bloque
+  Ads · 1" en cada día correspondiente con la leyenda actualizada; el
+  bloque de un lunes (no miércoles) renderiza igual que antes; "Esta
+  semana" del dashboard lista cada cliente de Ads en su día real sin
+  mostrar una hora rota. Insertado un `metric_snapshot` de prueba
+  (`periodo_inicio=periodo_fin=ayer`, `resultados:0`) para Tecny Stand ·
+  Meta Ads → la nueva alerta "Sin conversiones ayer" apareció primera en
+  el panel con el detalle correcto. El cron nuevo devuelve 401 sin auth,
+  mismo comportamiento que los otros dos (sin `CRON_SECRET` configurado
+  en este entorno, igual que siempre). Cero errores de consola en las
+  cinco capturas. Typecheck, lint (en los archivos de esta ronda) y los
+  21 tests de vitest en verde (17 base + 4 nuevos de `lib/scheduling/`,
+  reescritos para el reparto por día de semana en vez de "5 miércoles").
+  Datos de prueba (snapshot) limpiados de la base al terminar.
+- **Falta:** aplicar la migración 0015 contra producción — este entorno
+  no tuvo acceso al token de Management API de Supabase esta ronda, solo
+  se aplicó y verificó contra Postgres local. Sin ella en producción, el
+  reparto diario de Ads y la alerta de conversiones no funcionan ahí
+  todavía (el resto del código es retrocompatible: sin la columna nueva,
+  simplemente no habría servicios con día asignado).
 
 ---
 

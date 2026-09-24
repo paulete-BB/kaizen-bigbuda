@@ -1,11 +1,11 @@
 import { BloqueView } from "@/components/bloque/BloqueView";
-import { getBloqueMiercoles } from "@/lib/data/bloque";
+import { getBloqueDelDia } from "@/lib/data/bloque";
 import { requireUser } from "@/lib/auth/server";
 
 export default async function BloquePage({ params }: { params: Promise<{ fecha: string }> }) {
   const { fecha } = await params;
   const session = await requireUser();
-  const items = await getBloqueMiercoles(fecha);
+  const items = await getBloqueDelDia(fecha);
 
   return (
     <BloqueView

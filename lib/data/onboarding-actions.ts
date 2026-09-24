@@ -6,7 +6,7 @@ import { requireUser } from "@/lib/auth/server";
 import { hoySantiago, toIso } from "@/lib/dates";
 import { syncOptimizationTaskToClickUp } from "@/lib/clickup/client";
 import { asignarViernesOrdinal, generarOptimizacionesSeoDelMes } from "@/lib/scheduling/seo";
-import { generarOptimizacionesAdsDelMes } from "@/lib/scheduling/ads";
+import { asignarDiaSemanaAds, generarOptimizacionesAdsDelMes } from "@/lib/scheduling/ads";
 import type { Holiday, OptimizacionGenerada, ServicioActivo, ServicioTipo } from "@/lib/scheduling/types";
 
 export async function toggleOnboardingItem(formData: FormData) {
@@ -122,24 +122,44 @@ async function activarPrimeraOptimizacionSiCorresponde(clientId: string, actorId
     }
   }
 
-  for (const s of servicios.filter((s) => s.tipo !== "seo_aeo_geo")) {
-    const opt = await primeraFechaDesdeHoy({ id: s.id, clientId, tipo: s.tipo, responsableId: s.responsable_id }, generarOptimizacionesAdsDelMes);
-    if (!opt) continue;
-    const [{ id: optimizationId }] = await sql<{ id: string }[]>`
-      insert into optimizations (client_id, service_id, tipo, fecha_programada, hora_programada, responsable_id, estado, sync_status)
-      values (${clientId}, ${s.id}, ${s.tipo}, ${opt.fechaProgramada}, ${opt.horaProgramada ?? null}, ${s.responsable_id}, 'programada', 'pendiente_sync')
-      returning id
+  const adsNuevos = servicios.filter((s) => s.tipo !== "seo_aeo_geo");
+  if (adsNuevos.length) {
+    const adsExistentes = await sql<{ id: string; client_id: string; tipo: ServicioTipo; dia_semana_ads_asignado: number }[]>`
+      select id, client_id, tipo, dia_semana_ads_asignado from services
+      where tipo in ('meta_ads', 'google_ads') and not pausado and dia_semana_ads_asignado is not null
     `;
-    await syncOptimizationTaskToClickUp({
-      optimizationId,
-      clientId,
-      serviceId: s.id,
-      servicioTipo: s.tipo,
-      fechaProgramada: opt.fechaProgramada,
-      horaProgramada: opt.horaProgramada ?? null,
-      responsableId: s.responsable_id,
-    });
-    generadas.push({ fecha: opt.fechaProgramada, tipoLabel: s.tipo === "meta_ads" ? "Meta Ads" : "Google Ads" });
+    const universo: ServicioActivo[] = [
+      ...adsExistentes.map((s) => ({ id: s.id, clientId: s.client_id, tipo: s.tipo, diaSemanaAdsAsignado: s.dia_semana_ads_asignado })),
+      ...adsNuevos.map((s) => ({ id: s.id, clientId, tipo: s.tipo, diaSemanaAdsAsignado: null, responsableId: s.responsable_id })),
+    ];
+    const { asignaciones } = asignarDiaSemanaAds(universo);
+
+    for (const s of adsNuevos) {
+      const diaSemana = asignaciones.find((a) => a.serviceId === s.id)?.diaSemana;
+      if (!diaSemana) continue;
+      await sql`update services set dia_semana_ads_asignado = ${diaSemana} where id = ${s.id}`;
+
+      const opt = await primeraFechaDesdeHoy(
+        { id: s.id, clientId, tipo: s.tipo, diaSemanaAdsAsignado: diaSemana, responsableId: s.responsable_id },
+        generarOptimizacionesAdsDelMes,
+      );
+      if (!opt) continue;
+      const [{ id: optimizationId }] = await sql<{ id: string }[]>`
+        insert into optimizations (client_id, service_id, tipo, fecha_programada, hora_programada, responsable_id, estado, sync_status)
+        values (${clientId}, ${s.id}, ${s.tipo}, ${opt.fechaProgramada}, ${opt.horaProgramada ?? null}, ${s.responsable_id}, 'programada', 'pendiente_sync')
+        returning id
+      `;
+      await syncOptimizationTaskToClickUp({
+        optimizationId,
+        clientId,
+        serviceId: s.id,
+        servicioTipo: s.tipo,
+        fechaProgramada: opt.fechaProgramada,
+        horaProgramada: opt.horaProgramada ?? null,
+        responsableId: s.responsable_id,
+      });
+      generadas.push({ fecha: opt.fechaProgramada, tipoLabel: s.tipo === "meta_ads" ? "Meta Ads" : "Google Ads" });
+    }
   }
 
   if (generadas.length) {

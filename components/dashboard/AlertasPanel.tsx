@@ -25,6 +25,7 @@ function Categoria({ titulo, items }: { titulo: string; items: AlertaItem[] }) {
 export function AlertasPanel({ data }: { data: DashboardData }) {
   const { alertas } = data;
   const total =
+    alertas.sinConversiones.length +
     alertas.atrasadas.length +
     alertas.pacing.length +
     alertas.aprobaciones.length +
@@ -49,6 +50,7 @@ export function AlertasPanel({ data }: { data: DashboardData }) {
           <p className="py-6 text-center text-[12.5px] text-muted-2">Sin alertas pendientes. Todo al día.</p>
         ) : (
           <>
+            <Categoria titulo="Sin conversiones ayer" items={alertas.sinConversiones} />
             <Categoria titulo="Optimizaciones atrasadas" items={alertas.atrasadas} />
             <Categoria titulo="Desviaciones de ritmo de gasto" items={alertas.pacing} />
             <Categoria titulo="Aprobaciones sin respuesta" items={alertas.aprobaciones} />

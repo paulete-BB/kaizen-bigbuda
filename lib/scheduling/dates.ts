@@ -33,7 +33,13 @@ function daysInMonth(year: number, month: number): number {
   return new Date(year, month, 0).getDate();
 }
 
-function allWeekdayDatesOfMonth(year: number, month: number, weekday: number): string[] {
+/**
+ * Todas las fechas del mes que caen en `weekday` (1=lunes…5=viernes, mismo
+ * orden que devuelve `Date.getDay()` para días hábiles), en orden ascendente.
+ * Usada por `fridaysOfMonth`/`wednesdaysOfMonth` (Regla A) y por el reparto
+ * diario de Ads (Regla B) para cualquier día 1-5 asignado a un servicio.
+ */
+export function weekdayDatesOfMonth(year: number, month: number, weekday: number): string[] {
   const total = daysInMonth(year, month);
   const dates: string[] = [];
   for (let day = 1; day <= total; day++) {
@@ -45,10 +51,10 @@ function allWeekdayDatesOfMonth(year: number, month: number, weekday: number): s
 
 /** Todos los viernes del mes (año, mes 1-12), en orden ascendente. */
 export function fridaysOfMonth(year: number, month: number): string[] {
-  return allWeekdayDatesOfMonth(year, month, 5);
+  return weekdayDatesOfMonth(year, month, 5);
 }
 
 /** Todos los miércoles del mes (año, mes 1-12), en orden ascendente. */
 export function wednesdaysOfMonth(year: number, month: number): string[] {
-  return allWeekdayDatesOfMonth(year, month, 3);
+  return weekdayDatesOfMonth(year, month, 3);
 }

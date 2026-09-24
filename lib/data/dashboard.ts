@@ -27,6 +27,7 @@ export interface DashboardData {
   eventosHoy: EventoResumen[];
   eventosSemana: EventoResumen[];
   alertas: {
+    sinConversiones: AlertaItem[];
     atrasadas: AlertaItem[];
     pacing: AlertaItem[];
     aprobaciones: AlertaItem[];
@@ -118,8 +119,27 @@ export async function getDashboardData(): Promise<DashboardData> {
     informeEnviado: !!e.informe_enviado_en,
   }));
 
-  const [atrasadasRows, pacingRows, aprobacionesRows, bloqueadasRows, porVencerRows, informesRows, descuentosRows, syncRows, completadasClickUpRows] =
+  const [sinConversionesRows, atrasadasRows, pacingRows, aprobacionesRows, bloqueadasRows, porVencerRows, informesRows, descuentosRows, syncRows, completadasClickUpRows] =
     await Promise.all([
+      // Lee el snapshot diario de "ayer" que guarda el cron `snapshot-conversiones-ayer`
+      // (§3.7, pedido explícito del usuario) — nunca llama a Meta/GA4 en vivo acá, mismo
+      // criterio ya establecido tras el bug de fan-out de Resultados/Gonfernic. Sin
+      // snapshot de ayer todavía (cron no corrió, o servicio sin config) → no alerta.
+      sql<{ cliente_id: string; cliente_nombre: string; tipo: string; periodo_inicio: string }[]>`
+        select c.id as cliente_id, c.nombre as cliente_nombre, s.tipo, ms.periodo_inicio
+        from services s
+        join clients c on c.id = s.client_id
+        join lateral (
+          select datos_json, periodo_inicio from metric_snapshots ms
+          where ms.service_id = s.id and ms.periodo_inicio = ms.periodo_fin
+          order by ms.obtenido_en desc limit 1
+        ) ms on true
+        where s.tipo in ('meta_ads', 'google_ads') and not s.pausado
+          and (
+            (s.tipo = 'meta_ads' and coalesce((ms.datos_json->>'resultados')::numeric, 0) = 0)
+            or (s.tipo = 'google_ads' and coalesce((ms.datos_json->>'conversiones')::numeric, 0) = 0)
+          )
+      `,
       sql<{ cliente_id: string; cliente_nombre: string; tipo: string; fecha_programada: string }[]>`
         select c.id as cliente_id, c.nombre as cliente_nombre, o.tipo, o.fecha_programada
         from optimizations o join clients c on c.id = o.client_id
@@ -191,6 +211,12 @@ export async function getDashboardData(): Promise<DashboardData> {
     eventosHoy: eventosMapeados.filter((e) => e.fecha === hoyIso),
     eventosSemana: eventosMapeados.filter((e) => e.fecha !== hoyIso),
     alertas: {
+      sinConversiones: sinConversionesRows.map((r) => ({
+        clienteId: r.cliente_id,
+        clienteNombre: r.cliente_nombre,
+        detalle: `${TIPO_LABEL[r.tipo] ?? r.tipo} · sin conversiones el ${fmtFecha(r.periodo_inicio)}`,
+        href: `/clientes/${r.cliente_id}`,
+      })),
       atrasadas: atrasadasRows.map((r) => ({
         clienteId: r.cliente_id,
         clienteNombre: r.cliente_nombre,

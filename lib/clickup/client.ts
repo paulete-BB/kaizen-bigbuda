@@ -292,7 +292,12 @@ export async function syncOptimizationTaskToClickUp(payload: ClickUpTaskPayload)
       if (responsable?.clickup_user_id) assigneeClickupId = Number(responsable.clickup_user_id);
     }
 
-    const hora = payload.horaProgramada ?? (payload.servicioTipo === "seo_aeo_geo" ? "12:00" : "16:00");
+    // SEO conserva su hora fija (mediodía). Ads ya no tiene hora fija (Regla
+    // B — reparto por día de semana, sin horario): sin `horaProgramada`, la
+    // tarea queda con fecha sola (`due_date_time/start_date_time: false`) en
+    // vez de inventar una hora que ya no existe.
+    const conHora = payload.servicioTipo === "seo_aeo_geo" || !!payload.horaProgramada;
+    const hora = payload.horaProgramada ?? (payload.servicioTipo === "seo_aeo_geo" ? "12:00" : "00:00");
     const fechaMs = epochMsSantiago(payload.fechaProgramada, hora);
     const appUrl = process.env.NEXT_PUBLIC_APP_URL;
     const enlace = appUrl ? `\n\n${appUrl}/clientes/${payload.clientId}` : `\n\n(ficha del cliente: /clientes/${payload.clientId})`;
@@ -301,9 +306,9 @@ export async function syncOptimizationTaskToClickUp(payload: ClickUpTaskPayload)
       name: `Optimización ${SERVICIO_LABEL[payload.servicioTipo]} — ${cliente.nombre}`,
       description: `Optimización ${SERVICIO_LABEL[payload.servicioTipo]} para ${cliente.nombre}, generada por Kaizen Bigbuda.${enlace}`,
       due_date: fechaMs,
-      due_date_time: true,
+      due_date_time: conHora,
       start_date: fechaMs,
-      start_date_time: true,
+      start_date_time: conHora,
       tags: ["optimizacion", payload.servicioTipo === "seo_aeo_geo" ? "seo" : "ads", cliente.nombre],
       ...(assigneeClickupId ? { assignees: [assigneeClickupId] } : {}),
     };

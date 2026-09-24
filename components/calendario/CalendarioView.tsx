@@ -64,7 +64,7 @@ export function CalendarioView({
             </span>
             <span className="flex items-center gap-1.5">
               <span className="h-2.5 w-2.5 rounded-sm" style={{ background: "#0d9488" }} />
-              Ads (Meta + Google) — miércoles 16:00
+              Ads (Meta + Google) — 1 día/semana por cliente, sin hora fija
             </span>
             <span className="flex items-center gap-1.5">
               <span className="h-2.5 w-2.5 rounded-sm" style={{ background: "var(--color-faint)" }} />

@@ -37,7 +37,7 @@ export function BloqueView({
             Calendario
           </Link>
           <span className="text-faint">/</span>
-          <span className="text-[13px] font-semibold">Bloque Ads · Miércoles 16:00</span>
+          <span className="text-[13px] font-semibold">Bloque Ads · sin hora fija</span>
           <span className="ml-auto rounded-full bg-accent-soft px-2.5 py-1 text-[11.5px] font-semibold text-accent-soft-ink">
             {fmtFecha(fecha)}
           </span>
@@ -63,7 +63,7 @@ export function BloqueView({
 
           <div className="flex flex-col gap-2.5">
             {items.length === 0 && (
-              <p className="py-10 text-center text-[12.5px] text-muted-2">No hay servicios de Ads programados este miércoles.</p>
+              <p className="py-10 text-center text-[12.5px] text-muted-2">No hay servicios de Ads programados este día.</p>
             )}
             {items.map((item, i) => (
               <BloqueCard key={item.optimizationId} item={item} fecha={fecha} mes={mes} anio={anio} defaultOpen={i === 0 && item.alertaDisparada} />

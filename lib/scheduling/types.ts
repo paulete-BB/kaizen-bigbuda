@@ -6,6 +6,8 @@ export interface ServicioActivo {
   tipo: ServicioTipo;
   /** Solo aplica a seo_aeo_geo. Null/undefined = todavía no asignado. */
   viernesOrdinalAsignado?: number | null;
+  /** Solo aplica a meta_ads/google_ads (Regla B). 1=lunes…5=viernes. Null/undefined = todavía no asignado. */
+  diaSemanaAdsAsignado?: number | null;
   responsableId?: string | null;
 }
 
@@ -23,6 +25,11 @@ export interface Absence {
 export interface AsignacionOrdinal {
   serviceId: string;
   ordinal: number;
+}
+
+export interface AsignacionDiaSemana {
+  serviceId: string;
+  diaSemana: number;
 }
 
 export interface OptimizacionGenerada {
