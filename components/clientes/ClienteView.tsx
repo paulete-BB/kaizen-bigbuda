@@ -8,11 +8,13 @@ import { DescuentosPanel } from "./DescuentosPanel";
 import { OnboardingPanel } from "./OnboardingPanel";
 import { ReunionesPanel } from "./ReunionesPanel";
 import { IntegracionesPanel } from "./IntegracionesPanel";
+import { AprobacionesPanel } from "./AprobacionesPanel";
 import type { ClienteDetalleCompleto } from "@/lib/data/cliente-detalle";
 import type { BitacoraEntrada } from "@/lib/data/bitacora";
 import type { OnboardingResumen } from "@/lib/data/onboarding";
 import type { Reunion } from "@/lib/data/meetings";
 import type { UsuarioResumen } from "@/lib/data/users";
+import type { ApprovalResumen, OptimizacionBloqueable } from "@/lib/data/approvals";
 
 export function ClienteView({
   cliente,
@@ -21,6 +23,8 @@ export function ClienteView({
   onboarding,
   reuniones,
   responsables,
+  aprobaciones,
+  optimizacionesBloqueables,
 }: {
   cliente: ClienteDetalleCompleto;
   usuario: SidebarUsuario;
@@ -28,6 +32,8 @@ export function ClienteView({
   onboarding: OnboardingResumen;
   reuniones: Reunion[];
   responsables: UsuarioResumen[];
+  aprobaciones: ApprovalResumen[];
+  optimizacionesBloqueables: OptimizacionBloqueable[];
 }) {
   return (
     <div className="flex min-h-screen w-full">
@@ -99,6 +105,7 @@ export function ClienteView({
             </div>
             <div className="flex flex-col gap-5">
               <DescuentosPanel clientId={cliente.id} descuentos={cliente.descuentos} />
+              <AprobacionesPanel clientId={cliente.id} aprobaciones={aprobaciones} optimizacionesBloqueables={optimizacionesBloqueables} />
               <ReunionesPanel clientId={cliente.id} reuniones={reuniones} />
               <OnboardingPanel clientId={cliente.id} resumen={onboarding} />
               <IntegracionesPanel clientId={cliente.id} configApis={cliente.configApis} />

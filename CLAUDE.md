@@ -1326,15 +1326,118 @@ qué faltaba del plan inicial).
   plantillas de checklist en la app para asignarlo desde la UI, así que
   requeriría esa pieza adicional primero.
 
-**Próximo paso:** sigue el resto de Fase 4 — flujo de aprobaciones
-(§3.11), offboarding (§3.12), retrospectiva mensual del área (§3.13),
-KPIs de operación, vincular prompts a checklists de optimización (ver
-arriba), y los ítems de deuda técnica menores ya documentados (umbrales
-hardcodeados en `ServiciosPanel`/`DescuentosPanel`, cierre automático de
-la tarea de ClickUp al marcar una optimización `realizada`, generación
-semanal real de las optimizaciones de Ads como server action, y
-persistencia de la reprogramación automática por feriado/ausencia,
-regla D).
+**Flujo de aprobaciones (§3.11)** — a pedido explícito del usuario ("dale,
+sigue con el flujo de aprobaciones").
+
+- **Modelo de datos ya existía, sin UI ni lógica conectada**: la
+  migración 0001 ya traía `approvals` (client_id, service_id NULL, tipo,
+  descripcion, link, enviado_en, canal, estado, resuelto_en) y
+  `approval_reminders` (approval_id, enviado_en); `optimizations` ya
+  tenía `bloqueada_motivo` y el enum `optimizacion_estado` ya incluía
+  `'bloqueada'` — ninguno de los dos se usaba en ningún lado del código.
+  `lib/data/approvals.ts` (listar por cliente, próximas optimizaciones
+  "bloqueables") y `lib/data/approvals-actions.ts` (`crearAprobacion`,
+  `resolverAprobacion`, `registrarRecordatorioAprobacion`,
+  `eliminarAprobacion`, esta última exigiendo `rol = admin`, mismo patrón
+  que el resto de acciones destructivas). Constante de tipos
+  (`creativo`/`presupuesto`/`copy`/`otro`) extraída a
+  `lib/approvals-tipos.ts` (sin dependencias de servidor) desde el
+  arranque, en vez de repetir el bug de fuga al bundle del cliente ya
+  documentado varias veces — evitado, no encontrado esta vez.
+- **`estado = 'sin_respuesta'` se calcula al consultar, no se guarda a
+  mano** (migración `0014_approvals_optimizacion.sql`, vista
+  `approvals_view`): mismo patrón sin-cron que `services_view`/
+  `discounts_view` (§4.2) — cuando `estado = 'enviado'` y ya pasaron
+  `settings.dias_alerta_aprobacion` días desde `enviado_en`, el
+  `estado_efectivo` sale `'sin_respuesta'` sin que nadie lo haya marcado.
+  Los server actions nunca escriben `'sin_respuesta'` directamente, solo
+  `'enviado'` (por defecto) o `'aprobado'`/`'rechazado'` (resolución
+  humana) — el valor computado es la única fuente de ese estado.
+  **Bug real corregido de paso, encontrado leyendo el código existente
+  antes de tocarlo**: el dashboard (`lib/data/dashboard.ts`) ya tenía una
+  categoría de alerta "Aprobaciones sin respuesta" desde antes de esta
+  ronda, pero filtraba directo `approvals.estado = 'sin_respuesta'` — un
+  estado que nada en el código escribía nunca, así que la alerta
+  automática que pide el brief ("alerta automática si lleva más de N
+  días sin respuesta") en realidad nunca se disparaba sola, pese a
+  existir la UI para mostrarla. Corregido apuntando esa consulta a
+  `approvals_view.estado_efectivo` en vez de la columna cruda.
+- **Una optimización puede bloquearse por una aprobación pendiente**
+  (§3.11: "una optimización puede marcarse como bloqueada por aprobación
+  pendiente, queda visible el motivo del atraso") — nueva columna
+  `approvals.optimization_id` (misma migración 0014, nullable, aditiva).
+  Al crear una aprobación, un checkbox opcional "Bloquea una
+  optimización pendiente" (solo aparece si el cliente tiene alguna
+  `programada`/`bloqueada`) pone esa optimización en estado `bloqueada`
+  con `bloqueada_motivo` describiendo la aprobación; al resolver la
+  aprobación (aprobado o rechazado), la optimización vuelve a
+  `programada` y se limpia el motivo — nunca queda bloqueada para
+  siempre por un registro ya resuelto. Nueva categoría de alerta en el
+  dashboard, "Optimizaciones bloqueadas por aprobación", con el motivo
+  completo visible (mismo criterio que el resto de categorías de
+  `AlertasPanel.tsx`).
+- **Nuevo panel en la ficha del cliente** (`AprobacionesPanel.tsx`,
+  entre Descuentos y Reuniones): listar (pendientes primero), registrar
+  una nueva (tipo, descripción, link/adjunto opcional, canal opcional,
+  el checkbox de bloqueo si corresponde), aprobar/rechazar, "recordatorio
+  enviado" (inserta en `approval_reminders`, sin cambiar estado — el
+  brief lo pide como "opción de registrar el recordatorio enviado", no
+  como una transición de estado), y eliminar (con confirmación,
+  servidor exige admin igual que Descuentos — el botón se muestra
+  siempre y el error de permiso lo devuelve la acción, mismo patrón que
+  `DescuentosPanel`, no hace falta pasar el rol como prop).
+- **Cada aprobación registrada o resuelta queda en la bitácora del
+  cliente** (ClickUp real + interna, mismo patrón que el resto de
+  acciones de `cliente-actions.ts` — este archivo tiene su propia copia
+  de la función `registrarBitacora`, siguiendo la convención ya
+  establecida en el proyecto de no compartir ese helper entre archivos
+  de acciones).
+- Verificado de punta a punta contra Postgres local + `next dev` real,
+  logueado como admin (Marcel) vía Playwright, con datos reales de
+  Provetec Mining: el dashboard mostró la alerta "Aprobaciones sin
+  respuesta" del seed (Tecny Stand, calculada por la vista sin que nadie
+  la marcara a mano) antes de tocar nada; se registró una aprobación
+  nueva de tipo creativo bloqueando la optimización SEO pendiente del
+  cliente — confirmado en la base: la optimización pasó a `bloqueada`
+  con el motivo correcto, la bitácora (ClickUp real + interna) quedó
+  `ok`; la nueva categoría de alerta "Optimizaciones bloqueadas por
+  aprobación" apareció en el dashboard con el motivo completo; al
+  aprobar la solicitud desde la ficha, la optimización volvió a
+  `programada` con el motivo limpio y la aprobación quedó `aprobado`
+  con `resuelto_en` de hoy — confirmado directo en la base, no solo en
+  la UI. Cero errores de consola. Typecheck, lint (en los archivos de
+  esta ronda) y los 17 tests de vitest en verde. Datos de prueba
+  (aprobación de prueba) borrados de la base al terminar.
+- **Falta:** aplicar la migración 0014 contra producción — este entorno
+  no tuvo acceso al token de la Management API de Supabase esta ronda
+  (a diferencia de rondas anteriores), así que solo se aplicó y verificó
+  contra Postgres local. Queda pendiente correrla en producción (o darle
+  el token de Management API a una sesión futura) antes de que el
+  feature funcione ahí.
+
+**Pedido del usuario, todavía sin implementar — requiere aclarar alcance
+antes de tocar el motor de scheduling**: cambios a la Regla B (§3.2,
+optimización de campañas) —
+
+1. Los clientes de campañas (Meta/Google Ads) se distribuirían todos los
+   días de la semana (no solo miércoles 16:00), una revisión/optimización
+   por semana por cliente, sin hora fija — el dashboard debería mostrar
+   como alerta qué clientes tocan cada día para que el usuario organice
+   su revisión dentro del día.
+2. Estos clientes de campañas los revisa el propio usuario
+   (`paulete@bigbuda.com`) — Andrés ya no trabaja en la empresa.
+3. Los clientes de SEO siguen siendo revisados los viernes, por Marcel
+   (confirma la Regla A tal cual está, sin cambios).
+4. Nueva alerta de dashboard en rojo: cliente con campaña activa que no
+   recibió conversiones el día anterior, para priorizar su revisión.
+
+Esto toca el corazón del motor de scheduling (Regla B), el bloque de
+miércoles (`BloqueCard`/`bloque-actions.ts`), la sincronización de tareas
+a ClickUp (día/hora), el dashboard de alertas, y la gestión de usuarios
+(offboarding de Andrés — sus ausencias/asignaciones previas). Antes de
+tocar código hace falta que el usuario confirme el reparto de días
+(¿todos los días hábiles? ¿algún criterio de asignación o solo orden de
+alta?) y qué pasa con el registro histórico de Andrés como responsable.
 
 ---
 

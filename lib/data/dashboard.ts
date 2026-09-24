@@ -30,6 +30,7 @@ export interface DashboardData {
     atrasadas: AlertaItem[];
     pacing: AlertaItem[];
     aprobaciones: AlertaItem[];
+    bloqueadas: AlertaItem[];
     porVencer: AlertaItem[];
     informesPendientes: AlertaItem[];
     descuentosPorVencer: AlertaItem[];
@@ -64,7 +65,7 @@ export async function getDashboardData(): Promise<DashboardData> {
   const hoyIso = toIso(hoy);
   const semanaHastaIso = toIso(new Date(hoy.getFullYear(), hoy.getMonth(), hoy.getDate() + 6));
 
-  const [actual, anterior, vigenciasRows, eventos, settingsRow] = await Promise.all([
+  const [actual, anterior, vigenciasRows, eventos] = await Promise.all([
     cumplimientoDelMes(hoy.getFullYear(), hoy.getMonth() + 1),
     cumplimientoDelMes(
       hoy.getMonth() === 0 ? hoy.getFullYear() - 1 : hoy.getFullYear(),
@@ -98,10 +99,8 @@ export async function getDashboardData(): Promise<DashboardData> {
       where o.fecha_programada between ${hoyIso} and ${semanaHastaIso}
       order by o.fecha_programada, o.hora_programada nulls first
     `,
-    sql<{ dias_alerta_aprobacion: number }[]>`select dias_alerta_aprobacion from settings where id = 1`,
   ]);
 
-  const diasAlertaAprobacion = settingsRow[0]?.dias_alerta_aprobacion ?? 3;
   const porEstado = new Map(vigenciasRows.map((r) => [r.estado, Number(r.total)]));
   const vigentes = porEstado.get("activo") ?? 0;
   const porVencer = porEstado.get("por_vencer") ?? 0;
@@ -119,7 +118,7 @@ export async function getDashboardData(): Promise<DashboardData> {
     informeEnviado: !!e.informe_enviado_en,
   }));
 
-  const [atrasadasRows, pacingRows, aprobacionesRows, porVencerRows, informesRows, descuentosRows, syncRows, completadasClickUpRows] =
+  const [atrasadasRows, pacingRows, aprobacionesRows, bloqueadasRows, porVencerRows, informesRows, descuentosRows, syncRows, completadasClickUpRows] =
     await Promise.all([
       sql<{ cliente_id: string; cliente_nombre: string; tipo: string; fecha_programada: string }[]>`
         select c.id as cliente_id, c.nombre as cliente_nombre, o.tipo, o.fecha_programada
@@ -133,9 +132,15 @@ export async function getDashboardData(): Promise<DashboardData> {
         where b.alerta_disparada and b.mes = ${hoy.getMonth() + 1} and b.anio = ${hoy.getFullYear()}
       `,
       sql<{ cliente_id: string; cliente_nombre: string; tipo: string; enviado_en: string }[]>`
-        select c.id as cliente_id, c.nombre as cliente_nombre, a.tipo, a.enviado_en
-        from approvals a join clients c on c.id = a.client_id
-        where a.estado = 'sin_respuesta'
+        select c.id as cliente_id, c.nombre as cliente_nombre, av.tipo, av.enviado_en
+        from approvals_view av join clients c on c.id = av.client_id
+        where av.estado_efectivo = 'sin_respuesta'
+      `,
+      sql<{ cliente_id: string; cliente_nombre: string; tipo: string; bloqueada_motivo: string | null }[]>`
+        select c.id as cliente_id, c.nombre as cliente_nombre, o.tipo, o.bloqueada_motivo
+        from optimizations o join clients c on c.id = o.client_id
+        where o.estado = 'bloqueada'
+        order by o.fecha_programada
       `,
       sql<{ cliente_id: string; cliente_nombre: string; tipo: string; fecha_termino: string }[]>`
         select c.id as cliente_id, c.nombre as cliente_nombre, sv.tipo, sv.fecha_termino
@@ -198,18 +203,21 @@ export async function getDashboardData(): Promise<DashboardData> {
         detalle: `${TIPO_LABEL[r.tipo] ?? r.tipo} · ${r.pacing_pct > 100 ? "+" : ""}${r.pacing_pct - 100}% sobre ritmo`,
         href: `/clientes/${r.cliente_id}`,
       })),
-      aprobaciones: aprobacionesRows
-        .map((r) => ({
-          ...r,
-          dias: Math.round((hoy.getTime() - new Date(r.enviado_en).getTime()) / 86_400_000),
-        }))
-        .filter((r) => r.dias >= diasAlertaAprobacion)
-        .map((r) => ({
+      aprobaciones: aprobacionesRows.map((r) => {
+        const dias = Math.round((hoy.getTime() - new Date(r.enviado_en).getTime()) / 86_400_000);
+        return {
           clienteId: r.cliente_id,
           clienteNombre: r.cliente_nombre,
-          detalle: `${r.tipo} · ${r.dias} días sin respuesta`,
+          detalle: `${r.tipo} · ${dias} días sin respuesta`,
           href: `/clientes/${r.cliente_id}`,
-        })),
+        };
+      }),
+      bloqueadas: bloqueadasRows.map((r) => ({
+        clienteId: r.cliente_id,
+        clienteNombre: r.cliente_nombre,
+        detalle: `${TIPO_LABEL[r.tipo] ?? r.tipo} · ${r.bloqueada_motivo ?? "bloqueada por aprobación pendiente"}`,
+        href: `/clientes/${r.cliente_id}`,
+      })),
       porVencer: porVencerRows.map((r) => ({
         clienteId: r.cliente_id,
         clienteNombre: r.cliente_nombre,

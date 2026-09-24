@@ -28,6 +28,7 @@ export function AlertasPanel({ data }: { data: DashboardData }) {
     alertas.atrasadas.length +
     alertas.pacing.length +
     alertas.aprobaciones.length +
+    alertas.bloqueadas.length +
     alertas.porVencer.length +
     alertas.informesPendientes.length +
     alertas.descuentosPorVencer.length +
@@ -51,6 +52,7 @@ export function AlertasPanel({ data }: { data: DashboardData }) {
             <Categoria titulo="Optimizaciones atrasadas" items={alertas.atrasadas} />
             <Categoria titulo="Desviaciones de ritmo de gasto" items={alertas.pacing} />
             <Categoria titulo="Aprobaciones sin respuesta" items={alertas.aprobaciones} />
+            <Categoria titulo="Optimizaciones bloqueadas por aprobación" items={alertas.bloqueadas} />
             <Categoria titulo="Servicios por vencer" items={alertas.porVencer} />
             <Categoria titulo="Informes pendientes de envío" items={alertas.informesPendientes} />
             <Categoria titulo="Descuentos por vencer" items={alertas.descuentosPorVencer} />

@@ -183,9 +183,13 @@ async function seedBudgets(servicios: Awaited<ReturnType<typeof seedServices>>) 
 }
 
 async function seedApprovals(clients: Awaited<ReturnType<typeof seedClients>>) {
+  // Queda en 'enviado' a propósito — `approvals_view` (§3.11, migración 0014) calcula
+  // "sin_respuesta" al consultar en vez de guardarlo a mano, mismo patrón sin-cron que
+  // services_view/discounts_view; con esta fecha (más de dias_alerta_aprobacion atrás)
+  // el estado efectivo ya sale "sin_respuesta" sin que nadie lo haya marcado.
   await sql`
     insert into approvals (client_id, tipo, descripcion, enviado_en, canal, estado)
-    values (${clients.tecnyStand.id}, 'creativo', 'Nuevos creativos de campaña de aniversario', '2026-09-08', 'email', 'sin_respuesta')
+    values (${clients.tecnyStand.id}, 'creativo', 'Nuevos creativos de campaña de aniversario', '2026-09-08', 'email', 'enviado')
   `;
 }
 
