@@ -1410,12 +1410,8 @@ sigue con el flujo de aprobaciones").
   la UI. Cero errores de consola. Typecheck, lint (en los archivos de
   esta ronda) y los 17 tests de vitest en verde. Datos de prueba
   (aprobación de prueba) borrados de la base al terminar.
-- **Falta:** aplicar la migración 0014 contra producción — este entorno
-  no tuvo acceso al token de la Management API de Supabase esta ronda
-  (a diferencia de rondas anteriores), así que solo se aplicó y verificó
-  contra Postgres local. Queda pendiente correrla en producción (o darle
-  el token de Management API a una sesión futura) antes de que el
-  feature funcione ahí.
+- Migración 0014 aplicada contra producción en una ronda posterior (ver
+  más abajo, junto con 0013 y 0015).
 
 **Reparto diario de campañas (nueva Regla B) + salida de Andrés + alerta
 "sin conversiones ayer"** — pedido explícito del usuario, tres cambios
@@ -1522,12 +1518,62 @@ llamadas en vivo por carga del dashboard.
   21 tests de vitest en verde (17 base + 4 nuevos de `lib/scheduling/`,
   reescritos para el reparto por día de semana en vez de "5 miércoles").
   Datos de prueba (snapshot) limpiados de la base al terminar.
-- **Falta:** aplicar la migración 0015 contra producción — este entorno
-  no tuvo acceso al token de Management API de Supabase esta ronda, solo
-  se aplicó y verificó contra Postgres local. Sin ella en producción, el
-  reparto diario de Ads y la alerta de conversiones no funcionan ahí
-  todavía (el resto del código es retrocompatible: sin la columna nueva,
-  simplemente no habría servicios con día asignado).
+- Migración 0015 aplicada contra producción en la ronda siguiente (ver
+  más abajo) — el usuario compartió un token nuevo de Management API.
+
+**Migraciones 0013/0014/0015 aplicadas contra producción** — el usuario
+compartió un token nuevo de Management API de Supabase (el anterior
+había expirado). Antes de aplicar nada se revisó qué había realmente en
+producción (`select nombre from _migrations`) en vez de confiar en lo
+documentado en rondas anteriores — **corrección al registro**: la
+migración `0013_google_ads_ga4_property.sql` se había dado por
+"aplicada contra producción" en la ronda de esa fecha, pero la consulta
+real mostró que producción solo tenía hasta `0012` — quedaba sin
+aplicar, igual que `0014` y `0015`. No se pudo determinar la causa (el
+token de esa ronda pudo haber apuntado a un proyecto distinto, o el
+paso de verificación de esa ronda no confirmó contra la base real) —
+documentado acá para que quede claro que "aplicada" en una ronda
+anterior no se puede dar por hecho sin re-verificar.
+
+- Las tres migraciones (`0013`, `0014`, `0015`) se aplicaron en orden vía
+  `POST /v1/projects/{ref}/database/query` de la Management API,
+  registrando cada una en `_migrations` después de correr limpio —
+  mismo mecanismo ya usado en rondas anteriores, esta vez confirmado con
+  una relectura de `_migrations` al final mostrando las 15 migraciones
+  completas.
+- **Backfill de `dia_semana_ads_asignado` para los 8 servicios de Ads
+  reales ya existentes en producción** (Provetec Mining, Tecny Stand ×2,
+  Gonfernic, Artimed, Comercial Loyola ×3 — este último nombre repetido
+  porque son 3 clientes distintos con el mismo nombre, dato preexistente,
+  no tocado): la migración 0015 solo agrega la columna, no asigna
+  valores a servicios ya existentes — la asignación perezosa en
+  `onboarding-actions.ts` solo se dispara para un servicio que **todavía
+  no tiene ninguna optimización** (`not exists (select 1 from
+  optimizations...)`), condición que ningún servicio real cumple hoy.
+  Sin este backfill manual, los 8 servicios reales habrían quedado con
+  `dia_semana_ads_asignado = null` indefinidamente. Corrido a mano con
+  el mismo criterio bucket-fill del código (orden por `creado_en`,
+  módulo 5) — quedaron parejos: 2 en lunes, 2 en martes, 2 en miércoles,
+  1 en jueves, 1 en viernes. Confirmado también que la reasignación de
+  Andrés → Paulete de la migración 0015 sí afectó filas reales: los 8
+  servicios de Ads en producción muestran `responsable = Paulete` (uno,
+  Gonfernic · Google Ads, sin responsable — así estaba antes, no
+  relacionado con Andrés).
+- **Nota real, no resuelta esta ronda**: sigue sin existir en producción
+  un mecanismo que genere la optimización semanal siguiente de cada
+  servicio de Ads (gap ya documentado en rondas anteriores — hoy solo
+  existe en `scripts/seed.ts`). El backfill de arriba deja el día
+  asignado listo, pero hasta que exista esa generación semanal real,
+  los servicios reales no van a acumular automáticamente nuevas
+  optimizaciones futuras — quedó exactamente donde ya estaba, solo que
+  ahora con el día correcto pre-asignado para cuando se construya esa
+  pieza.
+- No se disparó ningún redeploy de Vercel desde esta sesión (el token
+  compartido es de Supabase, no de Vercel) — se asume que el código ya
+  está desplegado desde el push a `main` de la ronda anterior (el
+  proyecto tenía el deploy automático por push ya reconectado, según
+  quedó documentado en la integración de Google OAuth). No se pudo
+  confirmar el estado del deploy en sí desde este entorno.
 
 ---
 
