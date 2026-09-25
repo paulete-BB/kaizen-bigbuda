@@ -1,10 +1,11 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { after } from "next/server";
 import { sql } from "@/lib/db";
 import { requireUser } from "@/lib/auth/server";
 import { hoySantiago, toIso } from "@/lib/dates";
-import { syncOptimizationTaskToClickUp } from "@/lib/clickup/client";
+import { syncLogEntryToClickUp, syncOptimizationTaskToClickUp } from "@/lib/clickup/client";
 import { asignarViernesOrdinal, generarOptimizacionesSeoDelMes } from "@/lib/scheduling/seo";
 import { asignarDiaSemanaAds, generarOptimizacionesAdsDelMes } from "@/lib/scheduling/ads";
 import type { Holiday, OptimizacionGenerada, ServicioActivo, ServicioTipo } from "@/lib/scheduling/types";
@@ -110,14 +111,22 @@ async function activarPrimeraOptimizacionSiCorresponde(clientId: string, actorId
         values (${clientId}, ${s.id}, 'seo_aeo_geo', ${opt.fechaProgramada}, ${s.responsable_id}, 'programada', 'pendiente_sync')
         returning id
       `;
-      await syncOptimizationTaskToClickUp({
-        optimizationId,
-        clientId,
-        serviceId: s.id,
-        servicioTipo: "seo_aeo_geo",
-        fechaProgramada: opt.fechaProgramada,
-        responsableId: s.responsable_id,
-      });
+      // `after()`: la optimización ya quedó insertada como `pendiente_sync`
+      // (arriba); el sync a ClickUp corre después de responder para que
+      // marcar el último ítem del checklist de onboarding no se quede
+      // esperando la API de ClickUp (podía tardar ~30-40s por servicio, y
+      // este bloque puede correr para varios servicios seguidos) — mismo
+      // ajuste que el hang real reportado en el checklist de cierre.
+      after(() =>
+        syncOptimizationTaskToClickUp({
+          optimizationId,
+          clientId,
+          serviceId: s.id,
+          servicioTipo: "seo_aeo_geo",
+          fechaProgramada: opt.fechaProgramada,
+          responsableId: s.responsable_id,
+        }),
+      );
       generadas.push({ fecha: opt.fechaProgramada, tipoLabel: "SEO · AEO · GEO" });
     }
   }
@@ -149,24 +158,40 @@ async function activarPrimeraOptimizacionSiCorresponde(clientId: string, actorId
         values (${clientId}, ${s.id}, ${s.tipo}, ${opt.fechaProgramada}, ${opt.horaProgramada ?? null}, ${s.responsable_id}, 'programada', 'pendiente_sync')
         returning id
       `;
-      await syncOptimizationTaskToClickUp({
-        optimizationId,
-        clientId,
-        serviceId: s.id,
-        servicioTipo: s.tipo,
-        fechaProgramada: opt.fechaProgramada,
-        horaProgramada: opt.horaProgramada ?? null,
-        responsableId: s.responsable_id,
-      });
+      after(() =>
+        syncOptimizationTaskToClickUp({
+          optimizationId,
+          clientId,
+          serviceId: s.id,
+          servicioTipo: s.tipo,
+          fechaProgramada: opt.fechaProgramada,
+          horaProgramada: opt.horaProgramada ?? null,
+          responsableId: s.responsable_id,
+        }),
+      );
       generadas.push({ fecha: opt.fechaProgramada, tipoLabel: s.tipo === "meta_ads" ? "Meta Ads" : "Google Ads" });
     }
   }
 
   if (generadas.length) {
     const resumen = generadas.map((g) => `${g.tipoLabel}: ${g.fecha}`).join(" · ");
-    await sql`
+    const contenido = "Ítems bloqueantes listos. Primera optimización programada — " + resumen;
+    const [{ id: logId }] = await sql<{ id: string }[]>`
       insert into log_entries (client_id, titulo, tipo, contenido, sync_status, creado_por)
-      values (${clientId}, 'Onboarding completado', 'Onboarding', ${"Ítems bloqueantes listos. Primera optimización programada — " + resumen}, 'pendiente_sync', ${actorId})
+      values (${clientId}, 'Onboarding completado', 'Onboarding', ${contenido}, 'pendiente_sync', ${actorId})
+      returning id
     `;
+    after(async () => {
+      const sync = await syncLogEntryToClickUp({
+        clientId,
+        fecha: new Date().toISOString().slice(0, 10),
+        titulo: "Onboarding completado",
+        tipo: "Onboarding",
+        contenido,
+      });
+      if (sync.ok) {
+        await sql`update log_entries set sync_status = 'ok', clickup_page_id = ${sync.clickupPageId ?? null} where id = ${logId}`;
+      }
+    });
   }
 }

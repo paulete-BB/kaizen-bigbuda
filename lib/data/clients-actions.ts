@@ -2,6 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
+import { after } from "next/server";
 import { sql } from "@/lib/db";
 import { requireUser } from "@/lib/auth/server";
 import { addMeses } from "@/lib/dates";
@@ -10,18 +11,28 @@ import { instanciarOffboarding } from "@/lib/data/offboarding";
 import { syncLogEntryToClickUp } from "@/lib/clickup/client";
 import { itemsBloqueantesSalida } from "@/lib/offboarding-items";
 
+/** Ver el comentario de la misma función en `cliente-actions.ts` — inserta
+ * `pendiente_sync` de inmediato y agenda el intento de ClickUp con
+ * `after()` para no colgar la acción (era el hang real reportado al
+ * ejecutar el checklist de cierre). */
 async function registrarBitacora(opts: { clientId: string; titulo: string; tipo: string; contenido: string; creadoPor: string }) {
-  const sync = await syncLogEntryToClickUp({
-    clientId: opts.clientId,
-    fecha: new Date().toISOString().slice(0, 10),
-    titulo: opts.titulo,
-    tipo: opts.tipo,
-    contenido: opts.contenido,
-  });
-  await sql`
+  const [{ id: logId }] = await sql<{ id: string }[]>`
     insert into log_entries (client_id, titulo, tipo, contenido, sync_status, creado_por)
-    values (${opts.clientId}, ${opts.titulo}, ${opts.tipo}, ${opts.contenido}, ${sync.ok ? "ok" : "pendiente_sync"}, ${opts.creadoPor})
+    values (${opts.clientId}, ${opts.titulo}, ${opts.tipo}, ${opts.contenido}, 'pendiente_sync', ${opts.creadoPor})
+    returning id
   `;
+  after(async () => {
+    const sync = await syncLogEntryToClickUp({
+      clientId: opts.clientId,
+      fecha: new Date().toISOString().slice(0, 10),
+      titulo: opts.titulo,
+      tipo: opts.tipo,
+      contenido: opts.contenido,
+    });
+    if (sync.ok) {
+      await sql`update log_entries set sync_status = 'ok', clickup_page_id = ${sync.clickupPageId ?? null} where id = ${logId}`;
+    }
+  });
 }
 
 const TIPOS_SERVICIO = ["seo_aeo_geo", "meta_ads", "google_ads"] as const;

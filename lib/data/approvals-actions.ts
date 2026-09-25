@@ -1,6 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { after } from "next/server";
 import { sql } from "@/lib/db";
 import { requireUser } from "@/lib/auth/server";
 import { syncLogEntryToClickUp } from "@/lib/clickup/client";
@@ -15,18 +16,27 @@ function esTipoValido(v: string): v is ApprovalTipo {
   return (TIPOS_APROBACION as readonly string[]).includes(v);
 }
 
+/** Ver el comentario de la función equivalente en `cliente-actions.ts` —
+ * inserta `pendiente_sync` de inmediato y agenda el intento de ClickUp con
+ * `after()` para no colgar la acción. */
 async function registrarBitacoraAprobacion(opts: { clientId: string; titulo: string; contenido: string; creadoPor: string }) {
-  const sync = await syncLogEntryToClickUp({
-    clientId: opts.clientId,
-    fecha: new Date().toISOString().slice(0, 10),
-    titulo: opts.titulo,
-    tipo: "Aprobación",
-    contenido: opts.contenido,
-  });
-  await sql`
+  const [{ id: logId }] = await sql<{ id: string }[]>`
     insert into log_entries (client_id, titulo, tipo, contenido, sync_status, creado_por)
-    values (${opts.clientId}, ${opts.titulo}, 'Aprobación', ${opts.contenido}, ${sync.ok ? "ok" : "pendiente_sync"}, ${opts.creadoPor})
+    values (${opts.clientId}, ${opts.titulo}, 'Aprobación', ${opts.contenido}, 'pendiente_sync', ${opts.creadoPor})
+    returning id
   `;
+  after(async () => {
+    const sync = await syncLogEntryToClickUp({
+      clientId: opts.clientId,
+      fecha: new Date().toISOString().slice(0, 10),
+      titulo: opts.titulo,
+      tipo: "Aprobación",
+      contenido: opts.contenido,
+    });
+    if (sync.ok) {
+      await sql`update log_entries set sync_status = 'ok', clickup_page_id = ${sync.clickupPageId ?? null} where id = ${logId}`;
+    }
+  });
 }
 
 export async function crearAprobacion(formData: FormData): Promise<AccionAprobacionResultado> {

@@ -1,6 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { after } from "next/server";
 import { sql } from "@/lib/db";
 import { requireUser } from "@/lib/auth/server";
 import { fridaysOfMonth } from "@/lib/scheduling/dates";
@@ -47,14 +48,21 @@ export async function reasignarViernesSeo(
       insert into reschedules (optimization_id, fecha_original, fecha_nueva, motivo, creado_por)
       values (${optimizacion.id}, ${optimizacion.fecha_programada}, ${nuevaFecha}, 'manual', ${session.userId})
     `;
-    await syncOptimizationTaskToClickUp({
-      optimizationId: optimizacion.id,
-      clientId: optimizacion.client_id,
-      serviceId,
-      servicioTipo: "seo_aeo_geo",
-      fechaProgramada: nuevaFecha,
-      responsableId: optimizacion.responsable_id,
-    });
+    // `after()`: la tarea ya quedó con su fecha real en la base (arriba); el
+    // sync a ClickUp corre después de responder para que el drag & drop no
+    // se quede esperando la API de ClickUp (podía tardar ~30-40s si estaba
+    // lenta) — si falla, `syncOptimizationTaskToClickUp` deja la fila en
+    // `pendiente_sync` para el cron de reintento (§4.3).
+    after(() =>
+      syncOptimizationTaskToClickUp({
+        optimizationId: optimizacion.id,
+        clientId: optimizacion.client_id,
+        serviceId,
+        servicioTipo: "seo_aeo_geo",
+        fechaProgramada: nuevaFecha,
+        responsableId: optimizacion.responsable_id,
+      }),
+    );
   }
 
   revalidatePath("/calendario");

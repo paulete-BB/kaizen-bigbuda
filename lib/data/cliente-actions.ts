@@ -1,6 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { after } from "next/server";
 import { sql } from "@/lib/db";
 import { requireUser } from "@/lib/auth/server";
 import { syncLogEntryToClickUp } from "@/lib/clickup/client";
@@ -13,6 +14,17 @@ const SERVICE_LABEL: Record<ServicioTipo, string> = {
   google_ads: "Google Ads",
 };
 
+/**
+ * Inserta el registro ya (siempre `pendiente_sync`) y agenda el intento de
+ * sync a ClickUp con `after()` — antes esta función esperaba el resultado
+ * de `syncLogEntryToClickUp` (hasta 4 reintentos con backoff, ~30-40s si
+ * ClickUp está lento/caído) antes de volver, así que cualquier acción que
+ * la llamara (marcar un ítem de checklist, guardar un descuento, etc.)
+ * dejaba la UI colgada ese mismo tiempo. Con `after()` la acción vuelve
+ * casi al instante; si el sync falla, la fila queda igual en
+ * `pendiente_sync` para que la recoja el cron de reintento (§4.3) — mismo
+ * resultado final, sin bloquear al usuario.
+ */
 async function registrarBitacora(opts: {
   clientId: string;
   titulo: string;
@@ -21,20 +33,23 @@ async function registrarBitacora(opts: {
   creadoPor: string;
   optimizationId?: string;
 }) {
-  const sync = await syncLogEntryToClickUp({
-    clientId: opts.clientId,
-    fecha: new Date().toISOString().slice(0, 10),
-    titulo: opts.titulo,
-    tipo: opts.tipo,
-    contenido: opts.contenido,
-  });
-  await sql`
+  const [{ id: logId }] = await sql<{ id: string }[]>`
     insert into log_entries (client_id, optimization_id, titulo, tipo, contenido, sync_status, creado_por)
-    values (
-      ${opts.clientId}, ${opts.optimizationId ?? null}, ${opts.titulo}, ${opts.tipo}, ${opts.contenido},
-      ${sync.ok ? "ok" : "pendiente_sync"}, ${opts.creadoPor}
-    )
+    values (${opts.clientId}, ${opts.optimizationId ?? null}, ${opts.titulo}, ${opts.tipo}, ${opts.contenido}, 'pendiente_sync', ${opts.creadoPor})
+    returning id
   `;
+  after(async () => {
+    const sync = await syncLogEntryToClickUp({
+      clientId: opts.clientId,
+      fecha: new Date().toISOString().slice(0, 10),
+      titulo: opts.titulo,
+      tipo: opts.tipo,
+      contenido: opts.contenido,
+    });
+    if (sync.ok) {
+      await sql`update log_entries set sync_status = 'ok', clickup_page_id = ${sync.clickupPageId ?? null} where id = ${logId}`;
+    }
+  });
 }
 
 export async function actualizarVigenciaServicio(formData: FormData) {

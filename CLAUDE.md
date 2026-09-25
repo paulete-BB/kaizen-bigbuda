@@ -1845,6 +1845,79 @@ la confirmación hasta marcar todo) en vez de las otras dos alternativas
   entrada de corrección en ClickUp queda a propósito como registro
   permanente de que las dos anteriores fueron ruido de prueba.
 
+**Bug real reportado por el usuario — "traté de ejecutar el checklist pero
+la plataforma se quedó pensando eternamente"**: causa raíz encontrada, no
+específica de offboarding — un problema **sistémico** en cómo la
+plataforma escribe a ClickUp desde acciones del servidor.
+
+- `clickupFetch` (§4.3) reintenta hasta 4 veces con backoff exponencial
+  cuando ClickUp devuelve 5xx (confirmado empíricamente en rondas
+  anteriores que la API real de ClickUp lo hace seguido) — cada intento
+  con timeout de 10s, así que el peor caso de una sola llamada es
+  ~10s × 4 + backoffs ≈ 30-40s. El problema real: **todas** las acciones
+  que escriben a la bitácora o crean/actualizan una tarea de ClickUp
+  hacían `await` sobre ese resultado antes de devolver algo a la UI — el
+  botón (o el checklist) se quedaba "pensando" ese tiempo completo cada
+  vez que ClickUp estaba lento, y algunos flujos (completar el checklist
+  de onboarding con 2+ servicios nuevos, por ejemplo) encadenan *varias*
+  llamadas a ClickUp seguidas, multiplicando la espera. En producción, si
+  el plan de Vercel tiene un límite de duración de función más corto que
+  eso, la función además podía cortarse a la mitad, dejando la petición
+  del navegador esperando una respuesta que nunca llega — el "eternamente"
+  literal que reportó el usuario.
+- **Corregido con `after()` de Next.js** (`import { after } from
+  "next/server"`, estable desde Next 15, nunca usado antes en el
+  proyecto): cada acción ahora inserta la fila (`log_entries` o
+  `optimizations`) como `pendiente_sync` de inmediato — ya era el
+  comportamiento existente para el caso de fallo — y agenda el intento
+  real de sync a ClickUp con `after()`, que Vercel corre *después* de
+  enviarle la respuesta al navegador (vía `waitUntil` por debajo). El
+  usuario ve la UI responder casi al instante siempre; si ClickUp
+  responde bien, la fila pasa a `ok` unos segundos después sin que nadie
+  lo note; si falla, queda en `pendiente_sync` exactamente como ya
+  preveía el diseño original (§3.3: "la bitácora interna siempre existe
+  como espejo... un job de reintento lo sincroniza después") — el cron
+  `reintentar-sync` la recoge. Ningún comportamiento visible cambia salvo
+  la velocidad de respuesta.
+- **8 archivos corregidos, todas las copias del mismo patrón** (el
+  proyecto no comparte el helper `registrarBitacora` entre archivos de
+  actions, por convención ya establecida — así que el mismo fix se
+  replicó en cada copia): `lib/data/offboarding-actions.ts` (el hang real
+  reportado — el último ítem del checklist de cierre dispara la bitácora
+  "Cierre del cliente completado"), `lib/data/onboarding-actions.ts`
+  (mismo patrón pero peor: `activarPrimeraOptimizacionSiCorresponde` hace
+  un `syncOptimizationTaskToClickUp` **por cada servicio nuevo** dentro de
+  un `for`, así que completar el checklist de onboarding con SEO + Ads
+  podía encadenar 2-3 llamadas seguidas — el candidato más probable a lo
+  que el usuario reportó, si "el checklist" era el de onboarding y no el
+  de cierre), `lib/data/clients-actions.ts`, `lib/data/cliente-actions.ts`,
+  `lib/data/approvals-actions.ts`, `lib/data/registro-seo-actions.ts`
+  ("Guardar registro" de una optimización SEO — bitácora + tarea de la
+  próxima optimización), `lib/data/informes-actions.ts` ("Registrar
+  envío" de un informe), y `lib/data/calendario-actions.ts`
+  (`reasignarViernesSeo` — el drag & drop del calendario también hacía
+  este mismo `await` bloqueante sobre la actualización de la tarea en
+  ClickUp).
+- Verificado de punta a punta contra Postgres local + `next dev` real +
+  Playwright, midiendo el tiempo de respuesta real de cada server action
+  (interceptando las peticiones `POST` con header `Next-Action`) en vez de
+  solo mirar la UI: con Provetec Mining, "Registrar salida" (con
+  instanciación completa del checklist de cierre + bitácora real a
+  ClickUp) respondió en 578ms; los 5 toggles de ítems del checklist de
+  cierre —incluido el último, que dispara la bitácora "Cierre del cliente
+  completado"— respondieron todos entre 130-195ms. Confirmado por
+  separado en la base que ambas entradas de bitácora ("Cliente dado de
+  baja" y "Cierre del cliente completado") terminaron con `sync_status =
+  'ok'` y su `clickup_page_id` real poco después — prueba de que el sync
+  en segundo plano sí corrió y completó, solo que sin bloquear la
+  respuesta. Typecheck y lint en verde en los 8 archivos; los 21 tests de
+  vitest no se tocaron (este fix no toca lógica de negocio, solo el
+  momento en que se ejecuta la llamada de red). Escribió, otra vez, dos
+  entradas reales de prueba en la página de bitácora real de Provetec
+  Mining en ClickUp — corregidas con una segunda nota de aclaración, mismo
+  criterio que la ronda anterior. Datos de prueba revertidos en la base
+  local al terminar.
+
 ---
 
 ## 1. Contexto

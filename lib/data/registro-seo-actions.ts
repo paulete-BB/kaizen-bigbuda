@@ -2,6 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
+import { after } from "next/server";
 import { sql } from "@/lib/db";
 import { requireUser } from "@/lib/auth/server";
 import { syncLogEntryToClickUp, syncOptimizationTaskToClickUp } from "@/lib/clickup/client";
@@ -57,18 +58,28 @@ export async function guardarRegistroSeo(formData: FormData) {
     .filter(Boolean)
     .join("\n");
 
-  const sync = await syncLogEntryToClickUp({
-    clientId,
-    fecha: new Date().toISOString().slice(0, 10),
-    titulo: "Optimización SEO · AEO · GEO",
-    tipo: "Optimización",
-    contenido,
-  });
-
-  await sql`
+  // `after()` en ambos syncs de ClickUp de acá abajo: antes esta acción
+  // esperaba el resultado (hasta ~30-40s por llamada si ClickUp estaba
+  // lento) antes de redirigir — "Guardar registro" se quedaba pensando
+  // ese tiempo. Las filas ya quedan `pendiente_sync` de entrada; si el
+  // sync en segundo plano falla, las recoge el cron de reintento (§4.3).
+  const [{ id: logId }] = await sql<{ id: string }[]>`
     insert into log_entries (client_id, optimization_id, titulo, tipo, contenido, sync_status, creado_por)
-    values (${clientId}, ${optimizationId}, 'Optimización SEO · AEO · GEO', 'Optimización', ${contenido}, ${sync.ok ? "ok" : "pendiente_sync"}, ${session.userId})
+    values (${clientId}, ${optimizationId}, 'Optimización SEO · AEO · GEO', 'Optimización', ${contenido}, 'pendiente_sync', ${session.userId})
+    returning id
   `;
+  after(async () => {
+    const sync = await syncLogEntryToClickUp({
+      clientId,
+      fecha: new Date().toISOString().slice(0, 10),
+      titulo: "Optimización SEO · AEO · GEO",
+      tipo: "Optimización",
+      contenido,
+    });
+    if (sync.ok) {
+      await sql`update log_entries set sync_status = 'ok', clickup_page_id = ${sync.clickupPageId ?? null} where id = ${logId}`;
+    }
+  });
 
   if (proximaFecha) {
     const [{ id: proximaOptimizationId }] = await sql<{ id: string }[]>`
@@ -76,14 +87,16 @@ export async function guardarRegistroSeo(formData: FormData) {
       values (${clientId}, ${serviceId}, 'seo_aeo_geo', ${proximaFecha}, ${responsableId}, 'programada', 'pendiente_sync')
       returning id
     `;
-    await syncOptimizationTaskToClickUp({
-      optimizationId: proximaOptimizationId,
-      clientId,
-      serviceId,
-      servicioTipo: "seo_aeo_geo",
-      fechaProgramada: proximaFecha,
-      responsableId,
-    });
+    after(() =>
+      syncOptimizationTaskToClickUp({
+        optimizationId: proximaOptimizationId,
+        clientId,
+        serviceId,
+        servicioTipo: "seo_aeo_geo",
+        fechaProgramada: proximaFecha,
+        responsableId,
+      }),
+    );
   }
 
   // Generación automática del informe (§3.4 → §3.2: "cada optimización

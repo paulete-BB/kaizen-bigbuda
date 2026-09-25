@@ -2,6 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
+import { after } from "next/server";
 import { sql } from "@/lib/db";
 import { requireUser } from "@/lib/auth/server";
 import { hoySantiago } from "@/lib/dates";
@@ -255,17 +256,26 @@ export async function registrarEnvioInforme(formData: FormData): Promise<AccionI
 
   const periodoLabel = fmtMesAnio(reporte.periodo_mes, reporte.periodo_anio);
   const contenidoBitacora = `Informe enviado: ${TIPO_LABEL[reporte.tipo]} — ${periodoLabel}. Medio: ${medio}. Destinatario: ${destinatario}.`;
-  const sync = await syncLogEntryToClickUp({
-    clientId: reporte.client_id,
-    fecha: new Date().toISOString().slice(0, 10),
-    titulo: `Informe enviado — ${TIPO_LABEL[reporte.tipo]}`,
-    tipo: "Informe",
-    contenido: contenidoBitacora,
-  });
-  await sql`
+  const tituloBitacora = `Informe enviado — ${TIPO_LABEL[reporte.tipo]}`;
+  // `after()`: el sync a ClickUp corre después de responder para que
+  // "Registrar envío" no se quede esperando la API de ClickUp.
+  const [{ id: logId }] = await sql<{ id: string }[]>`
     insert into log_entries (client_id, report_id, titulo, tipo, contenido, sync_status, creado_por)
-    values (${reporte.client_id}, ${reportId}, ${`Informe enviado — ${TIPO_LABEL[reporte.tipo]}`}, 'Informe', ${contenidoBitacora}, ${sync.ok ? "ok" : "pendiente_sync"}, ${session.userId})
+    values (${reporte.client_id}, ${reportId}, ${tituloBitacora}, 'Informe', ${contenidoBitacora}, 'pendiente_sync', ${session.userId})
+    returning id
   `;
+  after(async () => {
+    const sync = await syncLogEntryToClickUp({
+      clientId: reporte.client_id,
+      fecha: new Date().toISOString().slice(0, 10),
+      titulo: tituloBitacora,
+      tipo: "Informe",
+      contenido: contenidoBitacora,
+    });
+    if (sync.ok) {
+      await sql`update log_entries set sync_status = 'ok', clickup_page_id = ${sync.clickupPageId ?? null} where id = ${logId}`;
+    }
+  });
 
   revalidatePath(`/informes/${reportId}`);
   revalidatePath(`/clientes/${reporte.client_id}/informes`);

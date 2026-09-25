@@ -1,22 +1,38 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { after } from "next/server";
 import { sql } from "@/lib/db";
 import { requireUser } from "@/lib/auth/server";
 import { syncLogEntryToClickUp } from "@/lib/clickup/client";
 
+/**
+ * Inserta el registro ya (siempre `pendiente_sync`) y agenda el intento de
+ * sync a ClickUp con `after()` en vez de esperarlo — esperar podía tardar
+ * ~30-40s (4 reintentos con backoff) si ClickUp estaba lento, dejando
+ * `toggleOffboardingItem` colgado en el último ítem del checklist (el que
+ * dispara esta bitácora). Con `after()` la acción vuelve casi al instante;
+ * si el sync falla, la fila queda en `pendiente_sync` para el cron de
+ * reintento (§4.3).
+ */
 async function registrarBitacora(opts: { clientId: string; titulo: string; tipo: string; contenido: string; creadoPor: string }) {
-  const sync = await syncLogEntryToClickUp({
-    clientId: opts.clientId,
-    fecha: new Date().toISOString().slice(0, 10),
-    titulo: opts.titulo,
-    tipo: opts.tipo,
-    contenido: opts.contenido,
-  });
-  await sql`
+  const [{ id: logId }] = await sql<{ id: string }[]>`
     insert into log_entries (client_id, titulo, tipo, contenido, sync_status, creado_por)
-    values (${opts.clientId}, ${opts.titulo}, ${opts.tipo}, ${opts.contenido}, ${sync.ok ? "ok" : "pendiente_sync"}, ${opts.creadoPor})
+    values (${opts.clientId}, ${opts.titulo}, ${opts.tipo}, ${opts.contenido}, 'pendiente_sync', ${opts.creadoPor})
+    returning id
   `;
+  after(async () => {
+    const sync = await syncLogEntryToClickUp({
+      clientId: opts.clientId,
+      fecha: new Date().toISOString().slice(0, 10),
+      titulo: opts.titulo,
+      tipo: opts.tipo,
+      contenido: opts.contenido,
+    });
+    if (sync.ok) {
+      await sql`update log_entries set sync_status = 'ok', clickup_page_id = ${sync.clickupPageId ?? null} where id = ${logId}`;
+    }
+  });
 }
 
 export async function toggleOffboardingItem(formData: FormData) {
