@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { agregarDescuento, extenderServicio, registrarSalidaCliente } from "@/lib/data/clients-actions";
 import type { ServicioActivoOpcion } from "@/lib/data/clients";
+import { itemsBloqueantesSalida } from "@/lib/offboarding-items";
 
 type Tipo = "ext" | "desc" | "salida";
 
@@ -23,18 +24,35 @@ export function AjusteDrawer({
   clientes,
 }: {
   servicios: ServicioActivoOpcion[];
-  clientes: { id: string; nombre: string }[];
+  clientes: { id: string; nombre: string; serviciosTipos: string[] }[];
 }) {
   const [open, setOpen] = useState(false);
   const [tipo, setTipo] = useState<Tipo>("ext");
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [clienteSalidaId, setClienteSalidaId] = useState(clientes[0]?.id ?? "");
+  const [bloqueantesMarcados, setBloqueantesMarcados] = useState<Set<string>>(new Set());
   const cfg = CFG[tipo];
+
+  const clienteSalida = clientes.find((c) => c.id === clienteSalidaId);
+  const bloqueantesSalida = clienteSalida ? itemsBloqueantesSalida(clienteSalida.serviciosTipos) : [];
+  const faltanBloqueantes = bloqueantesSalida.some((item) => !bloqueantesMarcados.has(item));
 
   function abrir(t: Tipo) {
     setTipo(t);
     setError(null);
+    setBloqueantesMarcados(new Set());
+    if (t === "salida") setClienteSalidaId(clientes[0]?.id ?? "");
     setOpen(true);
+  }
+
+  function toggleBloqueante(item: string) {
+    setBloqueantesMarcados((prev) => {
+      const next = new Set(prev);
+      if (next.has(item)) next.delete(item);
+      else next.add(item);
+      return next;
+    });
   }
 
   async function onSubmit(formData: FormData) {
@@ -158,7 +176,16 @@ export function AjusteDrawer({
                 <>
                   <label className="flex flex-col gap-1.5">
                     <span className="text-[11.5px] font-semibold text-muted-2">Cliente</span>
-                    <select name="clientId" required className="rounded-lg border border-border bg-surface px-3 py-2 text-[12.5px] text-ink">
+                    <select
+                      name="clientId"
+                      required
+                      value={clienteSalidaId}
+                      onChange={(e) => {
+                        setClienteSalidaId(e.target.value);
+                        setBloqueantesMarcados(new Set());
+                      }}
+                      className="rounded-lg border border-border bg-surface px-3 py-2 text-[12.5px] text-ink"
+                    >
                       {clientes.map((c) => (
                         <option key={c.id} value={c.id}>
                           {c.nombre}
@@ -169,13 +196,25 @@ export function AjusteDrawer({
                   <p className="text-[11.5px] text-muted-2">
                     Marca al cliente como finalizado. Su historial queda archivado y consultable.
                   </p>
+                  {bloqueantesSalida.length > 0 && (
+                    <div className="flex flex-col gap-2 rounded-lg border border-danger-border bg-danger-bg p-3">
+                      <span className="text-[11.5px] font-semibold text-danger">Confirma antes de dar de baja</span>
+                      {bloqueantesSalida.map((item) => (
+                        <label key={item} className="flex items-center gap-2 text-[12px] text-ink">
+                          <input type="checkbox" checked={bloqueantesMarcados.has(item)} onChange={() => toggleBloqueante(item)} />
+                          {item}
+                        </label>
+                      ))}
+                    </div>
+                  )}
+                  <input type="hidden" name="bloqueantesConfirmados" value={faltanBloqueantes ? "" : "on"} />
                 </>
               )}
 
               <div className="mt-2 flex gap-2">
                 <button
                   type="submit"
-                  disabled={pending}
+                  disabled={pending || (tipo === "salida" && faltanBloqueantes)}
                   className="btn-primary rounded-lg border-none px-4 py-2.5 font-sans text-[12.5px] font-semibold text-white disabled:opacity-60"
                   style={{ background: cfg.accent }}
                 >

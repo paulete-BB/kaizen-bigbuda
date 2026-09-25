@@ -8,6 +8,7 @@ import { addMeses } from "@/lib/dates";
 import { instanciarOnboarding } from "@/lib/data/onboarding";
 import { instanciarOffboarding } from "@/lib/data/offboarding";
 import { syncLogEntryToClickUp } from "@/lib/clickup/client";
+import { itemsBloqueantesSalida } from "@/lib/offboarding-items";
 
 async function registrarBitacora(opts: { clientId: string; titulo: string; tipo: string; contenido: string; creadoPor: string }) {
   const sync = await syncLogEntryToClickUp({
@@ -144,9 +145,14 @@ export interface RegistrarSalidaResultado {
  * Cierre de cliente (§3.12): marca `finalizado` e instancia el checklist de
  * offboarding (informe final, accesos por revocar según los servicios que
  * tenía, bitácora archivada) — visible desde la ficha en
- * `OffboardingPanel`. No pausa servicios ni campañas por sí sola: eso lo
- * hace el equipo a mano (`pausarServicio` desde la ficha, o directo en
- * Meta/Google) y lo marca en el checklist recién creado.
+ * `OffboardingPanel`. Los ítems bloqueantes (informe final entregado,
+ * cliente notificado, campañas pausadas si el cliente tenía Meta/Google
+ * Ads) se confirman en el mismo drawer "Salida de cliente" —
+ * `AjusteDrawer.tsx` no deja enviar el formulario sin marcarlos, y acá se
+ * vuelven a exigir server-side (mismo criterio de no confiar solo en la UI
+ * ya usado en el resto de acciones destructivas). El resto de los ítems
+ * (bitácora archivada, accesos por revocar) nace `pendiente` para
+ * completarse después desde la ficha.
  */
 export async function registrarSalidaCliente(formData: FormData): Promise<RegistrarSalidaResultado> {
   const session = await requireUser();
@@ -155,13 +161,23 @@ export async function registrarSalidaCliente(formData: FormData): Promise<Regist
   if (session.rol !== "admin") {
     return { ok: false, error: "Solo un administrador puede finalizar un cliente." };
   }
+
+  const serviciosCliente = await sql<{ tipo: string }[]>`select tipo from services where client_id = ${clientId}`;
+  const bloqueantes = itemsBloqueantesSalida(serviciosCliente.map((s) => s.tipo));
+  if (bloqueantes.length && formData.get("bloqueantesConfirmados") !== "on") {
+    return { ok: false, error: "Confirma los ítems bloqueantes del checklist de cierre antes de registrar la salida." };
+  }
+
   await sql`update clients set estado = 'finalizado' where id = ${clientId}`;
-  await instanciarOffboarding(clientId);
+  await instanciarOffboarding(clientId, { marcarBloqueantesCompletados: true });
   await registrarBitacora({
     clientId,
     titulo: "Cliente dado de baja",
     tipo: "Offboarding",
-    contenido: "Cliente pasó a estado finalizado. Se instanció el checklist de cierre.",
+    contenido:
+      bloqueantes.length > 0
+        ? `Cliente pasó a estado finalizado. Confirmado al salir: ${bloqueantes.join(", ")}.`
+        : "Cliente pasó a estado finalizado. Se instanció el checklist de cierre.",
     creadoPor: session.userId,
   });
   revalidatePath("/clientes");

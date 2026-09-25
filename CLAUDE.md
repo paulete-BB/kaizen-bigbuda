@@ -1747,6 +1747,104 @@ bitácora, sin forma de reactivar ni de gestionar los datos del contacto
   ningún cliente real está `finalizado` todavía en producción, así que no
   hizo falta backfill de checklist para clientes existentes.
 
+**Rol de Paulete: explicado por qué "seguía sin dejarlo finalizar" pese al
+UPDATE en producción** — el usuario reportó que el botón seguía dando
+"Solo un administrador puede finalizar un cliente." después de que se le
+cambió el rol a admin en la base. Causa: `signSession({userId, rol,
+nombre, exp})` (`lib/auth/actions.ts`) graba el rol **dentro de la cookie
+firmada** en el momento del login — `requireUser()`
+(`lib/auth/server.ts`) solo verifica/decodifica esa cookie, nunca vuelve a
+consultar `users.rol` en cada request. Un cambio de rol en la base no se
+refleja hasta la próxima vez que esa persona inicia sesión. No es un bug:
+es el trade-off esperado de una cookie de sesión firmada (evita una
+consulta a la base en cada request) — se le explicó al usuario que debía
+cerrar sesión y volver a entrar para que se emitiera una cookie nueva con
+`rol: admin`. No se tocó código esta ronda.
+
+**"Salida de cliente" ahora pregunta los ítems bloqueantes en el mismo
+drawer, no después en la ficha** — pedido explícito del usuario tras dar
+de baja a un cliente real: "no me preguntó nada al salir: si se bajaron
+las campañas, si se mandó el informe final, etc". Se confirmó con
+`AskUserQuestion` (opción elegida: preguntar en el momento, bloqueando
+la confirmación hasta marcar todo) en vez de las otras dos alternativas
+(solo redirigir al checklist después, o dejarlo como estaba).
+
+- `lib/offboarding-items.ts` (nuevo, sin dependencias de servidor):
+  `itemsBloqueantesSalida(serviciosTipos)` devuelve el texto exacto de
+  los ítems bloqueantes reales de `0016_offboarding.sql` — "Informe final
+  entregado" y "Cliente notificado formalmente" (comunes a todo cliente)
+  más "Campañas Meta Ads pausadas o transferidas" / "Campañas Google Ads
+  pausadas o transferidas" solo si el cliente tiene ese servicio. SEO no
+  aporta ningún ítem bloqueante (coincide con la plantilla: sus 3 ítems
+  son informativos, no bloqueantes). Texto hardcodeado a propósito, mismo
+  criterio que `SERVICE_LABEL` ya vive duplicado en este mismo componente
+  — evita una ida y vuelta a la base solo para mostrar un checklist
+  estático de 2-4 líneas fijas.
+- **`AjusteDrawer.tsx`**: el paso "Salida de cliente" ahora recibe
+  `clientes` con sus `serviciosTipos` (antes solo `{id, nombre}` —
+  `ClientesListView.tsx` pasa la lista completa en vez de recortarla) y
+  arma los checkboxes bloqueantes según el cliente elegido, reseteados al
+  cambiar de cliente. El botón "Registrar salida" queda `disabled` hasta
+  que todos estén marcados — un campo oculto `bloqueantesConfirmados`
+  lleva el resultado al server action.
+- **`registrarSalidaCliente`** (`lib/data/clients-actions.ts`) vuelve a
+  calcular los mismos bloqueantes server-side (mismo criterio de no
+  confiar solo en la UI ya usado en el resto de acciones destructivas de
+  la plataforma) y rechaza la acción si `bloqueantesConfirmados !== "on"`
+  — defensa real, no cosmética: sin este chequeo, alguien podría llamar
+  la action directo (o con JS deshabilitado) saltándose el gate del
+  botón.
+- **`instanciarOffboarding`** (`lib/data/offboarding.ts`) acepta
+  `marcarBloqueantesCompletados` — cuando la salida ya confirmó los
+  bloqueantes en el drawer, esos ítems nacen `completado` en vez de
+  `pendiente` (el resto —bitácora archivada, accesos por revocar— sigue
+  naciendo `pendiente`, para completarse después desde `OffboardingPanel`
+  en la ficha). La bitácora del cliente ahora detalla exactamente qué se
+  confirmó al salir, no solo "se instanció el checklist".
+- **Bug real encontrado en la propia verificación, no en el código de
+  esta ronda**: al re-probar contra Postgres local, `checklist_items_template`
+  tenía 0 filas para las 4 plantillas de offboarding pese a que
+  `checklist_templates` sí tenía las 4 y `_migrations` marcaba `0016`
+  como aplicada — el archivo de migración es correcto (se confirmó
+  insertando las mismas filas a mano sin error, y producción sí tiene las
+  10 filas esperadas, verificado por separado vía la Management API de
+  Supabase). La causa exacta en el Postgres local no se pudo determinar
+  con certeza (no bloqueó nada real, solo el entorno de prueba de esta
+  sandbox) — se dejó documentado en vez de investigarlo más a fondo,
+  reinsertando las 10 filas a mano en local para poder seguir probando.
+  **Producción no está afectada.**
+- **Efecto colateral real de probar con un cliente real del seed (Provetec
+  Mining) en vez de uno sintético**: como `CLICKUP_API_TOKEN` en
+  `.env.local` sigue siendo el token real incluso con `DATABASE_URL`
+  apuntando a Postgres local, la prueba de punta a punta escribió dos
+  entradas reales "Cliente dado de baja" en la página real de ClickUp de
+  Provetec Mining ("Provetec Mining · Bitácora Kaizen", dentro del Doc
+  compartido real de la agencia) — a diferencia de rondas anteriores, acá
+  no se podía borrar la página completa (ya existía con contenido real
+  antes de esta prueba, no era una página nueva creada por el test).
+  Corregido agregando una entrada de corrección real a esa misma página
+  ("⚠️ Corrección — prueba de desarrollo... Provetec Mining sigue
+  activo") para que el equipo no se confunda si la ve. **Lección para
+  rondas futuras**: cuando la prueba escribe a la bitácora real de
+  ClickUp, usar un cliente de prueba sintético (creado y borrado en la
+  misma ronda), nunca un cliente real del seed, aunque sea contra
+  Postgres local — el token de ClickUp no distingue de dónde viene la
+  llamada.
+- Verificado de punta a punta contra Postgres local + `next dev` real +
+  Playwright, logueado como Marcel (admin): con Provetec Mining (SEO +
+  Google Ads) el drawer mostró exactamente 3 checkboxes (los 2 comunes +
+  el de Google Ads, sin el de Meta Ads ni ninguno de SEO); el botón quedó
+  deshabilitado sin marcar nada y con solo 1 de 3 marcado, y se habilitó
+  recién con los 3; al confirmar, la ficha mostró "Cierre del cliente"
+  38% completado (3 de 8) con exactamente esos 3 ítems ya en verde y el
+  resto pendiente, y la bitácora con el detalle de lo confirmado. Cero
+  errores de consola. Typecheck y lint en verde; los 21 tests de vitest
+  no se tocaron (este cambio no toca el motor de scheduling, no hacía
+  falta agregar tests nuevos). Datos de prueba (checklist, estado del
+  cliente, bitácora interna) revertidos en la base local al terminar; la
+  entrada de corrección en ClickUp queda a propósito como registro
+  permanente de que las dos anteriores fueron ruido de prueba.
+
 ---
 
 ## 1. Contexto

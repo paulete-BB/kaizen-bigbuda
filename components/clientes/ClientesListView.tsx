@@ -102,7 +102,10 @@ export function ClientesListView({
               <div className="mb-3 text-[13px] font-bold uppercase text-faint [letter-spacing:.03em]">
                 Ajustes de servicios
               </div>
-              <AjusteDrawer servicios={servicios} clientes={clientes.map((c) => ({ id: c.id, nombre: c.nombre }))} />
+              <AjusteDrawer
+                servicios={servicios}
+                clientes={clientes.map((c) => ({ id: c.id, nombre: c.nombre, serviciosTipos: c.servicios.map((s) => s.tipo) }))}
+              />
             </div>
 
             <div className="rounded-[14px] border border-border bg-surface p-5">

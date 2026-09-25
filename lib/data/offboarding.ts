@@ -53,8 +53,15 @@ export async function getOffboardingCliente(clientId: string): Promise<Offboardi
  * `instanciarOnboarding`: un cliente ya finalizado antes de que existiera
  * esta funcionalidad puede instanciarla recién ahora sin duplicar nada si
  * se vuelve a llamar.
+ *
+ * `marcarBloqueantesCompletados`: cuando "Salida de cliente" ya confirmó
+ * los ítems bloqueantes en el mismo drawer (informe final, cliente
+ * notificado, campañas pausadas — ver `lib/offboarding-items.ts`), esos
+ * ítems nacen `completado` en vez de `pendiente`; el resto (bitácora
+ * archivada, accesos por revocar) sigue naciendo `pendiente` para
+ * completarse después desde la ficha.
  */
-export async function instanciarOffboarding(clientId: string) {
+export async function instanciarOffboarding(clientId: string, opts: { marcarBloqueantesCompletados?: boolean } = {}) {
   const serviciosDelCliente = await sql<{ tipo: string }[]>`
     select distinct tipo from services where client_id = ${clientId}
   `;
@@ -78,13 +85,14 @@ export async function instanciarOffboarding(clientId: string) {
       values (${tpl.id}, ${clientId}, 'en_progreso')
       returning id
     `;
-    const itemsTemplate = await sql<{ descripcion: string; orden: number }[]>`
-      select descripcion, orden from checklist_items_template where template_id = ${tpl.id} order by orden
+    const itemsTemplate = await sql<{ descripcion: string; orden: number; bloqueante: boolean }[]>`
+      select descripcion, orden, bloqueante from checklist_items_template where template_id = ${tpl.id} order by orden
     `;
     for (const it of itemsTemplate) {
+      const estado = opts.marcarBloqueantesCompletados && it.bloqueante ? "completado" : "pendiente";
       await sql`
         insert into checklist_items (instance_id, orden, descripcion, estado)
-        values (${instance.id}, ${it.orden}, ${it.descripcion}, 'pendiente')
+        values (${instance.id}, ${it.orden}, ${it.descripcion}, ${estado})
       `;
     }
   }
