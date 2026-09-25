@@ -82,6 +82,9 @@ export interface ClienteDetalleCompleto {
   descuentos: DescuentoDetalle[];
   tareas: TareaDetalle[];
   configApis: ConfigApis;
+  /** Retención de datos y anonimización de contacto (§3.12 / Ley 21.719). */
+  datosRetenidosNota: string | null;
+  contactoAnonimizadoEn: string | null;
 }
 
 export async function getClienteDetalle(id: string): Promise<ClienteDetalleCompleto | null> {
@@ -104,9 +107,13 @@ export async function getClienteDetalle(id: string): Promise<ClienteDetalleCompl
       fb_page_id: string | null;
       ig_account_id: string | null;
       meta_token_key: string | null;
+      datos_retenidos_nota: string | null;
+      contacto_anonimizado_en: string | null;
     }[]
   >`select id, nombre, empresa, industria, sitio_web, estado, contacto_nombre, contacto_email, contacto_telefono,
-       gsc_property, ga4_property_id, google_ads_ga4_property_id, meta_ad_account_id, fb_page_id, ig_account_id, meta_token_key
+       gsc_property, ga4_property_id, google_ads_ga4_property_id, meta_ad_account_id, fb_page_id, ig_account_id, meta_token_key,
+       datos_retenidos_nota,
+       to_char(contacto_anonimizado_en at time zone 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS"Z"') as contacto_anonimizado_en
      from clients where id = ${id}`;
   if (!cliente) return null;
 
@@ -194,6 +201,8 @@ export async function getClienteDetalle(id: string): Promise<ClienteDetalleCompl
       igAccountId: cliente.ig_account_id,
       metaTokenKey: cliente.meta_token_key,
     },
+    datosRetenidosNota: cliente.datos_retenidos_nota,
+    contactoAnonimizadoEn: cliente.contacto_anonimizado_en,
     servicios: serviciosRows.map((s) => {
       const ritmo = s.alerta_disparada ?? false;
       const desviacion = s.pacing_pct != null ? s.pacing_pct - 100 : null;

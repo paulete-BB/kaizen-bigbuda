@@ -6,6 +6,22 @@ import { sql } from "@/lib/db";
 import { requireUser } from "@/lib/auth/server";
 import { addMeses } from "@/lib/dates";
 import { instanciarOnboarding } from "@/lib/data/onboarding";
+import { instanciarOffboarding } from "@/lib/data/offboarding";
+import { syncLogEntryToClickUp } from "@/lib/clickup/client";
+
+async function registrarBitacora(opts: { clientId: string; titulo: string; tipo: string; contenido: string; creadoPor: string }) {
+  const sync = await syncLogEntryToClickUp({
+    clientId: opts.clientId,
+    fecha: new Date().toISOString().slice(0, 10),
+    titulo: opts.titulo,
+    tipo: opts.tipo,
+    contenido: opts.contenido,
+  });
+  await sql`
+    insert into log_entries (client_id, titulo, tipo, contenido, sync_status, creado_por)
+    values (${opts.clientId}, ${opts.titulo}, ${opts.tipo}, ${opts.contenido}, ${sync.ok ? "ok" : "pendiente_sync"}, ${opts.creadoPor})
+  `;
+}
 
 const TIPOS_SERVICIO = ["seo_aeo_geo", "meta_ads", "google_ads"] as const;
 
@@ -124,6 +140,14 @@ export interface RegistrarSalidaResultado {
   error?: string;
 }
 
+/**
+ * Cierre de cliente (§3.12): marca `finalizado` e instancia el checklist de
+ * offboarding (informe final, accesos por revocar según los servicios que
+ * tenía, bitácora archivada) — visible desde la ficha en
+ * `OffboardingPanel`. No pausa servicios ni campañas por sí sola: eso lo
+ * hace el equipo a mano (`pausarServicio` desde la ficha, o directo en
+ * Meta/Google) y lo marca en el checklist recién creado.
+ */
 export async function registrarSalidaCliente(formData: FormData): Promise<RegistrarSalidaResultado> {
   const session = await requireUser();
   const clientId = String(formData.get("clientId") ?? "");
@@ -132,6 +156,43 @@ export async function registrarSalidaCliente(formData: FormData): Promise<Regist
     return { ok: false, error: "Solo un administrador puede finalizar un cliente." };
   }
   await sql`update clients set estado = 'finalizado' where id = ${clientId}`;
+  await instanciarOffboarding(clientId);
+  await registrarBitacora({
+    clientId,
+    titulo: "Cliente dado de baja",
+    tipo: "Offboarding",
+    contenido: "Cliente pasó a estado finalizado. Se instanció el checklist de cierre.",
+    creadoPor: session.userId,
+  });
   revalidatePath("/clientes");
+  revalidatePath(`/clientes/${clientId}`);
+  return { ok: true };
+}
+
+/**
+ * §3.12 — "si el cliente vuelve, se puede reactivar conservando el
+ * historial". Solo cambia el estado; no reabre servicios pausados ni
+ * reinstancia onboarding (el equipo decide caso a caso qué retomar), y no
+ * restaura el contacto si ya se eliminó a solicitud (§3.12/Ley 21.719) —
+ * eso se re-ingresa a mano desde "Editar cliente" si el cliente confirma
+ * sus datos de nuevo.
+ */
+export async function reactivarCliente(formData: FormData): Promise<RegistrarSalidaResultado> {
+  const session = await requireUser();
+  const clientId = String(formData.get("clientId") ?? "");
+  if (!clientId) return { ok: false, error: "Cliente inválido." };
+  if (session.rol !== "admin") {
+    return { ok: false, error: "Solo un administrador puede reactivar un cliente." };
+  }
+  await sql`update clients set estado = 'activo' where id = ${clientId}`;
+  await registrarBitacora({
+    clientId,
+    titulo: "Cliente reactivado",
+    tipo: "Offboarding",
+    contenido: "Cliente vuelve a estado activo. Historial conservado.",
+    creadoPor: session.userId,
+  });
+  revalidatePath("/clientes");
+  revalidatePath(`/clientes/${clientId}`);
   return { ok: true };
 }

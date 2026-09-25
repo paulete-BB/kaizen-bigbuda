@@ -1635,6 +1635,118 @@ forma de registrar una optimización de Ads desde la ficha del cliente**
   Supabase y la API real de ClickUp — no contra Postgres local, no había
   nada que limpiar ahí.
 
+**Rol de Paulete corregido a admin + limpieza de la carga masiva de
+clientes** — pedido explícito del usuario ("mi usuario siempre debe ser
+admin") tras notar que sus acciones de admin (finalizar cliente, eliminar
+descuento, etc.) fallaban. Producción tenía a Paulete como `miembro` desde
+el seed original — corregido a `rol = 'admin'` vía la Management API de
+Supabase (`update users set rol = 'admin' where email =
+'paulete@bigbuda.com'`). Aparte, el usuario reportó "Comercial Loyola
+quedó 2 veces" tras cargar todos los clientes reales — la base real
+mostró 3 registros idénticos (no 2), creados en segundos el 16 de
+septiembre, cada uno con un solo servicio Meta Ads sin optimizaciones ni
+ningún otro dato en ninguna otra tabla — imposible distinguir cuál era
+"el real" porque no había ninguna diferencia real entre ellos. Se
+conservó el más antiguo y se eliminaron los otros 2 (`clients` tiene
+`on delete cascade` hacia todas sus tablas dependientes, confirmado antes
+de borrar); se confirmó que no quedan más nombres duplicados en toda la
+base. La misma carga masiva trajo clientes nuevos sin `dia_semana_ads_asignado`/
+`viernes_ordinal_asignado` (El Jardinero y PropChile para Ads; CICCOF,
+Calas, Nibec y AFP Capital para SEO) — asignados a mano con el mismo
+criterio bucket-fill del motor real (orden por `creado_en`, empate al día/
+viernes con menos carga), mismo procedimiento ya usado para el backfill
+de los 8 servicios de Ads originales.
+
+**Offboarding (§3.12) — checklist de cierre cuando un cliente cancela sus
+servicios**, a pedido explícito del usuario: "Hagamos lo del 3.12 para
+marcar los clientes que se dieron de baja". Hasta esta ronda, "Salida de
+cliente" (`registrarSalidaCliente`, ya existía desde Fase 1) solo cambiaba
+`clients.estado` a `finalizado` — sin checklist de cierre, sin registro en
+bitácora, sin forma de reactivar ni de gestionar los datos del contacto
+(Ley 21.719).
+
+- **Migración `0016_offboarding.sql`**: mismo patrón que el onboarding
+  (§3.8, migración 0003) — 4 plantillas de checklist tipo `offboarding`
+  (común: informe final entregado*, cliente notificado formalmente*,
+  bitácora archivada; SEO: accesos a GA4/Search Console/CMS revocados;
+  Meta Ads y Google Ads: campañas pausadas/transferidas* + acceso a la
+  cuenta revocado — los `*` son bloqueantes, aunque a diferencia de
+  onboarding el checklist de cierre no bloquea ninguna acción del sistema,
+  es solo trazabilidad). Además, `clients.datos_retenidos_nota` (texto
+  libre) y `clients.contacto_anonimizado_en` (timestamptz) para la
+  retención/eliminación de datos que pide el brief.
+- **`lib/data/offboarding.ts`** (nuevo, espejo de `onboarding.ts`):
+  `getOffboardingCliente` lee el checklist ya instanciado (no instancia
+  nada perezosamente al abrir la ficha, a diferencia de onboarding — acá
+  el disparador es un evento explícito); `instanciarOffboarding` crea las
+  instancias para los tipos de servicio que el cliente tiene (activos o
+  pausados — al cerrar puede que ya estén pausados a mano), idempotente
+  por plantilla igual que su contraparte de onboarding.
+  `registrarSalidaCliente` (`lib/data/clients-actions.ts`) ahora llama a
+  `instanciarOffboarding` justo después de marcar `finalizado`, y registra
+  la baja en la bitácora (ClickUp real + interna) — antes no dejaba
+  ningún rastro en la bitácora.
+- **Nueva `reactivarCliente`** (`lib/data/clients-actions.ts`, admin,
+  mismo patrón de control de acceso que el resto de acciones
+  destructivas): §3.12 pide poder reactivar conservando el historial —
+  antes no existía ningún camino para volver de `finalizado` a `activo`
+  salvo tocar la base a mano. Solo cambia el estado; no reabre servicios
+  pausados ni restaura el contacto si ya se eliminó a solicitud (eso se
+  reingresa a mano desde "Editar cliente").
+- **`OffboardingPanel.tsx`** (nuevo, reemplaza a `OnboardingPanel` en la
+  ficha cuando `cliente.estado === 'finalizado'` — nunca se muestran los
+  dos a la vez): checklist con el mismo patrón visual (anillo de
+  progreso, toggle por ítem), más dos secciones nuevas propias de cierre:
+  - **Retención de datos**: nota de texto libre (`marcarRetencionDatos`,
+    admin) sobre qué se conserva (historial de trabajo, informes, según
+    el brief) — no es una decisión automática del sistema, la registra el
+    equipo caso a caso.
+  - **Eliminar datos del contacto (Ley 21.719)** (`eliminarDatosContactoCliente`,
+    admin, con confirmación explícita en la UI): sobrescribe
+    `contacto_nombre`/`contacto_email`/`contacto_telefono` y marca
+    `contacto_anonimizado_en` — **solo permitido sobre un cliente ya
+    `finalizado`** (chequeado también server-side, no solo oculto en la
+    UI), para que no se pueda borrar por error el contacto de alguien con
+    quien la agencia sigue operando. El historial operativo
+    (`optimizations`, `log_entries`, `reports`) queda intacto a propósito
+    — la Ley 21.719 pide poder borrar datos personales del contacto, no
+    el registro de trabajo realizado.
+- **`ClienteHeader.tsx`**: el badge de estado solo cubría `activo` — un
+  cliente `pausado` o `finalizado` no mostraba ninguna etiqueta, bug
+  menor preexistente encontrado al implementar esto. Agregados los
+  badges de `pausado` (ámbar) y `finalizado` (rojo), más el botón
+  "Reactivar cliente" (solo visible si `finalizado`, mismo patrón de
+  "el botón se muestra siempre y el error de permiso lo devuelve la
+  acción" ya usado en `DescuentosPanel`/`AprobacionesPanel`).
+- Cada acción de este flujo (dar de baja, reactivar, actualizar retención,
+  eliminar datos del contacto, completar el checklist de cierre) queda
+  registrada en la bitácora del cliente (ClickUp real + interna), mismo
+  criterio que el resto de la plataforma — antes de esta ronda, dar de
+  baja a un cliente no dejaba ningún rastro.
+- Verificado de punta a punta contra Postgres local + `next dev` real +
+  Playwright, logueado como Marcel (admin), con Provetec Mining (SEO +
+  Google Ads, real del seed): "Salida de cliente" desde `/clientes` marcó
+  `finalizado` e instanció 8 ítems de checklist (3 comunes + 3 SEO + 2
+  Google Ads — sin plantilla de Meta Ads porque el cliente no tiene ese
+  servicio); en la ficha, `OffboardingPanel` reemplazó a `OnboardingPanel`
+  con el badge "Finalizado" y el botón "Reactivar cliente" visibles;
+  marcar 3 ítems bloqueantes llevó el checklist a 38% con la bitácora
+  registrando cada cambio; "Eliminar datos del contacto" reemplazó nombre/
+  email/teléfono y mostró "Eliminados el 25 sep 2026" en vez del botón;
+  "Reactivar cliente" devolvió el badge a "Activo" y `OnboardingPanel`
+  volvió a mostrarse, con el contacto todavía anonimizado (comportamiento
+  esperado, documentado arriba) y la bitácora completa de las 4 acciones
+  visible en orden. Cero errores de consola en las cuatro capturas.
+  Typecheck, lint y los 21 tests de vitest en verde (sin tests nuevos —
+  este cambio no toca el motor de scheduling). Cliente de prueba revertido
+  a su estado original con `npm run db:seed` al terminar (las plantillas
+  de `checklist_templates` no se truncan en el reseed, quedan como datos
+  de referencia permanentes). Migración 0016 aplicada contra producción
+  vía la Management API de Supabase (4 plantillas de offboarding
+  confirmadas, `_migrations` muestra las 16 migraciones completas) —
+  ningún cliente real está `finalizado` todavía en producción, así que no
+  hizo falta backfill de checklist para clientes existentes.
+
 ---
 
 ## 1. Contexto

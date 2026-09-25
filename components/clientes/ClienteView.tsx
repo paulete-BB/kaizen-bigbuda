@@ -6,12 +6,14 @@ import { TareasPanel } from "./TareasPanel";
 import { BitacoraPanel } from "./BitacoraPanel";
 import { DescuentosPanel } from "./DescuentosPanel";
 import { OnboardingPanel } from "./OnboardingPanel";
+import { OffboardingPanel } from "./OffboardingPanel";
 import { ReunionesPanel } from "./ReunionesPanel";
 import { IntegracionesPanel } from "./IntegracionesPanel";
 import { AprobacionesPanel } from "./AprobacionesPanel";
 import type { ClienteDetalleCompleto } from "@/lib/data/cliente-detalle";
 import type { BitacoraEntrada } from "@/lib/data/bitacora";
 import type { OnboardingResumen } from "@/lib/data/onboarding";
+import type { OffboardingResumen } from "@/lib/data/offboarding";
 import type { Reunion } from "@/lib/data/meetings";
 import type { UsuarioResumen } from "@/lib/data/users";
 import { fmtFecha } from "@/lib/dates";
@@ -22,6 +24,7 @@ export function ClienteView({
   usuario,
   bitacora,
   onboarding,
+  offboarding,
   reuniones,
   responsables,
   aprobaciones,
@@ -31,6 +34,7 @@ export function ClienteView({
   usuario: SidebarUsuario;
   bitacora: BitacoraEntrada[];
   onboarding: OnboardingResumen;
+  offboarding: OffboardingResumen;
   reuniones: Reunion[];
   responsables: UsuarioResumen[];
   aprobaciones: ApprovalResumen[];
@@ -119,7 +123,16 @@ export function ClienteView({
               <DescuentosPanel clientId={cliente.id} descuentos={cliente.descuentos} />
               <AprobacionesPanel clientId={cliente.id} aprobaciones={aprobaciones} optimizacionesBloqueables={optimizacionesBloqueables} />
               <ReunionesPanel clientId={cliente.id} reuniones={reuniones} />
-              <OnboardingPanel clientId={cliente.id} resumen={onboarding} />
+              {cliente.estado === "finalizado" ? (
+                <OffboardingPanel
+                  clientId={cliente.id}
+                  resumen={offboarding}
+                  datosRetenidosNota={cliente.datosRetenidosNota}
+                  contactoAnonimizadoEn={cliente.contactoAnonimizadoEn}
+                />
+              ) : (
+                <OnboardingPanel clientId={cliente.id} resumen={onboarding} />
+              )}
               <IntegracionesPanel clientId={cliente.id} configApis={cliente.configApis} />
             </div>
           </div>

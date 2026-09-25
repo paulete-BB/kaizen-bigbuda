@@ -3,6 +3,7 @@ import { ClienteView } from "@/components/clientes/ClienteView";
 import { getClienteDetalle } from "@/lib/data/cliente-detalle";
 import { getBitacoraCliente } from "@/lib/data/bitacora";
 import { getOnboardingCliente } from "@/lib/data/onboarding";
+import { getOffboardingCliente } from "@/lib/data/offboarding";
 import { listReunionesCliente } from "@/lib/data/meetings";
 import { listResponsables } from "@/lib/data/users";
 import { listarAprobacionesCliente, listarOptimizacionesBloqueables } from "@/lib/data/approvals";
@@ -15,9 +16,10 @@ export default async function ClientePage({ params }: { params: Promise<{ id: st
   const cliente = await getClienteDetalle(id);
   if (!cliente) notFound();
 
-  const [bitacora, onboarding, reuniones, responsables, aprobaciones, optimizacionesBloqueables] = await Promise.all([
+  const [bitacora, onboarding, offboarding, reuniones, responsables, aprobaciones, optimizacionesBloqueables] = await Promise.all([
     getBitacoraCliente(id),
     getOnboardingCliente(id),
+    getOffboardingCliente(id),
     listReunionesCliente(id),
     listResponsables(),
     listarAprobacionesCliente(id),
@@ -29,6 +31,7 @@ export default async function ClientePage({ params }: { params: Promise<{ id: st
       cliente={cliente}
       bitacora={bitacora}
       onboarding={onboarding}
+      offboarding={offboarding}
       reuniones={reuniones}
       responsables={responsables}
       aprobaciones={aprobaciones}

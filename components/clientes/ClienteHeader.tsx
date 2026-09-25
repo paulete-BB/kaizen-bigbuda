@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import type { ClienteDetalleCompleto } from "@/lib/data/cliente-detalle";
 import { editarCliente } from "@/lib/data/cliente-actions";
+import { reactivarCliente } from "@/lib/data/clients-actions";
 
 const ESTADO_LABEL: Record<ClienteDetalleCompleto["estado"], string> = {
   activo: "Activo",
@@ -17,6 +18,8 @@ export function ClienteHeader({ cliente }: { cliente: ClienteDetalleCompleto }) 
   const [editing, setEditing] = useState(false);
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [pendingReactivar, setPendingReactivar] = useState(false);
+  const [errorReactivar, setErrorReactivar] = useState<string | null>(null);
   const [draft, setDraft] = useState({
     nombre: cliente.nombre,
     empresa: cliente.empresa,
@@ -63,6 +66,24 @@ export function ClienteHeader({ cliente }: { cliente: ClienteDetalleCompleto }) 
       router.refresh();
     } finally {
       setPending(false);
+    }
+  }
+
+  async function reactivar() {
+    if (!confirm(`¿Reactivar a ${cliente.nombre}? Vuelve a estado activo conservando su historial.`)) return;
+    setPendingReactivar(true);
+    setErrorReactivar(null);
+    const fd = new FormData();
+    fd.set("clientId", cliente.id);
+    try {
+      const res = await reactivarCliente(fd);
+      if (!res.ok) {
+        setErrorReactivar(res.error ?? "No se pudo reactivar.");
+        return;
+      }
+      router.refresh();
+    } finally {
+      setPendingReactivar(false);
     }
   }
 
@@ -132,6 +153,18 @@ export function ClienteHeader({ cliente }: { cliente: ClienteDetalleCompleto }) 
               {ESTADO_LABEL[cliente.estado]}
             </span>
           )}
+          {cliente.estado === "pausado" && (
+            <span className="inline-flex items-center gap-1 rounded-full bg-warning-bg px-2.5 py-[3px] text-[11.5px] font-semibold text-warning">
+              <span className="h-1.5 w-1.5 rounded-full bg-warning" />
+              {ESTADO_LABEL[cliente.estado]}
+            </span>
+          )}
+          {cliente.estado === "finalizado" && (
+            <span className="inline-flex items-center gap-1 rounded-full bg-danger-bg px-2.5 py-[3px] text-[11.5px] font-semibold text-danger">
+              <span className="h-1.5 w-1.5 rounded-full bg-danger" />
+              {ESTADO_LABEL[cliente.estado]}
+            </span>
+          )}
         </div>
         <div className="mt-1 text-[13px] text-muted-2">
           {cliente.empresa}
@@ -194,6 +227,22 @@ export function ClienteHeader({ cliente }: { cliente: ClienteDetalleCompleto }) 
           </svg>
           Ver bitácora en ClickUp
         </Link>
+        {cliente.estado === "finalizado" && (
+          <>
+            <button
+              onClick={reactivar}
+              disabled={pendingReactivar}
+              className="qa flex items-center gap-2 rounded-[9px] border border-border bg-surface px-[13px] py-[9px] font-sans text-[12.5px] font-semibold text-ink disabled:opacity-60"
+            >
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="var(--color-muted)" strokeWidth="1.8">
+                <path d="M4 4v6h6M20 20v-6h-6" />
+                <path d="M5.5 15a7 7 0 0 0 12.4 2.2M18.5 9A7 7 0 0 0 6.1 6.8" />
+              </svg>
+              {pendingReactivar ? "Reactivando…" : "Reactivar cliente"}
+            </button>
+            {errorReactivar && <span className="text-[11.5px] font-semibold text-danger">{errorReactivar}</span>}
+          </>
+        )}
       </div>
     </section>
   );
