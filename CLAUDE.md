@@ -1575,6 +1575,66 @@ anterior no se puede dar por hecho sin re-verificar.
   quedó documentado en la integración de Google OAuth). No se pudo
   confirmar el estado del deploy en sí desde este entorno.
 
+**Limpieza real de datos de prueba en producción + bug real: no había
+forma de registrar una optimización de Ads desde la ficha del cliente**
+— dos reportes del usuario tras ver el calendario en vivo.
+
+- **"El calendario aún muestra los miércoles 16:00"**: las migraciones de
+  la ronda anterior solo tocaron `services.dia_semana_ads_asignado`
+  (para que las optimizaciones *nuevas* nazcan con el día correcto) —
+  nunca reprogramaron las optimizaciones que **ya existían** en
+  `optimizations`, creadas antes del cambio con la lógica vieja. Al
+  revisar producción se encontraron 41 filas de Ads (Tecny Stand,
+  Provetec Mining), todas en miércoles consecutivos desde el 1 de julio
+  hasta el 30 de septiembre, sin faltar ninguna — un patrón demasiado
+  perfecto para ser trabajo real acumulado (nadie deja 13 semanas
+  seguidas de optimizaciones sin registrar); todo indica que quedaron
+  sembradas en una ronda anterior (mismo patrón que el alta manual de
+  Gonfernic) y nunca se limpiaron. El usuario confirmó que eran basura
+  de prueba.
+  - Las **3 filas genuinamente futuras** (semana del 28 sep-2 oct) se
+    reprogramaron a mano al día correcto de cada servicio (`Provetec
+    Mining · Google Ads` → lunes 28, `Tecny Stand · Meta Ads` → martes
+    29, `Tecny Stand · Google Ads` → miércoles 30, sin hora), tanto en
+    la base como en las 3 tareas reales de ClickUp correspondientes
+    (`PUT /task/{id}` con `due_date_time:false`).
+  - Las **41 filas viejas** (1 jul-23 sep, 26 con tarea real de ClickUp
+    asociada) se eliminaron por completo: primero las 26 tareas en
+    ClickUp (`DELETE /task/{id}`, todas 204), después las filas de
+    `optimizations` (con `using services` para filtrar por tipo Ads) —
+    los `reschedules`/`checklist_instances` asociados se fueron en
+    cascada (FK `on delete cascade` desde la migración 0001); los
+    `log_entries` que las referenciaban quedaron intactos, solo se les
+    limpió la referencia (`on delete set null`).
+- **Segundo bug real, encontrado al investigar por qué el usuario nunca
+  pudo registrar una optimización de Ads**: el botón "Registrar
+  optimización" de la ficha del cliente (`ClienteView.tsx`) **solo
+  existía para SEO** — armado con `cliente.proximaOptimizacionSeoId`,
+  sin ningún equivalente para Ads. La decisión original (documentada en
+  un comentario del código: "SEO se registra desde acá, Ads se registra
+  desde el bloque de miércoles") asumía que el equipo sabía de memoria
+  que Ads se revisaba siempre el mismo día fijo — con el reparto diario
+  de la ronda anterior, cada cliente tiene un día distinto y ya no hay
+  ningún lugar en la ficha que diga cuál ni lleve ahí. Corregido:
+  `getClienteDetalle` (`lib/data/cliente-detalle.ts`) ahora trae también
+  `proximaOptimizacionAdsFecha` (la fecha de la próxima optimización de
+  Ads `programada` del cliente, sin filtrar por servicio — el bloque
+  agrupa por fecha, no por servicio); `ClienteView.tsx` agrega un
+  segundo botón "Registrar Ads · {fecha}" que lleva directo a
+  `/optimizaciones/bloque/{fecha}`, junto al de SEO — ambos pueden
+  aparecer a la vez si el cliente tiene los dos servicios, o el que
+  corresponda si solo tiene uno.
+- Verificado de punta a punta contra Postgres local + `next dev` real +
+  Playwright, logueado como Marcel: Provetec Mining (SEO + Google Ads)
+  muestra ambos botones a la vez, "Registrar Ads · 3 ago 2026" lleva al
+  bloque real de esa fecha con el servicio correcto listo para
+  completar; Tecny Stand (solo Ads) muestra únicamente el botón de Ads,
+  sin el de SEO. Cero errores de consola. Typecheck, lint y los 21 tests
+  de vitest en verde. La limpieza de datos (41 filas + 26 tareas de
+  ClickUp) se hizo directo contra producción vía la Management API de
+  Supabase y la API real de ClickUp — no contra Postgres local, no había
+  nada que limpiar ahí.
+
 ---
 
 ## 1. Contexto

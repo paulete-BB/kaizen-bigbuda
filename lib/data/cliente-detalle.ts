@@ -73,8 +73,10 @@ export interface ClienteDetalleCompleto {
   contactoTelefono: string | null;
   logoIniciales: string;
   proximaOptimizacion: string;
-  /** Id de la próxima optimización SEO-AEO-GEO `programada` de este cliente, si tiene una — usado para armar el link real de "Registrar optimización" (§3.2: solo SEO se registra desde acá, Ads se registra desde el bloque de miércoles). */
+  /** Id de la próxima optimización SEO-AEO-GEO `programada` de este cliente, si tiene una — usado para armar el link real de "Registrar optimización" (§3.2: SEO se registra desde acá; Ads se registra desde el bloque de su día asignado, ver `proximaOptimizacionAdsFecha`). */
   proximaOptimizacionSeoId: string | null;
+  /** Fecha de la próxima optimización de Ads (Meta/Google) `programada` de este cliente, si tiene una — arma el link a `/optimizaciones/bloque/{fecha}` (§3.2 Regla B: cada servicio de Ads se registra desde el bloque de su propio día, no desde una página por optimización como SEO). */
+  proximaOptimizacionAdsFecha: string | null;
   servicios: ServicioDetalle[];
   serviciosTiposExistentes: ServicioTipo[];
   descuentos: DescuentoDetalle[];
@@ -112,7 +114,7 @@ export async function getClienteDetalle(id: string): Promise<ClienteDetalleCompl
   const anio = hoyDate.getFullYear();
   const mes = hoyDate.getMonth() + 1;
 
-  const [serviciosRows, descuentosRows, tareasRows, proximaRows, proximaSeoRows] = await Promise.all([
+  const [serviciosRows, descuentosRows, tareasRows, proximaRows, proximaSeoRows, proximaAdsRows] = await Promise.all([
     sql<
       {
         id: string;
@@ -159,6 +161,11 @@ export async function getClienteDetalle(id: string): Promise<ClienteDetalleCompl
       where client_id = ${id} and tipo = 'seo_aeo_geo' and estado = 'programada'
       order by fecha_programada limit 1
     `,
+    sql<{ fecha_programada: string }[]>`
+      select fecha_programada from optimizations
+      where client_id = ${id} and tipo != 'seo_aeo_geo' and estado = 'programada'
+      order by fecha_programada limit 1
+    `,
   ]);
 
   const svcSlug = (tipo: ServicioTipo): "seo" | "google" | "meta" =>
@@ -177,6 +184,7 @@ export async function getClienteDetalle(id: string): Promise<ClienteDetalleCompl
     logoIniciales: cliente.nombre.slice(0, 1).toUpperCase(),
     proximaOptimizacion: proximaRows[0]?.fecha_programada ?? "sin próxima optimización",
     proximaOptimizacionSeoId: proximaSeoRows[0]?.id ?? null,
+    proximaOptimizacionAdsFecha: proximaAdsRows[0]?.fecha_programada ?? null,
     configApis: {
       gscProperty: cliente.gsc_property,
       ga4PropertyId: cliente.ga4_property_id,

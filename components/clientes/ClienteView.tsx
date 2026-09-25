@@ -14,6 +14,7 @@ import type { BitacoraEntrada } from "@/lib/data/bitacora";
 import type { OnboardingResumen } from "@/lib/data/onboarding";
 import type { Reunion } from "@/lib/data/meetings";
 import type { UsuarioResumen } from "@/lib/data/users";
+import { fmtFecha } from "@/lib/dates";
 import type { ApprovalResumen, OptimizacionBloqueable } from "@/lib/data/approvals";
 
 export function ClienteView({
@@ -70,6 +71,17 @@ export function ClienteView({
             </svg>
             Informes
           </Link>
+          {cliente.proximaOptimizacionAdsFecha && (
+            <Link
+              href={`/optimizaciones/bloque/${cliente.proximaOptimizacionAdsFecha}`}
+              className="qa flex items-center gap-2 rounded-[9px] border border-border bg-surface px-[13px] py-[9px] text-[12.5px] font-semibold text-ink"
+            >
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="var(--color-muted)" strokeWidth="1.8">
+                <path d="M12 5v14M5 12h14" />
+              </svg>
+              Registrar Ads · {fmtFecha(cliente.proximaOptimizacionAdsFecha)}
+            </Link>
+          )}
           {cliente.proximaOptimizacionSeoId && (
             <Link
               href={`/optimizaciones/${cliente.proximaOptimizacionSeoId}/registro`}
