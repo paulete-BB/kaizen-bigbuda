@@ -327,3 +327,38 @@ export async function syncOptimizationTaskToClickUp(payload: ClickUpTaskPayload)
     return { ok: false };
   }
 }
+
+/**
+ * Cierra la tarea de ClickUp de una optimización ya `realizada` (§3.5,
+ * gap documentado desde la ronda del webhook: "no se actualiza/cierra la
+ * tarea al marcar la optimización como realizada"). Cada lista tiene sus
+ * propios nombres de estado — no existe un "Closed"/"Done" universal
+ * (confirmado contra el workspace real, mismo motivo por el que el
+ * webhook usa `status.type === 'closed'` en vez del nombre) — así que acá
+ * se resuelven los estados reales de la lista de la tarea y se usa el
+ * primero cuyo `type` sea `closed`, en vez de adivinar un nombre fijo
+ * como "Completado"/"Done" que puede no existir en esa lista.
+ */
+export async function cerrarTareaOptimizacionEnClickUp(clickupTaskId: string): Promise<{ ok: boolean }> {
+  try {
+    const taskRes = await clickupFetch(`${API_V2}/task/${clickupTaskId}`, { method: "GET" });
+    const task = (await taskRes.json()) as { list?: { id?: string }; status?: { type?: string } };
+    if (task.status?.type === "closed") return { ok: true }; // ya estaba cerrada (ej. el equipo la cerró a mano en ClickUp)
+    const listId = task.list?.id;
+    if (!listId) return { ok: false };
+
+    const listRes = await clickupFetch(`${API_V2}/list/${listId}`, { method: "GET" });
+    const list = (await listRes.json()) as { statuses?: { status: string; type: string }[] };
+    const estadoCerrado = list.statuses?.find((s) => s.type === "closed");
+    if (!estadoCerrado) return { ok: false }; // la lista no tiene un estado de tipo "closed" configurado
+
+    await clickupFetch(`${API_V2}/task/${clickupTaskId}`, {
+      method: "PUT",
+      body: JSON.stringify({ status: estadoCerrado.status }),
+    });
+    return { ok: true };
+  } catch (e) {
+    if (process.env.CLICKUP_DEBUG) console.error("cerrarTareaOptimizacionEnClickUp error:", e);
+    return { ok: false };
+  }
+}

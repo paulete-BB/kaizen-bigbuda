@@ -5,7 +5,7 @@ import { redirect } from "next/navigation";
 import { after } from "next/server";
 import { sql } from "@/lib/db";
 import { requireUser } from "@/lib/auth/server";
-import { syncLogEntryToClickUp, syncOptimizationTaskToClickUp } from "@/lib/clickup/client";
+import { cerrarTareaOptimizacionEnClickUp, syncLogEntryToClickUp, syncOptimizationTaskToClickUp } from "@/lib/clickup/client";
 import { crearInformeInterno } from "@/lib/data/informes-actions";
 import { hoySantiago } from "@/lib/dates";
 
@@ -36,6 +36,10 @@ export async function guardarRegistroSeo(formData: FormData) {
   const responsableId = String(formData.get("responsableId") ?? "") || null;
   if (!optimizationId) return;
 
+  const [actual] = await sql<{ clickup_task_id: string | null }[]>`
+    select clickup_task_id from optimizations where id = ${optimizationId}
+  `;
+
   await sql`
     update optimizations set
       estado = 'realizada',
@@ -47,6 +51,12 @@ export async function guardarRegistroSeo(formData: FormData) {
       informe_enviado_en = ${informeEnviado ? fechaInforme || null : null}
     where id = ${optimizationId}
   `;
+
+  if (actual?.clickup_task_id) {
+    // §3.5, gap documentado desde el webhook: la tarea quedaba abierta en
+    // ClickUp para siempre aunque la optimización ya estuviera realizada.
+    after(() => cerrarTareaOptimizacionEnClickUp(actual.clickup_task_id!));
+  }
 
   const contenido = [
     `Realizado: ${resumen}`,

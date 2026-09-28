@@ -1918,6 +1918,58 @@ plataforma escribe a ClickUp desde acciones del servidor.
   criterio que la ronda anterior. Datos de prueba revertidos en la base
   local al terminar.
 
+**Dos gaps reales de Fase 2, cerrados a pedido explícito del usuario**
+("veamos lo que queda pendiente de la fase 2"): ambos documentados hace
+tiempo en este archivo y nunca resueltos — cerrar la tarea de ClickUp al
+completar una optimización, y generar automáticamente la siguiente
+optimización semanal de un servicio de Ads (hasta ahora solo existía en
+`scripts/seed.ts`, nunca en producción).
+
+- **`cerrarTareaOptimizacionEnClickUp`** (`lib/clickup/client.ts`, nueva):
+  no existe un estado "Cerrado" universal — cada lista de ClickUp tiene
+  sus propios nombres (mismo motivo por el que el webhook de §3.5 usa
+  `status.type === 'closed'` en vez de un nombre fijo) — así que la
+  función consulta los `statuses` reales de la lista de la tarea y usa el
+  primero con `type: 'closed'`, en vez de adivinar "Completado"/"Done".
+  Si la tarea ya estaba cerrada a mano en ClickUp, no hace nada. Enganchada
+  vía `after()` (mismo patrón de la ronda anterior, para no bloquear la UI)
+  en los dos lugares donde una optimización pasa a `realizada`:
+  `guardarRegistroSeo` (`lib/data/registro-seo-actions.ts`) y
+  `completarServicioBloque` (`lib/data/bloque-actions.ts`, el botón
+  "Completar servicio" del bloque de Ads).
+- **Generación automática de la próxima optimización de Ads**
+  (`completarServicioBloque`): a diferencia de SEO —que deja al equipo
+  editar la fecha propuesta al registrar—, Ads con Regla B ya tiene el día
+  de la semana fijo por servicio (`dia_semana_ads_asignado`), así que la
+  próxima fecha es 100% determinística: la misma semana siguiente
+  (`fecha + 7 días`), reprogramada con `diaHabilSiguiente` si cae en
+  feriado. Se genera la fila `programada` y se agenda su tarea de ClickUp
+  con `after()`, mismo patrón que ya usaba `guardarRegistroSeo` para SEO.
+  Un servicio pausado no genera nada nuevo (mismo criterio `not pausado`
+  que el resto del motor de scheduling). **Con este cambio ya no hace
+  falta ningún cron nuevo para este gap**: la recurrencia se sostiene sola
+  — cada "Completar servicio" real dispara la generación de la siguiente,
+  igual que el registro SEO ya hacía.
+- Verificado de punta a punta contra Postgres local + `next dev` real +
+  **ClickUp real** (no solo la base): se creó una tarea real de prueba
+  para una optimización de Google Ads de Provetec Mining vigente hoy
+  (28 sep 2026), se completó desde el bloque real vía Playwright, y se
+  confirmó contra la API real de ClickUp que la tarea original quedó
+  `status.type: 'closed'` (nombre real de la lista: "done") — no solo que
+  la base dijera `realizada`. La optimización siguiente se generó
+  correctamente para el 5 de octubre (el mismo lunes de la semana
+  siguiente, día asignado real del servicio), con su propia tarea real
+  creada en ClickUp y `sync_status = 'ok'`. Typecheck, lint y los 21 tests
+  de vitest en verde (no se tocó el motor de scheduling, se reutiliza tal
+  cual). Ambas tareas de prueba y los datos de la corrida se eliminaron de
+  ClickUp real y de la base local al terminar. **No verificado en vivo el
+  cierre de tarea del lado SEO** (`guardarRegistroSeo`): el intento de
+  backfillear una tarea real de prueba para Filtrocentro falló por
+  resolución de lista (`{ok:false}`, sin investigar más — no bloqueó nada
+  real, la función que cierra la tarea es exactamente la misma ya probada
+  contra Ads) — si hace falta confirmarlo en vivo más adelante, requiere
+  investigar por qué esa lista en particular no resuelve.
+
 ---
 
 ## 1. Contexto
