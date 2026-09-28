@@ -9,9 +9,10 @@ import { addMeses, diasHasta, fmtFecha, hoySantiago } from "@/lib/dates";
 interface DescuentosPanelProps {
   clientId: string;
   descuentos: DescuentoDetalle[];
+  diasAvisoDescuento?: number;
 }
 
-export function DescuentosPanel({ clientId, descuentos }: DescuentosPanelProps) {
+export function DescuentosPanel({ clientId, descuentos, diasAvisoDescuento = 20 }: DescuentosPanelProps) {
   const router = useRouter();
   const [editingId, setEditingId] = useState<string | null>(null);
   const [draft, setDraft] = useState({ pct: "0", vence: "" });
@@ -169,7 +170,7 @@ export function DescuentosPanel({ clientId, descuentos }: DescuentosPanelProps) 
         {descuentos.map((d) => {
           const n = diasHasta(d.vence, hoy);
           const terminado = n < 0;
-          const porVencer = !terminado && n <= 20;
+          const porVencer = !terminado && n <= diasAvisoDescuento;
           const editing = editingId === d.id;
           const estadoLabel = terminado ? "Terminado" : porVencer ? "Por vencer" : "Activo";
           const estadoFg = terminado ? "var(--color-muted-2)" : porVencer ? "var(--color-warning)" : "var(--color-success)";

@@ -4,23 +4,36 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { Sidebar, type SidebarUsuario } from "@/components/layout/Sidebar";
 import type { Settings } from "@/lib/data/settings";
+import type { Ausencia } from "@/lib/data/ausencias";
+import type { FeriadoDetalle } from "@/lib/data/holidays";
+import type { UsuarioResumen } from "@/lib/data/users";
 import { guardarAjustes } from "@/lib/data/settings-actions";
 import { ImportadorConfigDashboard } from "./ImportadorConfigDashboard";
+import { AusenciasPanel } from "./AusenciasPanel";
+import { FeriadosPanel } from "./FeriadosPanel";
 
 export function AjustesView({
   usuario,
   esAdmin,
+  usuarioActualId,
   settings,
   googleEstado,
   googleResultado,
   googleError,
+  ausencias,
+  feriados,
+  responsables,
 }: {
   usuario: SidebarUsuario;
   esAdmin: boolean;
+  usuarioActualId: string;
   settings: Settings;
   googleEstado: { conectado: boolean; email: string | null };
   googleResultado?: string;
   googleError?: string;
+  ausencias: Ausencia[];
+  feriados: FeriadoDetalle[];
+  responsables: UsuarioResumen[];
 }) {
   const router = useRouter();
   const [draft, setDraft] = useState({
@@ -249,6 +262,10 @@ export function AjustesView({
               </div>
             </label>
           </div>
+
+          <FeriadosPanel feriados={feriados} esAdmin={esAdmin} />
+
+          <AusenciasPanel ausencias={ausencias} usuarios={responsables} esAdmin={esAdmin} usuarioActualId={usuarioActualId} />
 
           {esAdmin && <ImportadorConfigDashboard />}
 

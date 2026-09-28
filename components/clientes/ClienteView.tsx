@@ -18,6 +18,7 @@ import type { Reunion } from "@/lib/data/meetings";
 import type { UsuarioResumen } from "@/lib/data/users";
 import { fmtFecha } from "@/lib/dates";
 import type { ApprovalResumen, OptimizacionBloqueable } from "@/lib/data/approvals";
+import type { Settings } from "@/lib/data/settings";
 
 export function ClienteView({
   cliente,
@@ -29,6 +30,7 @@ export function ClienteView({
   responsables,
   aprobaciones,
   optimizacionesBloqueables,
+  settings,
 }: {
   cliente: ClienteDetalleCompleto;
   usuario: SidebarUsuario;
@@ -39,6 +41,7 @@ export function ClienteView({
   responsables: UsuarioResumen[];
   aprobaciones: ApprovalResumen[];
   optimizacionesBloqueables: OptimizacionBloqueable[];
+  settings: Settings;
 }) {
   return (
     <div className="flex min-h-screen w-full">
@@ -107,6 +110,7 @@ export function ClienteView({
             servicios={cliente.servicios}
             serviciosTiposExistentes={cliente.serviciosTiposExistentes}
             responsables={responsables}
+            diasAvisoVencimiento={settings.diasAlertaVencimientoServicio}
           />
 
           <div className="col2 grid items-start gap-5" style={{ gridTemplateColumns: "minmax(0,1.5fr) minmax(0,1fr)" }}>
@@ -120,7 +124,7 @@ export function ClienteView({
               <BitacoraPanel entradas={bitacora} clienteId={cliente.id} />
             </div>
             <div className="flex flex-col gap-5">
-              <DescuentosPanel clientId={cliente.id} descuentos={cliente.descuentos} />
+              <DescuentosPanel clientId={cliente.id} descuentos={cliente.descuentos} diasAvisoDescuento={settings.diasAlertaDescuento} />
               <AprobacionesPanel clientId={cliente.id} aprobaciones={aprobaciones} optimizacionesBloqueables={optimizacionesBloqueables} />
               <ReunionesPanel clientId={cliente.id} reuniones={reuniones} />
               {cliente.estado === "finalizado" ? (

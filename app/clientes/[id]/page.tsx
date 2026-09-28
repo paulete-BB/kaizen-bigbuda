@@ -7,6 +7,7 @@ import { getOffboardingCliente } from "@/lib/data/offboarding";
 import { listReunionesCliente } from "@/lib/data/meetings";
 import { listResponsables } from "@/lib/data/users";
 import { listarAprobacionesCliente, listarOptimizacionesBloqueables } from "@/lib/data/approvals";
+import { getSettings } from "@/lib/data/settings";
 import { requireUser } from "@/lib/auth/server";
 
 export default async function ClientePage({ params }: { params: Promise<{ id: string }> }) {
@@ -16,7 +17,7 @@ export default async function ClientePage({ params }: { params: Promise<{ id: st
   const cliente = await getClienteDetalle(id);
   if (!cliente) notFound();
 
-  const [bitacora, onboarding, offboarding, reuniones, responsables, aprobaciones, optimizacionesBloqueables] = await Promise.all([
+  const [bitacora, onboarding, offboarding, reuniones, responsables, aprobaciones, optimizacionesBloqueables, settings] = await Promise.all([
     getBitacoraCliente(id),
     getOnboardingCliente(id),
     getOffboardingCliente(id),
@@ -24,6 +25,7 @@ export default async function ClientePage({ params }: { params: Promise<{ id: st
     listResponsables(),
     listarAprobacionesCliente(id),
     listarOptimizacionesBloqueables(id),
+    getSettings(),
   ]);
 
   return (
@@ -36,6 +38,7 @@ export default async function ClientePage({ params }: { params: Promise<{ id: st
       responsables={responsables}
       aprobaciones={aprobaciones}
       optimizacionesBloqueables={optimizacionesBloqueables}
+      settings={settings}
       usuario={{
         nombre: session.nombre,
         iniciales: session.nombre.slice(0, 2).toUpperCase(),

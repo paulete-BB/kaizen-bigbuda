@@ -1,5 +1,32 @@
 import Link from "next/link";
-import type { AlertaItem, DashboardData } from "@/lib/data/dashboard";
+import type { AlertaItem, AlertaResponsableAusente, DashboardData } from "@/lib/data/dashboard";
+import { ReasignarResponsableForm } from "./ReasignarResponsableForm";
+
+function CategoriaResponsableAusente({ items, responsables, titulo }: { items: AlertaResponsableAusente[]; responsables: DashboardData["responsables"]; titulo: string }) {
+  if (items.length === 0) return null;
+  return (
+    <div className="border-b border-border-soft-2 py-3 last:border-b-0">
+      <div className="mb-1.5 flex items-center gap-2">
+        <span className="text-[12.5px] font-semibold">{titulo}</span>
+        <span className="rounded-full bg-danger-bg px-2 py-px text-[10.5px] font-bold text-danger">{items.length}</span>
+      </div>
+      <div className="flex flex-col gap-1.5">
+        {items.slice(0, 3).map((item, i) => (
+          <div key={i} className="flex items-center gap-1.5 text-[11.5px] text-muted">
+            <Link href={item.href} className="min-w-0 flex-1 truncate">
+              <b className="font-semibold text-ink">{item.clienteNombre}</b>{" "}
+              <span className="text-muted-2">· {item.detalle}</span>
+            </Link>
+            {responsables.length > 1 && (
+              <ReasignarResponsableForm optimizationId={item.optimizationId} responsableActualId={item.responsableActualId} responsables={responsables} />
+            )}
+          </div>
+        ))}
+        {items.length > 3 && <span className="text-[11px] text-muted-2">+{items.length - 3} más</span>}
+      </div>
+    </div>
+  );
+}
 
 function Categoria({ titulo, items }: { titulo: string; items: AlertaItem[] }) {
   if (items.length === 0) return null;
@@ -34,7 +61,8 @@ export function AlertasPanel({ data }: { data: DashboardData }) {
     alertas.informesPendientes.length +
     alertas.descuentosPorVencer.length +
     alertas.syncPendiente.length +
-    alertas.completadasEnClickUp.length;
+    alertas.completadasEnClickUp.length +
+    alertas.responsableAusente.length;
 
   return (
     <div
@@ -51,6 +79,7 @@ export function AlertasPanel({ data }: { data: DashboardData }) {
         ) : (
           <>
             <Categoria titulo="Sin conversiones ayer" items={alertas.sinConversiones} />
+            <CategoriaResponsableAusente titulo="Responsable ausente en fecha programada" items={alertas.responsableAusente} responsables={data.responsables} />
             <Categoria titulo="Optimizaciones atrasadas" items={alertas.atrasadas} />
             <Categoria titulo="Desviaciones de ritmo de gasto" items={alertas.pacing} />
             <Categoria titulo="Aprobaciones sin respuesta" items={alertas.aprobaciones} />

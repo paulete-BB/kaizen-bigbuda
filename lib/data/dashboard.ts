@@ -1,5 +1,6 @@
 import { sql } from "@/lib/db";
 import { fmtFecha, hoySantiago, toIso } from "@/lib/dates";
+import { listResponsables, type UsuarioResumen } from "@/lib/data/users";
 
 export interface EventoResumen {
   id: string;
@@ -20,12 +21,23 @@ export interface AlertaItem {
   href: string;
 }
 
+export interface AlertaResponsableAusente {
+  optimizationId: string;
+  clienteId: string;
+  clienteNombre: string;
+  detalle: string;
+  href: string;
+  responsableActualId: string;
+  responsableActualNombre: string;
+}
+
 export interface DashboardData {
   hoyIso: string;
   cumplimiento: { pct: number; variacionPts: number; aTiempo: number; atrasadas: number; total: number };
   vigencias: { vigentes: number; porVencer: number; vencidos: number; porAtender: number; total: number };
   eventosHoy: EventoResumen[];
   eventosSemana: EventoResumen[];
+  responsables: UsuarioResumen[];
   alertas: {
     sinConversiones: AlertaItem[];
     atrasadas: AlertaItem[];
@@ -37,6 +49,7 @@ export interface DashboardData {
     descuentosPorVencer: AlertaItem[];
     syncPendiente: AlertaItem[];
     completadasEnClickUp: AlertaItem[];
+    responsableAusente: AlertaResponsableAusente[];
   };
 }
 
@@ -66,7 +79,7 @@ export async function getDashboardData(): Promise<DashboardData> {
   const hoyIso = toIso(hoy);
   const semanaHastaIso = toIso(new Date(hoy.getFullYear(), hoy.getMonth(), hoy.getDate() + 6));
 
-  const [actual, anterior, vigenciasRows, eventos] = await Promise.all([
+  const [actual, anterior, vigenciasRows, eventos, responsables] = await Promise.all([
     cumplimientoDelMes(hoy.getFullYear(), hoy.getMonth() + 1),
     cumplimientoDelMes(
       hoy.getMonth() === 0 ? hoy.getFullYear() - 1 : hoy.getFullYear(),
@@ -100,6 +113,7 @@ export async function getDashboardData(): Promise<DashboardData> {
       where o.fecha_programada between ${hoyIso} and ${semanaHastaIso}
       order by o.fecha_programada, o.hora_programada nulls first
     `,
+    listResponsables(),
   ]);
 
   const porEstado = new Map(vigenciasRows.map((r) => [r.estado, Number(r.total)]));
@@ -119,8 +133,19 @@ export async function getDashboardData(): Promise<DashboardData> {
     informeEnviado: !!e.informe_enviado_en,
   }));
 
-  const [sinConversionesRows, atrasadasRows, pacingRows, aprobacionesRows, bloqueadasRows, porVencerRows, informesRows, descuentosRows, syncRows, completadasClickUpRows] =
-    await Promise.all([
+  const [
+    sinConversionesRows,
+    atrasadasRows,
+    pacingRows,
+    aprobacionesRows,
+    bloqueadasRows,
+    porVencerRows,
+    informesRows,
+    descuentosRows,
+    syncRows,
+    completadasClickUpRows,
+    responsableAusenteRows,
+  ] = await Promise.all([
       // Lee el snapshot diario de "ayer" que guarda el cron `snapshot-conversiones-ayer`
       // (§3.7, pedido explícito del usuario) — nunca llama a Meta/GA4 en vivo acá, mismo
       // criterio ya establecido tras el bug de fan-out de Resultados/Gonfernic. Sin
@@ -190,6 +215,33 @@ export async function getDashboardData(): Promise<DashboardData> {
         where o.clickup_completada_en is not null and o.estado != 'realizada'
         order by o.clickup_completada_en desc
       `,
+      // Regla D (§3.2): responsable de una optimización YA programada que
+      // está de vacaciones/licencia en esa fecha exacta — join en vivo
+      // contra `absences`, no el chequeo del motor (que solo corre al
+      // generar). Sin tope de fecha hacia adelante: una ausencia agendada
+      // con anticipación debe alertar apenas se registra, no solo cuando
+      // se acerca.
+      sql<
+        {
+          optimization_id: string;
+          cliente_id: string;
+          cliente_nombre: string;
+          tipo: string;
+          fecha_programada: string;
+          responsable_id: string;
+          responsable_nombre: string;
+        }[]
+      >`
+        select o.id as optimization_id, c.id as cliente_id, c.nombre as cliente_nombre, o.tipo, o.fecha_programada,
+               u.id as responsable_id, u.nombre as responsable_nombre
+        from optimizations o
+        join clients c on c.id = o.client_id
+        join users u on u.id = o.responsable_id
+        join absences a on a.user_id = o.responsable_id
+          and o.fecha_programada between a.fecha_inicio and a.fecha_fin
+        where o.estado = 'programada' and o.fecha_programada >= current_date
+        order by o.fecha_programada
+      `,
     ]);
 
   return {
@@ -210,6 +262,7 @@ export async function getDashboardData(): Promise<DashboardData> {
     },
     eventosHoy: eventosMapeados.filter((e) => e.fecha === hoyIso),
     eventosSemana: eventosMapeados.filter((e) => e.fecha !== hoyIso),
+    responsables,
     alertas: {
       sinConversiones: sinConversionesRows.map((r) => ({
         clienteId: r.cliente_id,
@@ -273,6 +326,15 @@ export async function getDashboardData(): Promise<DashboardData> {
         clienteNombre: r.cliente_nombre,
         detalle: `${TIPO_LABEL[r.tipo] ?? r.tipo} · completada en ClickUp, falta registrar`,
         href: `/clientes/${r.cliente_id}`,
+      })),
+      responsableAusente: responsableAusenteRows.map((r) => ({
+        optimizationId: r.optimization_id,
+        clienteId: r.cliente_id,
+        clienteNombre: r.cliente_nombre,
+        detalle: `${TIPO_LABEL[r.tipo] ?? r.tipo} · ${r.responsable_nombre} ausente el ${fmtFecha(r.fecha_programada)}`,
+        href: `/clientes/${r.cliente_id}`,
+        responsableActualId: r.responsable_id,
+        responsableActualNombre: r.responsable_nombre,
       })),
     },
   };

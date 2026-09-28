@@ -1970,6 +1970,89 @@ optimización semanal de un servicio de Ads (hasta ahora solo existía en
   contra Ads) — si hace falta confirmarlo en vivo más adelante, requiere
   investigar por qué esa lista en particular no resuelve.
 
+**Fase 2 cerrada — Regla D completa (feriados/ausencias) + umbrales
+dinámicos de settings**, a pedido explícito del usuario ("terminemos con
+la fase 2"). Un agente Explore inventarió qué faltaba realmente: los
+umbrales hardcodeados de `ServiciosPanel`/`DescuentosPanel` (deuda
+documentada desde el panel de configuración) y la Regla D completa (§3.2
+D), de la que no existía ninguna pieza — ni CRUD de ausencias, ni CRUD de
+feriados, ni la alerta de ausencia, ni "reasignar responsable". Se
+confirmó con el usuario construir el paquete completo.
+
+- **Umbrales dinámicos**: `app/clientes/[id]/page.tsx` ahora trae
+  `getSettings()` y lo pasa a `ClienteView` → `ServiciosPanel`/
+  `DescuentosPanel`, que dejan de tener `45`/`20` hardcodeados y usan
+  `settings.diasAlertaVencimientoServicio`/`diasAlertaDescuento` (ambos
+  props opcionales, con esos mismos valores como default — no rompe nada
+  si algún caller no los pasa).
+- **CRUD de ausencias** (`lib/data/ausencias.ts`/`ausencias-actions.ts`,
+  panel nuevo en `/ajustes`): cualquier miembro autenticado puede
+  registrar su propia ausencia (§3.2 D: "cada usuario puede registrar
+  períodos de vacaciones/licencia"); un admin puede registrar o eliminar
+  la de cualquiera, un miembro solo la propia — chequeado server-side, no
+  solo oculto en la UI (mismo patrón de control de acceso ya establecido
+  en el resto de la plataforma).
+- **CRUD de feriados con reprogramación retroactiva** (`lib/data/holidays.ts`/
+  `holidays-actions.ts`, panel nuevo en `/ajustes`, admin-only —afecta el
+  scheduling de todo el equipo, no es una preferencia personal como una
+  ausencia): agregar un feriado en una fecha donde ya había optimizaciones
+  `programada` las reprograma automáticamente con la misma regla que ya
+  usa el motor al generar — SEO busca el viernes anterior con cupo (reusa
+  `viernesAnteriorHabil` + el mismo tope `MAX_SEO_POR_VIERNES` de la
+  Regla A, chequeando ocupación real contra `optimizations`); Ads usa
+  `diaHabilSiguiente` (sin tope, igual que la Regla B). Cada reprogramación
+  inserta su fila en `reschedules` (motivo `'feriado'`) y agenda el sync a
+  ClickUp con `after()` (mismo patrón ya establecido para no bloquear la
+  UI) — reusa `syncOptimizationTaskToClickUp` tal cual, sin cambios. Sin
+  migración nueva: `holidays`/`absences`/`reschedules` ya existían desde
+  `0001_init.sql`, solo no tenían ningún CRUD ni lógica conectada.
+- **Alerta "Responsable ausente en fecha programada"** (`lib/data/dashboard.ts`):
+  nueva query que hace `join` en vivo de `optimizations` (`programada`,
+  fecha futura) contra `absences` por `responsable_id` — a diferencia de
+  `detectarConflictoAusencia` (`lib/scheduling/ausencias.ts`), que solo
+  corre al generar el calendario, esta consulta se recalcula en cada carga
+  del dashboard contra el estado real, así que una ausencia registrada
+  *después* de programar la optimización también dispara la alerta.
+  `DashboardData` gana un campo `responsables` (mismo `listResponsables()`
+  ya usado en la ficha de cliente) para poder ofrecer el selector de
+  reasignación sin una consulta aparte.
+- **"Reasignar responsable" en un clic** (`lib/data/optimizaciones-actions.ts`,
+  `reasignarResponsableOptimizacion`): no hizo falta ninguna función nueva
+  de ClickUp — `syncOptimizationTaskToClickUp` ya resuelve `assignees`
+  desde `responsableId` y ya es idempotente por `clickup_task_id`, así que
+  reasignar es solo un `update` de `optimizations.responsable_id` seguido
+  del mismo sync de siempre, agendado con `after()`. La UI vive directo en
+  la fila de la alerta (`ReasignarResponsableForm.tsx`, componente cliente
+  nuevo): un `<select>` de responsables + botón, sin necesitar navegar a
+  ninguna otra pantalla — "un clic", como pide el brief.
+- Verificado de punta a punta contra Postgres local + `next dev` real +
+  Playwright, logueado como Marcel (admin), con un **cliente sintético
+  creado y borrado en la misma ronda** (nunca un cliente real del seed,
+  lección ya documentada en rondas anteriores — acá además se confirmó
+  que `settings.clickup_default_list_id` está vacío en local, así que el
+  intento de sync de ClickUp para el cliente sintético falla limpio
+  `{ok:false}` sin crear ninguna tarea real, sin necesitar tocar nada a
+  mano): se registró una ausencia de Marcel cubriendo la fecha de una
+  optimización Ads sintética → apareció la alerta en el dashboard; se
+  reasignó a Paulete desde el `<select>` inline → confirmado en la base
+  que `responsable_id` cambió; se agregó un feriado exactamente en la
+  fecha de una optimización SEO sintética (viernes) → se reprogramó sola
+  al viernes anterior con una fila de `reschedules` correcta (`motivo:
+  'feriado'`), con aviso visible en la UI ("N optimización(es)... se
+  reprogramó(aron)"); un segundo feriado sin ninguna optimización afectada
+  no mostró aviso; se eliminaron la ausencia y ambos feriados desde la UI
+  y dejaron de listarse. Cero errores de consola en las cinco capturas.
+  Typecheck, lint (en los archivos de esta ronda — los 8 errores
+  preexistentes de `react/no-unescaped-entities` en `AjustesView.tsx` no
+  se tocaron, confirmados con `git stash` que ya estaban antes de esta
+  ronda) y los 21 tests de vitest en verde (no se tocó el motor de
+  scheduling). Cliente sintético y todos sus datos derivados (servicios,
+  optimizaciones, `reschedules`) borrados en cascada al terminar.
+- **Con esto, Fase 2 (§5: "Integración ClickUp + operación... onboarding
+  de clientes (3.8) y control de presupuesto/pacing (3.9)") queda
+  funcionalmente completa** — las cuatro reglas del motor de scheduling
+  (A, B, C, D) están construidas y con UI/alertas conectadas.
+
 ---
 
 ## 1. Contexto
