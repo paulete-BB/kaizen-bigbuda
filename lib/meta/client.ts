@@ -90,14 +90,15 @@ export interface PuntoDiarioMeta {
   gasto: number;
   impresiones: number;
   clics: number;
+  resultados: number;
 }
 
-/** Serie diaria de gasto/clics (time_increment=1, mismo query shape que el dashboard de referencia) — pestaña Resultados (§3.15), overlay de optimizaciones sobre la serie. */
+/** Serie diaria de gasto/clics/resultados (time_increment=1, mismo query shape que el dashboard de referencia) — pestaña Resultados (§3.15), overlay de optimizaciones sobre la serie. */
 export async function obtenerSerieDiariaMeta(config: ConfigMeta, since: string, until: string): Promise<PuntoDiarioMeta[]> {
   const token = resolverTokenMeta(config.metaTokenKey);
   if (!token) throw new Error(config.metaTokenKey ? `META_TOKEN_${config.metaTokenKey} no configurado` : "META_TOKEN no configurado");
 
-  const fields = "spend,impressions,clicks";
+  const fields = "spend,impressions,clicks,actions";
   const data = await metaFetch(`/act_${config.adAccountId}/insights`, { fields, time_range: timeRange(since, until), time_increment: "1", level: "account" }, token);
   const num = (v: unknown) => (typeof v === "string" ? parseFloat(v) || 0 : 0);
   return (data.data ?? []).map((row: Record<string, unknown>) => ({
@@ -105,6 +106,7 @@ export async function obtenerSerieDiariaMeta(config: ConfigMeta, since: string, 
     gasto: num(row.spend),
     impresiones: num(row.impressions),
     clics: num(row.clicks),
+    resultados: contarResultados(row.actions as { action_type: string; value: string }[] | undefined),
   }));
 }
 

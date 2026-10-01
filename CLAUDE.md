@@ -2053,6 +2053,51 @@ confirmó con el usuario construir el paquete completo.
   funcionalmente completa** — las cuatro reglas del motor de scheduling
   (A, B, C, D) están construidas y con UI/alertas conectadas.
 
+**Bug real en producción — `/dashboard` se colgaba (504) al abrirlo**,
+reportado por el usuario justo después de que la ronda anterior de Regla D
+llegara a producción. Diagnosticado contra la base real (no en teoría):
+`getDashboardData()` disparaba 16 consultas en paralelo (`Promise.all`,
+antes eran 14) contra el pooler de Supabase en modo transacción —
+confirmado probando cada consulta por separado contra producción (todas
+corren en <2s), pero agarrando una petición real a `/dashboard` en pleno
+vuelo se vio que las conexiones del pooler quedaban `ClientRead` (la query
+ya había terminado, pero el pooler no la liberaba para la siguiente)
+mientras el resto de las 16 ni siquiera lograban abrir conexión — el
+dashboard en sí nunca respondía. Corregido cambiando ambos bloques de
+`Promise.all` a consultas secuenciales: nunca más de una conexión del
+pool en uso a la vez (mismo criterio que el fix de fan-out de
+Resultados/Gonfernic, esta vez del lado de Postgres en vez de llamadas
+externas). Verificado en vivo contra producción con una sesión real:
+`/dashboard` pasó de colgarse 60+ segundos a responder en 1.5-2.4s de
+forma consistente en 4 intentos seguidos.
+
+**Integración de Meta Ads de Comercial Loyola — dos problemas reales de
+configuración, no de código**, encontrados mientras el usuario armaba el
+System User/token de Meta por primera vez: (1) el campo "Token de Meta
+alternativo" de la ficha del cliente espera solo la *clave* (ej.
+`COMERCIAL_LOYOLA`), no el nombre completo de la variable de entorno —
+quedó guardado como `META_TOKEN_COMERCIAL_LOYOLA` y el código arma
+`META_TOKEN_${clave}`, buscando una variable con el prefijo duplicado que
+no existe; (2) confirmado y corregido directo en producción vía la
+Management API de Supabase (y luego por el usuario desde la propia ficha).
+Documentado acá porque es una trampa real del campo tal como está escrito
+hoy — candidato a mejorar el texto de ayuda en `IntegracionesPanel.tsx` si
+vuelve a pasar.
+
+**Gráfico de Meta Ads: "Inversión por día" → "Clics y conversiones por
+día"**, pedido explícito del usuario apenas se vio el primer gráfico real
+con datos de Comercial Loyola — el gasto por sí solo no dice si la
+campaña está funcionando. Mismo patrón ya construido para SEO (serie
+principal + `serieSecundaria` punteada en `SerieTiempo.tsx`, mismo eje,
+nunca dual-axis): `obtenerSerieDiariaMeta` (`lib/meta/client.ts`) ahora
+también pide `actions` en la llamada diaria a Meta Insights y calcula
+`resultados` por día con el mismo `contarResultados` que ya usaba el
+resumen del período; `SeccionMeta.serieConversiones` (nuevo campo) se
+grafica junto a `serie` (que pasó de gasto a clics). Sin ritual de
+Postgres local + Playwright — reutiliza exactamente el mecanismo ya
+verificado end-to-end para SEO, sin lógica nueva de por medio; typecheck,
+lint y los 21 tests de vitest en verde.
+
 ---
 
 ## 1. Contexto

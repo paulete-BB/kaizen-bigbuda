@@ -173,8 +173,17 @@ export function ResultadosView({
             <InsightCallout texto={data.meta.insight} />
             <KpiFila kpis={data.meta.kpis} />
             <div>
-              <div className="mb-2 text-[11.5px] font-semibold text-muted">Inversión por día</div>
-              <SerieTiempo serie={data.meta.serie} hitos={data.meta.hitos} color={COLOR_META} formato="moneda" />
+              <div className="mb-2 text-[11.5px] font-semibold text-muted">Clics y conversiones por día</div>
+              <SerieTiempo
+                serie={data.meta.serie}
+                serieSecundaria={data.meta.serieConversiones}
+                etiquetaPrincipal="Clics"
+                etiquetaSecundaria="Conversiones"
+                hitos={data.meta.hitos}
+                color={COLOR_META}
+                colorSecundario="var(--color-success)"
+                formato="numero"
+              />
             </div>
             {data.meta.campanas.length > 0 && (
               <div>

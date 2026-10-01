@@ -229,6 +229,8 @@ export interface SeccionMeta {
   insight: string | null;
   kpis: KpiResultado[];
   serie: PuntoSerie[];
+  /** Resultados (conversiones) por día, mismo rango que `serie` — se grafican juntas para comparar clics vs. conversiones efectivas. */
+  serieConversiones: PuntoSerie[];
   hitos: Hito[];
   campanas: FilaCampana[];
 }
@@ -539,7 +541,7 @@ async function seccionMeta(
   hitos: Hito[],
 ): Promise<SeccionMeta> {
   if (!metaAdAccountId) {
-    return { disponible: false, motivo: "Configura el Ad Account ID de Meta en la ficha del cliente.", insight: null, kpis: [], serie: [], hitos: [], campanas: [] };
+    return { disponible: false, motivo: "Configura el Ad Account ID de Meta en la ficha del cliente.", insight: null, kpis: [], serie: [], serieConversiones: [], hitos: [], campanas: [] };
   }
   const config = { adAccountId: metaAdAccountId, metaTokenKey };
   try {
@@ -562,12 +564,17 @@ async function seccionMeta(
         { etiqueta: "CTR", valor: `${actual.ctr.toFixed(2)}%`, delta: delta(actual.ctr, anterior.ctr) },
         { etiqueta: "Alcance", valor: fmtNumero(actual.alcance), delta: delta(actual.alcance, anterior.alcance) },
       ],
-      serie: rellenarDias(desde, hasta, serieDiaria.map((p) => ({ fecha: p.fecha, valor: p.gasto }))),
+      // Clics vs. resultados (conversiones efectivas) por día — pedido
+      // explícito del usuario, reemplaza el gráfico de solo-gasto: lo que
+      // importa comparar es cuánto tráfico genera la campaña vs. cuánto de
+      // ese tráfico realmente convierte, no solo cuánto se gastó.
+      serie: rellenarDias(desde, hasta, serieDiaria.map((p) => ({ fecha: p.fecha, valor: p.clics }))),
+      serieConversiones: rellenarDias(desde, hasta, serieDiaria.map((p) => ({ fecha: p.fecha, valor: p.resultados }))),
       hitos,
       campanas: armarCampanas(campanas.map((c) => ({ nombre: c.nombre || "(sin nombre)", interacciones: c.clics, conversiones: c.resultados, gastoOCosto: c.gasto }))),
     };
   } catch {
-    return { disponible: false, motivo: "No se pudo obtener datos de Meta para este período.", insight: null, kpis: [], serie: [], hitos: [], campanas: [] };
+    return { disponible: false, motivo: "No se pudo obtener datos de Meta para este período.", insight: null, kpis: [], serie: [], serieConversiones: [], hitos: [], campanas: [] };
   }
 }
 
@@ -677,7 +684,7 @@ export async function obtenerResultadosCliente(clientId: string, rango: RangoRes
       : ({ disponible: false, motivo: "Este cliente no tiene SEO-AEO-GEO contratado.", insight: null, totalSesiones: 0, deltaSesiones: null, tasaConversion: null, tendenciaSemanal: [], paginasDestino: [] } as SeccionAeo),
     servicioIdPorTipo.has("meta_ads")
       ? seccionMeta(clientId, servicioIdPorTipo.get("meta_ads")!, cliente.meta_ad_account_id, cliente.meta_token_key, actual.desde, actual.hasta, anterior.desde, anterior.hasta, hitosPorTipo.meta_ads)
-      : ({ disponible: false, motivo: "Este cliente no tiene Meta Ads contratado.", insight: null, kpis: [], serie: [], hitos: [], campanas: [] } as SeccionMeta),
+      : ({ disponible: false, motivo: "Este cliente no tiene Meta Ads contratado.", insight: null, kpis: [], serie: [], serieConversiones: [], hitos: [], campanas: [] } as SeccionMeta),
     servicioIdPorTipo.has("google_ads")
       ? seccionGoogleAds(clientId, servicioIdPorTipo.get("google_ads")!, cliente.google_ads_ga4_property_id, actual.desde, actual.hasta, anterior.desde, anterior.hasta, hitosPorTipo.google_ads)
       : ({ disponible: false, motivo: "Este cliente no tiene Google Ads contratado.", insight: null, kpis: [], serie: [], hitos: [], campanas: [] } as SeccionGoogleAds),
