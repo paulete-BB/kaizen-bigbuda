@@ -44,6 +44,12 @@ export const ESTILOS_INFORME = `
 .informe-canvas a{color:var(--accent);text-decoration:none;}
 @media print{
   @page{size:1920px 1080px;margin:0;}
+  /* Sin esto, Chrome no imprime colores de fondo por defecto (requiere marcar
+     "Gráficos de fondo" a mano en el diálogo de impresión) — la plantilla usa
+     texto claro pensado para el fondo negro de la plantilla, así que sin el
+     fondo, ese texto queda casi o completamente invisible sobre el blanco del
+     papel. Forzar el color evita depender de que alguien marque esa casilla. */
+  html,body,.informe-canvas,.informe-slide{-webkit-print-color-adjust:exact;print-color-adjust:exact;color-adjust:exact;}
   body{margin:0;}
   .informe-slide{page-break-after:always;break-after:page;}
   .informe-noprint{display:none !important;}

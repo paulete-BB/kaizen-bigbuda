@@ -2098,6 +2098,35 @@ Postgres local + Playwright — reutiliza exactamente el mecanismo ya
 verificado end-to-end para SEO, sin lógica nueva de por medio; typecheck,
 lint y los 21 tests de vitest en verde.
 
+**Bug real reportado por el usuario al exportar el primer PDF real (El
+Jardinero, Google Ads) — texto "borrado" y partes muy claras para
+leer:** causa real, no cosmética — Chrome no imprime colores de fondo por
+defecto (requiere marcar a mano "Gráficos de fondo" en el diálogo de
+impresión, casilla que casi nadie conoce). La plantilla de informes usa
+texto claro (blanco/dorado) pensado para contrastar contra el fondo negro
+de la plantilla (§3.4); sin el fondo, ese texto queda sobre el blanco del
+papel — invisible si era blanco puro, casi ilegible si era gris medio.
+Corregido agregando `print-color-adjust:exact` (+ el prefijo
+`-webkit-`) al bloque `@media print` de `ESTILOS_INFORME`
+(`lib/informes/render.ts`) — fuerza a imprimir los colores siempre, sin
+depender de que el usuario marque esa casilla. **Dos problemas más
+reportados en la misma captura, explicados pero no "arreglables" desde el
+código**: (1) texto cortado por el borde izquierdo en varios slides — es
+la configuración de **Márgenes** del diálogo de impresión de Chrome
+("Predeterminado" pisa el `margin:0` que ya pide el `@page` de la
+plantilla); se le indicó al usuario usar "Ninguno". (2) un ícono circular
+con líneas horizontales repetido en el mismo lugar en cada página del
+PDF — no existe nada así en la plantilla ni en el código de la app
+(confirmado buscando `position:fixed` y revisando `InformeDeck.tsx`/
+`render.ts` completos); es casi seguro el **Vercel Toolbar**, que Vercel
+superpone sobre el sitio cuando el usuario navega logueado en vercel.com
+en el mismo navegador — queda capturado en el PDF porque es un elemento
+`position:fixed` real del DOM, fuera del control de esta app. Se le
+indicó al usuario desactivar el Toolbar o usar una ventana de incógnito
+al exportar. Typecheck, lint y los 21 tests de vitest en verde — cambio
+de una línea de CSS, sin ritual de Postgres local + Playwright (no toca
+lógica de datos ni de servidor).
+
 ---
 
 ## 1. Contexto
