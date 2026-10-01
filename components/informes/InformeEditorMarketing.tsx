@@ -10,7 +10,10 @@ import { InformeDeckPreview } from "@/components/informes/InformeDeckPreview";
 import { cambiarEstadoInforme, guardarContenidoInforme, registrarEnvioInforme, type AccionInformeResultado } from "@/lib/data/informes-actions";
 import { renderSlidesMarketing, type ServicioAdsTipo } from "@/lib/informes/slides-marketing";
 import { fmtMesAnio, type InformeMarketingContenido } from "@/lib/informes/tipos";
+import { CATALOGO_METRICAS_SUGERIDAS, criterioDeMetrica, criterioAFavorable, recalcularFavorablesConocidas, type Favorable } from "@/lib/informes/metricas-catalogo";
 import type { InformeCompleto } from "@/lib/data/informes";
+
+const OTRA_METRICA = "__otra__";
 
 const LOGO_SRC = "/informes/logo-bigbuda.svg";
 
@@ -18,17 +21,35 @@ const ESTADO_LABEL = { borrador: "Borrador", listo: "Listo", enviado: "Enviado" 
 
 export function InformeEditorMarketing({ informe, usuario }: { informe: InformeCompleto; usuario: SidebarUsuario }) {
   const router = useRouter();
-  const [contenido, setContenido] = useState(informe.contenido as InformeMarketingContenido);
+  const dirty = useRef(false);
+  const [contenido, setContenido] = useState(() => {
+    // Corrige en el momento filas de métricas conocidas guardadas con un
+    // `favorable` viejo/incorrecto (ver lib/informes/metricas-catalogo.ts) —
+    // así un informe ya creado no se queda en rojo hasta que alguien edite
+    // cada fila a mano. El efecto de abajo marca `dirty` si hizo falta
+    // corregir algo, para que el autosave persista la corrección solo.
+    const inicial = informe.contenido as InformeMarketingContenido;
+    const corregidas = recalcularFavorablesConocidas(inicial.comoVamosCifras.metricas);
+    const cambio = corregidas.some((m, i) => m.favorable !== inicial.comoVamosCifras.metricas[i]?.favorable);
+    return cambio ? { ...inicial, comoVamosCifras: { metricas: corregidas } } : inicial;
+  });
   const [guardando, setGuardando] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [envioAbierto, setEnvioAbierto] = useState(false);
-  const dirty = useRef(false);
   const soloLectura = informe.estado === "enviado";
 
   function actualizar(fn: (c: InformeMarketingContenido) => InformeMarketingContenido) {
     dirty.current = true;
     setContenido(fn);
   }
+
+  useEffect(() => {
+    const inicial = informe.contenido as InformeMarketingContenido;
+    const corregidas = recalcularFavorablesConocidas(inicial.comoVamosCifras.metricas);
+    const cambio = corregidas.some((m, i) => m.favorable !== inicial.comoVamosCifras.metricas[i]?.favorable);
+    if (cambio) dirty.current = true;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   useEffect(() => {
     if (!dirty.current) return;
@@ -128,38 +149,74 @@ export function InformeEditorMarketing({ informe, usuario }: { informe: InformeC
               <Seccion titulo="01 · ¿Cómo vamos? (cifras del mes)">
                 <ListaEditable
                   items={contenido.comoVamosCifras.metricas}
-                  vacio={{ etiqueta: "", valor: "", deltaTexto: "", deltaDireccion: "up" as const, favorable: true }}
+                  vacio={{ etiqueta: OTRA_METRICA, valor: "", deltaTexto: "", deltaDireccion: "up" as const, favorable: "neutro" as const }}
                   addLabel="Agregar métrica"
                   onChange={(metricas) => actualizar((c) => ({ ...c, comoVamosCifras: { metricas } }))}
-                  render={(item, onUpdate) => (
-                    <div className="flex flex-wrap gap-2">
-                      <CampoTexto label="Etiqueta (ej: Inversión)" value={item.etiqueta} onChange={(v) => onUpdate({ etiqueta: v })} />
-                      <CampoTexto label="Valor" value={item.valor} onChange={(v) => onUpdate({ valor: v })} />
-                      <CampoTexto label="Delta (ej: 6%)" value={item.deltaTexto} onChange={(v) => onUpdate({ deltaTexto: v })} />
-                      <label className="flex flex-col gap-1.5">
-                        <span className="text-[11.5px] font-semibold text-muted-2">Dirección</span>
-                        <select
-                          value={item.deltaDireccion}
-                          onChange={(e) => onUpdate({ deltaDireccion: e.target.value as "up" | "down" })}
-                          className="rounded-lg border border-border bg-surface px-3 py-2.5 text-[13px] text-ink"
-                        >
-                          <option value="up">↑ Sube</option>
-                          <option value="down">↓ Baja</option>
-                        </select>
-                      </label>
-                      <label className="flex flex-col gap-1.5">
-                        <span className="text-[11.5px] font-semibold text-muted-2">¿Es buena noticia?</span>
-                        <select
-                          value={item.favorable ? "si" : "no"}
-                          onChange={(e) => onUpdate({ favorable: e.target.value === "si" })}
-                          className="rounded-lg border border-border bg-surface px-3 py-2.5 text-[13px] text-ink"
-                        >
-                          <option value="si">Sí (verde)</option>
-                          <option value="no">No (rojo)</option>
-                        </select>
-                      </label>
-                    </div>
-                  )}
+                  render={(item, onUpdate) => {
+                    const esConocida = CATALOGO_METRICAS_SUGERIDAS.includes(item.etiqueta);
+                    return (
+                      <div className="flex flex-wrap gap-2">
+                        <label className="flex flex-col gap-1.5">
+                          <span className="text-[11.5px] font-semibold text-muted-2">Métrica</span>
+                          <select
+                            value={esConocida ? item.etiqueta : OTRA_METRICA}
+                            onChange={(e) => {
+                              const etiqueta = e.target.value;
+                              if (etiqueta === OTRA_METRICA) {
+                                onUpdate({ etiqueta: "", favorable: "neutro" });
+                                return;
+                              }
+                              // Al elegir una métrica conocida, el color se recalcula solo
+                              // según su criterio (subir es bueno/malo/neutro) + la dirección
+                              // ya cargada — nadie tiene que adivinar "¿es buena noticia?".
+                              onUpdate({ etiqueta, favorable: criterioAFavorable(criterioDeMetrica(etiqueta), item.deltaDireccion) });
+                            }}
+                            className="rounded-lg border border-border bg-surface px-3 py-2.5 text-[13px] text-ink"
+                          >
+                            {CATALOGO_METRICAS_SUGERIDAS.map((m) => (
+                              <option key={m} value={m}>{m}</option>
+                            ))}
+                            <option value={OTRA_METRICA}>Otra (personalizada)</option>
+                          </select>
+                        </label>
+                        {!esConocida && (
+                          <CampoTexto label="Nombre de la métrica" value={item.etiqueta} onChange={(v) => onUpdate({ etiqueta: v })} />
+                        )}
+                        <CampoTexto label="Valor" value={item.valor} onChange={(v) => onUpdate({ valor: v })} />
+                        <CampoTexto label="Delta (ej: 6%)" value={item.deltaTexto} onChange={(v) => onUpdate({ deltaTexto: v })} />
+                        <label className="flex flex-col gap-1.5">
+                          <span className="text-[11.5px] font-semibold text-muted-2">Dirección</span>
+                          <select
+                            value={item.deltaDireccion}
+                            onChange={(e) => {
+                              const deltaDireccion = e.target.value as "up" | "down";
+                              onUpdate(
+                                esConocida
+                                  ? { deltaDireccion, favorable: criterioAFavorable(criterioDeMetrica(item.etiqueta), deltaDireccion) }
+                                  : { deltaDireccion },
+                              );
+                            }}
+                            className="rounded-lg border border-border bg-surface px-3 py-2.5 text-[13px] text-ink"
+                          >
+                            <option value="up">↑ Sube</option>
+                            <option value="down">↓ Baja</option>
+                          </select>
+                        </label>
+                        <label className="flex flex-col gap-1.5">
+                          <span className="text-[11.5px] font-semibold text-muted-2">¿Es buena noticia?</span>
+                          <select
+                            value={item.favorable}
+                            onChange={(e) => onUpdate({ favorable: e.target.value as Favorable })}
+                            className="rounded-lg border border-border bg-surface px-3 py-2.5 text-[13px] text-ink"
+                          >
+                            <option value="bueno">Sí (verde)</option>
+                            <option value="malo">No (rojo)</option>
+                            <option value="neutro">Ninguna (neutro)</option>
+                          </select>
+                        </label>
+                      </div>
+                    );
+                  }}
                 />
               </Seccion>
 

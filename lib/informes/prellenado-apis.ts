@@ -2,6 +2,7 @@ import { conCacheDeSnapshot } from "@/lib/metricas/snapshot";
 import { obtenerResumenGSC } from "@/lib/google/gsc";
 import { obtenerTraficoIAGA4, obtenerTraficoPagadoGA4 } from "@/lib/google/ga4";
 import { obtenerResumenMeta, type ResumenInsightsMeta } from "@/lib/meta/client";
+import { criterioDeMetrica, criterioAFavorable } from "@/lib/informes/metricas-catalogo";
 import type { InformeMarketingContenido, InformeSeoContenido } from "@/lib/informes/tipos";
 
 export interface ConfigApisCliente {
@@ -25,20 +26,21 @@ export function limitesMesAnterior(mes: number, anio: number): { inicio: string;
 }
 
 /**
- * `invertido=true` para métricas donde bajar es la buena noticia (costo por
- * resultado, CPC, costo) — mismo criterio que `delta()` en
- * `lib/data/resultados.ts`, portado acá porque este archivo no comparte
- * helpers con ese módulo (convención ya establecida del proyecto).
+ * `favorable` se deriva del catálogo de métricas conocidas
+ * (`lib/informes/metricas-catalogo.ts`) buscando por `etiqueta` — no hay que
+ * pasar a mano si subir es bueno o malo en cada call site, así una métrica
+ * nunca queda mal clasificada por un booleano olvidado (bug real: "CPC"
+ * nunca estuvo invertido en la primera versión de este archivo).
  */
-function calcularDelta(actual: number, anterior: number, invertido = false): { texto: string; direccion: "up" | "down"; favorable: boolean } {
+function calcularDelta(etiqueta: string, actual: number, anterior: number): { texto: string; direccion: "up" | "down"; favorable: ReturnType<typeof criterioAFavorable> } {
+  const criterio = criterioDeMetrica(etiqueta);
   if (!anterior) {
     const direccion = actual >= anterior ? "up" : "down";
-    return { texto: actual ? "nuevo" : "0%", direccion, favorable: actual > 0 ? !invertido : true };
+    return { texto: actual ? "nuevo" : "0%", direccion, favorable: actual > 0 ? criterioAFavorable(criterio, direccion) : "neutro" };
   }
   const pct = ((actual - anterior) / Math.abs(anterior)) * 100;
   const direccion = pct >= 0 ? "up" : "down";
-  const favorable = direccion === "up" ? !invertido : invertido;
-  return { texto: `${Math.abs(Math.round(pct))}%`, direccion, favorable };
+  return { texto: `${Math.abs(Math.round(pct))}%`, direccion, favorable: criterioAFavorable(criterio, direccion) };
 }
 
 const fmtNumero = (n: number) => Math.round(n).toLocaleString("es-CL");
@@ -57,7 +59,8 @@ function deltaPosicion(actual: number, anterior: number): string {
 
 function deltaTextoPct(actual: number, anterior: number): string {
   if (!anterior) return "sin dato del mes anterior";
-  const { texto, direccion } = calcularDelta(actual, anterior);
+  // Etiqueta vacía: esta función solo arma texto (signo + magnitud), nunca lee `favorable`.
+  const { texto, direccion } = calcularDelta("", actual, anterior);
   return `${direccion === "up" ? "+" : "-"}${texto} vs. mes anterior`;
 }
 
@@ -135,17 +138,17 @@ interface ResultadoPrellenadoAds {
 function metricasDesdeMeta(actual: ResumenInsightsMeta, anterior: ResumenInsightsMeta): InformeMarketingContenido["comoVamosCifras"]["metricas"] {
   const costoActual = actual.resultados > 0 ? actual.gasto / actual.resultados : 0;
   const costoAnterior = anterior.resultados > 0 ? anterior.gasto / anterior.resultados : 0;
-  const d = (a: number, b: number, invertido = false) => {
-    const { texto, direccion, favorable } = calcularDelta(a, b, invertido);
+  const d = (etiqueta: string, a: number, b: number) => {
+    const { texto, direccion, favorable } = calcularDelta(etiqueta, a, b);
     return { deltaTexto: texto, deltaDireccion: direccion, favorable };
   };
   return [
-    { etiqueta: "Inversión", valor: fmtMoneda(actual.gasto, "USD"), ...d(actual.gasto, anterior.gasto) },
-    { etiqueta: "Resultados", valor: fmtNumero(actual.resultados), ...d(actual.resultados, anterior.resultados) },
-    { etiqueta: "Costo por resultado", valor: fmtMoneda(costoActual, "USD"), ...d(costoActual, costoAnterior, true) },
-    { etiqueta: "CTR", valor: `${actual.ctr.toFixed(2)}%`, ...d(actual.ctr, anterior.ctr) },
-    { etiqueta: "CPC", valor: fmtMoneda(actual.cpc, "USD"), ...d(actual.cpc, anterior.cpc, true) },
-    { etiqueta: "Alcance", valor: fmtNumero(actual.alcance), ...d(actual.alcance, anterior.alcance) },
+    { etiqueta: "Inversión", valor: fmtMoneda(actual.gasto, "USD"), ...d("Inversión", actual.gasto, anterior.gasto) },
+    { etiqueta: "Resultados", valor: fmtNumero(actual.resultados), ...d("Resultados", actual.resultados, anterior.resultados) },
+    { etiqueta: "Costo por resultado", valor: fmtMoneda(costoActual, "USD"), ...d("Costo por resultado", costoActual, costoAnterior) },
+    { etiqueta: "CTR", valor: `${actual.ctr.toFixed(2)}%`, ...d("CTR", actual.ctr, anterior.ctr) },
+    { etiqueta: "CPC", valor: fmtMoneda(actual.cpc, "USD"), ...d("CPC", actual.cpc, anterior.cpc) },
+    { etiqueta: "Alcance", valor: fmtNumero(actual.alcance), ...d("Alcance", actual.alcance, anterior.alcance) },
   ];
 }
 
@@ -186,15 +189,26 @@ export async function prellenarAdsDesdeApis(
         conCacheDeSnapshot({ clientId, serviceId, fuente: "ga4", periodoInicio: inicio, periodoFin: fin, fetchLive: () => obtenerTraficoPagadoGA4(config.googleAdsGa4PropertyId!, inicio, fin) }),
         conCacheDeSnapshot({ clientId, serviceId, fuente: "ga4", periodoInicio: inicioAnt, periodoFin: finAnt, fetchLive: () => obtenerTraficoPagadoGA4(config.googleAdsGa4PropertyId!, inicioAnt, finAnt) }),
       ]);
-      const d = (a: number, b: number, invertido = false) => {
-        const { texto, direccion, favorable } = calcularDelta(a, b, invertido);
+      const d = (etiqueta: string, a: number, b: number) => {
+        const { texto, direccion, favorable } = calcularDelta(etiqueta, a, b);
         return { deltaTexto: texto, deltaDireccion: direccion, favorable };
       };
+      // Derivadas de lo mismo ya traído (sesiones/conversiones/costo) — antes el
+      // equipo las agregaba a mano fila por fila, lo que dejaba "Costo por
+      // conversión"/"Tasa de conversión" sin `favorable` real (bug reportado:
+      // quedaban en rojo por defecto, mismo motivo que "Costo por resultado"
+      // de Meta más abajo).
+      const costoPorConvActual = actual.conversiones > 0 ? actual.costo / actual.conversiones : 0;
+      const costoPorConvAnterior = anterior.conversiones > 0 ? anterior.costo / anterior.conversiones : 0;
+      const tasaConvActual = actual.sesiones > 0 ? actual.conversiones / actual.sesiones : 0;
+      const tasaConvAnterior = anterior.sesiones > 0 ? anterior.conversiones / anterior.sesiones : 0;
       return {
         metricas: [
-          { etiqueta: "Sesiones pagas", valor: fmtNumero(actual.sesiones), ...d(actual.sesiones, anterior.sesiones) },
-          { etiqueta: "Conversiones", valor: fmtNumero(actual.conversiones), ...d(actual.conversiones, anterior.conversiones) },
-          { etiqueta: "Costo", valor: fmtMoneda(actual.costo, "CLP"), ...d(actual.costo, anterior.costo, true) },
+          { etiqueta: "Sesiones pagas", valor: fmtNumero(actual.sesiones), ...d("Sesiones pagas", actual.sesiones, anterior.sesiones) },
+          { etiqueta: "Conversiones", valor: fmtNumero(actual.conversiones), ...d("Conversiones", actual.conversiones, anterior.conversiones) },
+          { etiqueta: "Costo", valor: fmtMoneda(actual.costo, "CLP"), ...d("Costo", actual.costo, anterior.costo) },
+          { etiqueta: "Costo por conversión", valor: fmtMoneda(costoPorConvActual, "CLP"), ...d("Costo por conversión", costoPorConvActual, costoPorConvAnterior) },
+          { etiqueta: "Tasa de conversión", valor: fmtPct(tasaConvActual), ...d("Tasa de conversión", tasaConvActual, tasaConvAnterior) },
         ],
         gastoReal: { valor: actual.costo, moneda: "CLP" },
       };

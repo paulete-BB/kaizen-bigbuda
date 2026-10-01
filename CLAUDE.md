@@ -2185,6 +2185,72 @@ subir o bajar era la buena noticia.
   noticia); CPC subiendo 15% → rojo (antes habría salido verde, bug real
   corregido de paso). Typecheck, lint y los 21 tests de vitest en verde.
 
+**Bug real reportado por el usuario — tras el fix anterior, "ahora me
+dejó todos los indicadores en rojo"** + pedido explícito de arreglarlo de
+raíz: "debería haber un campo desplegable de métricas posibles para
+agregar, y cada métrica debería tener linkeado si sube es bueno o malo".
+Dos causas, ambas corregidas:
+
+- **Causa inmediata**: el informe real que el usuario estaba viendo tenía
+  filas de métrica (`Sesiones pagas`, `Conversiones`, `Costo`, `Costo por
+  conversión`, `Tasa de conversión`) guardadas **antes** de que
+  `favorable` existiera como campo — con el fix de la ronda anterior, un
+  valor ausente/`false` cae directo a rojo, así que un informe entero
+  quedó en rojo sin que nadie tocara nada.
+- **Causa de fondo, la que pedía el usuario**: `favorable` era un
+  booleano puesto a mano (manual o vía `invertido` hardcodeado por
+  métrica en el código) — ningún lado centralizaba "¿subir esta métrica
+  puntual es bueno, malo, o ninguna de las dos?". El usuario además
+  identificó un tercer caso que el booleano no podía representar: el
+  **costo total** (gasto/inversión) no es ni bueno ni malo al subir por
+  sí solo — necesita un color neutro, no verde ni rojo.
+- **`lib/informes/metricas-catalogo.ts` (nuevo)**: catálogo único
+  `CRITERIO_METRICA` (`"sube_bueno" | "sube_malo" | "neutro"`) por
+  etiqueta de métrica conocida — confirmado con el usuario: Sesiones
+  pagas/Conversiones/Resultados/CTR/Alcance/Tasa de conversión =
+  sube_bueno; Costo por resultado/CPC/Costo por conversión = sube_malo;
+  **Inversión y Costo (gasto total) = neutro**. `favorable` pasa de
+  `boolean` a `"bueno" | "malo" | "neutro"` (`lib/informes/tipos.ts`).
+  `criterioAFavorable(criterio, direccion)` es la única función que
+  decide el color — ni el pre-llenado ni el editor vuelven a decidirlo
+  cada uno por su cuenta.
+- **`lib/informes/prellenado-apis.ts`**: `calcularDelta` ya no recibe un
+  `invertido` manual por call site — busca el criterio en el catálogo
+  por `etiqueta`, así que es imposible repetir el bug de "CPC sin
+  invertir" de la ronda anterior para una métrica ya catalogada. De paso,
+  el pre-llenado de Google Ads (antes solo Sesiones pagas/Conversiones/
+  Costo) agrega **Costo por conversión** y **Tasa de conversión**
+  calculadas de los mismos datos de GA4 ya traídos — exactamente las dos
+  que el usuario tenía que agregar a mano cada vez (y que por eso
+  quedaban sin clasificar).
+- **`InformeEditorMarketing.tsx`**: el campo "Etiqueta" de cada métrica
+  pasa a ser un `<select>` con las métricas del catálogo + "Otra
+  (personalizada)" — pedido explícito del usuario. Elegir una métrica
+  conocida (o cambiar su "Dirección") recalcula `favorable` solo, sin
+  pasar por el selector manual; una métrica personalizada sigue
+  permitiendo elegir el color a mano (ahora de tres, no dos: "Sí (verde)"
+  / "No (rojo)" / "Ninguna (neutro)").
+- **Auto-corrección al abrir un informe ya guardado**: sin esto, el
+  informe real del usuario habría seguido en rojo hasta que alguien
+  tocara cada fila a mano. Al cargar el editor, las filas cuya etiqueta
+  coincide con el catálogo se recalculan contra el criterio real (no
+  contra lo que quedó guardado) y, si algo cambió, el autosave ya
+  existente (debounce de 1s) persiste la corrección sola — sin ningún
+  botón ni acción nueva.
+- `slideComoVamosCifras` (`lib/informes/slides-marketing.ts`) pinta
+  `var(--text-dim)` (el mismo gris apagado de texto secundario de la
+  plantilla) para `"neutro"` y para cualquier valor viejo que no sea
+  exactamente `"bueno"`/`"malo"` — nunca rojo por defecto, que era
+  justamente el bug reportado.
+- Verificado por cálculo directo (mismo criterio que la ronda anterior —
+  cambio de clasificación/color, sin lógica de datos nueva salvo las dos
+  métricas derivadas de Google Ads, ya cubiertas por el mismo patrón ya
+  probado de `costoActual`/`costoAnterior` de Meta): Sesiones pagas
+  subiendo → verde; Conversiones subiendo → verde; Costo total subiendo →
+  gris (neutro, ya no rojo); Costo por conversión bajando → verde; Tasa
+  de conversión subiendo → verde — los cinco casos exactos que reportó el
+  usuario. Typecheck, lint y los 21 tests de vitest en verde.
+
 ---
 
 ## 1. Contexto

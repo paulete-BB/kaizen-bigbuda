@@ -78,7 +78,11 @@ function slideComoVamosCifras(ctx: ContextoInformeMarketing) {
   const metricas = ctx.contenido.comoVamosCifras.metricas
     .map((m) => {
       const flecha = m.deltaDireccion === "up" ? "↑" : "↓";
-      const colorDelta = m.favorable ? "var(--good)" : "var(--bad)";
+      // "neutro" (o cualquier valor viejo/ausente de antes de que este campo existiera)
+      // se pinta igual que el texto secundario de la plantilla — ni verde ni rojo, a
+      // propósito: forzar un color de "bueno/malo" a algo que no es ni uno ni otro
+      // (ej. inversión o costo total subiendo) es el bug real que esto corrige.
+      const colorDelta = m.favorable === "bueno" ? "var(--good)" : m.favorable === "malo" ? "var(--bad)" : "var(--text-dim)";
       return `<div>
         <div style="font:400 22px/1 ${F};color:var(--text-dim);">${esc(m.etiqueta)}</div>
         <div style="font:500 82px/0.95 ${F};letter-spacing:-0.02em;color:var(--accent);margin-top:12px;">${esc(m.valor)}</div>

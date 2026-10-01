@@ -13,6 +13,7 @@
  */
 
 import { mesLargo } from "@/lib/dates";
+import type { Favorable } from "@/lib/informes/metricas-catalogo";
 
 export interface MetricaSimple {
   valor: string;
@@ -88,9 +89,12 @@ export interface InformeMarketingContenido {
      * del cambio) del color que se le pinta: para métricas donde bajar es
      * bueno (costo por resultado, CPC) una flecha hacia abajo es la buena
      * noticia — mismo criterio ya establecido en `lib/data/resultados.ts`
-     * (`Delta.favorable`), portado acá para el informe.
+     * (`Delta.favorable`), portado acá para el informe. Tres estados, no dos:
+     * algunas métricas (inversión, costo total) no son ni buena ni mala
+     * noticia por sí solas — forzarlas a verde/rojo era el bug real
+     * reportado ("el costo aumentó pero eso no es ni bueno ni malo").
      */
-    metricas: { etiqueta: string; valor: string; deltaTexto: string; deltaDireccion: "up" | "down"; favorable: boolean }[];
+    metricas: { etiqueta: string; valor: string; deltaTexto: string; deltaDireccion: "up" | "down"; favorable: Favorable }[];
   };
   inversionDelMes: {
     presupuesto: string;
