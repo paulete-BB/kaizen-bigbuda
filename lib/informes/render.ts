@@ -37,6 +37,7 @@ export const ESTILOS_INFORME = `
   --ink:#faf8f4; --text:#efece5; --text-soft:#c9c4bb; --text-muted:#a8a39a; --text-dim:#8a857c; --text-faint:#6f6a62;
   --var-tag:#5f5b53; --snapshot:#413e39;
   --accent:#e8b06e; --accent-2:#c9a06a; --accent-hover:#f0c48c; --bar-a:#c88a44;
+  --good:#4ade80; --bad:#f87171;
   --panel:rgba(255,255,255,0.015); --line-soft:rgba(255,255,255,0.06); --line:rgba(255,255,255,0.1); --line-strong:rgba(255,255,255,0.13); --chip-line:rgba(255,255,255,0.18); --track:rgba(255,255,255,0.07); --circle-soft:rgba(255,255,255,0.03);
 }
 .informe-canvas *{box-sizing:border-box;}

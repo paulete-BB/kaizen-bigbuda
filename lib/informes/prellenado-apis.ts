@@ -24,10 +24,21 @@ export function limitesMesAnterior(mes: number, anio: number): { inicio: string;
   return limitesMes(mesAnterior, anioAnterior);
 }
 
-function calcularDelta(actual: number, anterior: number): { texto: string; direccion: "up" | "down" } {
-  if (!anterior) return { texto: actual ? "nuevo" : "0%", direccion: actual >= anterior ? "up" : "down" };
+/**
+ * `invertido=true` para métricas donde bajar es la buena noticia (costo por
+ * resultado, CPC, costo) — mismo criterio que `delta()` en
+ * `lib/data/resultados.ts`, portado acá porque este archivo no comparte
+ * helpers con ese módulo (convención ya establecida del proyecto).
+ */
+function calcularDelta(actual: number, anterior: number, invertido = false): { texto: string; direccion: "up" | "down"; favorable: boolean } {
+  if (!anterior) {
+    const direccion = actual >= anterior ? "up" : "down";
+    return { texto: actual ? "nuevo" : "0%", direccion, favorable: actual > 0 ? !invertido : true };
+  }
   const pct = ((actual - anterior) / Math.abs(anterior)) * 100;
-  return { texto: `${Math.abs(Math.round(pct))}%`, direccion: pct >= 0 ? "up" : "down" };
+  const direccion = pct >= 0 ? "up" : "down";
+  const favorable = direccion === "up" ? !invertido : invertido;
+  return { texto: `${Math.abs(Math.round(pct))}%`, direccion, favorable };
 }
 
 const fmtNumero = (n: number) => Math.round(n).toLocaleString("es-CL");
@@ -124,16 +135,16 @@ interface ResultadoPrellenadoAds {
 function metricasDesdeMeta(actual: ResumenInsightsMeta, anterior: ResumenInsightsMeta): InformeMarketingContenido["comoVamosCifras"]["metricas"] {
   const costoActual = actual.resultados > 0 ? actual.gasto / actual.resultados : 0;
   const costoAnterior = anterior.resultados > 0 ? anterior.gasto / anterior.resultados : 0;
-  const d = (a: number, b: number) => {
-    const { texto, direccion } = calcularDelta(a, b);
-    return { deltaTexto: texto, deltaDireccion: direccion };
+  const d = (a: number, b: number, invertido = false) => {
+    const { texto, direccion, favorable } = calcularDelta(a, b, invertido);
+    return { deltaTexto: texto, deltaDireccion: direccion, favorable };
   };
   return [
     { etiqueta: "Inversión", valor: fmtMoneda(actual.gasto, "USD"), ...d(actual.gasto, anterior.gasto) },
     { etiqueta: "Resultados", valor: fmtNumero(actual.resultados), ...d(actual.resultados, anterior.resultados) },
-    { etiqueta: "Costo por resultado", valor: fmtMoneda(costoActual, "USD"), ...d(costoActual, costoAnterior) },
+    { etiqueta: "Costo por resultado", valor: fmtMoneda(costoActual, "USD"), ...d(costoActual, costoAnterior, true) },
     { etiqueta: "CTR", valor: `${actual.ctr.toFixed(2)}%`, ...d(actual.ctr, anterior.ctr) },
-    { etiqueta: "CPC", valor: fmtMoneda(actual.cpc, "USD"), ...d(actual.cpc, anterior.cpc) },
+    { etiqueta: "CPC", valor: fmtMoneda(actual.cpc, "USD"), ...d(actual.cpc, anterior.cpc, true) },
     { etiqueta: "Alcance", valor: fmtNumero(actual.alcance), ...d(actual.alcance, anterior.alcance) },
   ];
 }
@@ -175,15 +186,15 @@ export async function prellenarAdsDesdeApis(
         conCacheDeSnapshot({ clientId, serviceId, fuente: "ga4", periodoInicio: inicio, periodoFin: fin, fetchLive: () => obtenerTraficoPagadoGA4(config.googleAdsGa4PropertyId!, inicio, fin) }),
         conCacheDeSnapshot({ clientId, serviceId, fuente: "ga4", periodoInicio: inicioAnt, periodoFin: finAnt, fetchLive: () => obtenerTraficoPagadoGA4(config.googleAdsGa4PropertyId!, inicioAnt, finAnt) }),
       ]);
-      const d = (a: number, b: number) => {
-        const { texto, direccion } = calcularDelta(a, b);
-        return { deltaTexto: texto, deltaDireccion: direccion };
+      const d = (a: number, b: number, invertido = false) => {
+        const { texto, direccion, favorable } = calcularDelta(a, b, invertido);
+        return { deltaTexto: texto, deltaDireccion: direccion, favorable };
       };
       return {
         metricas: [
           { etiqueta: "Sesiones pagas", valor: fmtNumero(actual.sesiones), ...d(actual.sesiones, anterior.sesiones) },
           { etiqueta: "Conversiones", valor: fmtNumero(actual.conversiones), ...d(actual.conversiones, anterior.conversiones) },
-          { etiqueta: "Costo", valor: fmtMoneda(actual.costo, "CLP"), ...d(actual.costo, anterior.costo) },
+          { etiqueta: "Costo", valor: fmtMoneda(actual.costo, "CLP"), ...d(actual.costo, anterior.costo, true) },
         ],
         gastoReal: { valor: actual.costo, moneda: "CLP" },
       };

@@ -128,7 +128,7 @@ export function InformeEditorMarketing({ informe, usuario }: { informe: InformeC
               <Seccion titulo="01 · ¿Cómo vamos? (cifras del mes)">
                 <ListaEditable
                   items={contenido.comoVamosCifras.metricas}
-                  vacio={{ etiqueta: "", valor: "", deltaTexto: "", deltaDireccion: "up" as const }}
+                  vacio={{ etiqueta: "", valor: "", deltaTexto: "", deltaDireccion: "up" as const, favorable: true }}
                   addLabel="Agregar métrica"
                   onChange={(metricas) => actualizar((c) => ({ ...c, comoVamosCifras: { metricas } }))}
                   render={(item, onUpdate) => (
@@ -145,6 +145,17 @@ export function InformeEditorMarketing({ informe, usuario }: { informe: InformeC
                         >
                           <option value="up">↑ Sube</option>
                           <option value="down">↓ Baja</option>
+                        </select>
+                      </label>
+                      <label className="flex flex-col gap-1.5">
+                        <span className="text-[11.5px] font-semibold text-muted-2">¿Es buena noticia?</span>
+                        <select
+                          value={item.favorable ? "si" : "no"}
+                          onChange={(e) => onUpdate({ favorable: e.target.value === "si" })}
+                          className="rounded-lg border border-border bg-surface px-3 py-2.5 text-[13px] text-ink"
+                        >
+                          <option value="si">Sí (verde)</option>
+                          <option value="no">No (rojo)</option>
                         </select>
                       </label>
                     </div>

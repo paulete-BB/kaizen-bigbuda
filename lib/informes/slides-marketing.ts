@@ -78,10 +78,11 @@ function slideComoVamosCifras(ctx: ContextoInformeMarketing) {
   const metricas = ctx.contenido.comoVamosCifras.metricas
     .map((m) => {
       const flecha = m.deltaDireccion === "up" ? "↑" : "↓";
+      const colorDelta = m.favorable ? "var(--good)" : "var(--bad)";
       return `<div>
         <div style="font:400 22px/1 ${F};color:var(--text-dim);">${esc(m.etiqueta)}</div>
         <div style="font:500 82px/0.95 ${F};letter-spacing:-0.02em;color:var(--accent);margin-top:12px;">${esc(m.valor)}</div>
-        <div style="display:flex;align-items:center;gap:8px;margin-top:14px;font:500 20px/1 ${F};color:var(--accent-2);"><span>${flecha} ${esc(m.deltaTexto)}</span><span style="color:var(--text-faint);font-weight:400;">vs. mes anterior</span></div>
+        <div style="display:flex;align-items:center;gap:8px;margin-top:14px;font:500 20px/1 ${F};color:${colorDelta};"><span>${flecha} ${esc(m.deltaTexto)}</span><span style="color:var(--text-faint);font-weight:400;">vs. mes anterior</span></div>
       </div>`;
     })
     .join("");

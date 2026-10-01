@@ -2127,6 +2127,64 @@ al exportar. Typecheck, lint y los 21 tests de vitest en verde — cambio
 de una línea de CSS, sin ritual de Postgres local + Playwright (no toca
 lógica de datos ni de servidor).
 
+**Delta rojo/verde en "¿Cómo vamos?" del informe de Ads** — pedido
+explícito del usuario tras ver el PDF con el fix de colores de impresión
+ya funcionando: "me gustaria que las flechas y la comparación tuvieran
+colores rojos y verdes segun el caso para que se entienda si el numero
+es bueno o es malo". Hasta esta ronda, la fila de delta de cada métrica
+en `slideComoVamosCifras` (`lib/informes/slides-marketing.ts`) se pintaba
+siempre con el mismo tono neutro (`var(--accent-2)`), sin distinguir si
+subir o bajar era la buena noticia.
+
+- **Mismo patrón `favorable` ya resuelto una vez, portado, no
+  reinventado**: `lib/data/resultados.ts` (pestaña Resultados, §3.15) ya
+  separaba `tendencia` (flecha, signo literal del cambio) de `favorable`
+  (color, si esa dirección es buena noticia para esa métrica puntual,
+  vía un parámetro `invertido` para costo/CPC/posición media). Ese mismo
+  criterio se portó a `lib/informes/prellenado-apis.ts`: `calcularDelta`
+  ahora acepta `invertido` y devuelve `favorable` además de
+  `texto`/`direccion`, siguiendo convención del proyecto de no compartir
+  helpers entre `lib/data/resultados.ts` y `lib/informes/*` (ya
+  documentado varias veces). `invertido=true` en "Costo por resultado"
+  (Meta), "CPC" (Meta — no estaba invertido en el código viejo, bug real
+  de alcance no corregido hasta ahora: CPC más caro nunca fue una buena
+  noticia) y "Costo" (Google Ads vía GA4); el resto ("Inversión",
+  "Resultados", "CTR", "Alcance", "Sesiones pagas", "Conversiones") usa
+  el default `invertido=false`, mismo criterio exacto que ya usa
+  `resultados.ts` para las mismas etiquetas.
+- `InformeMarketingContenido.comoVamosCifras.metricas` (`lib/informes/tipos.ts`)
+  gana el campo `favorable: boolean`. `slideComoVamosCifras` pinta la fila
+  de delta con un verde o rojo (`--good`/`--bad`, nuevos tokens agregados
+  al bloque de variables de `.informe-canvas` en `ESTILOS_INFORME` —
+  tonos claros, pensados para el fondo oscuro de la plantilla, distintos
+  de los `--color-success`/`--color-danger` del tema claro de la app
+  principal, que no se ven bien sobre `#0d0d0d`) según `m.favorable`.
+- **Las filas de métrica son editables/agregables a mano** (§3.4, editor
+  por secciones) vía el `ListaEditable` genérico ya existente — un
+  usuario puede agregar una fila nueva con cualquier etiqueta, o editar
+  una ya pre-llenada. Agregado un segundo `<select>` "¿Es buena
+  noticia?" junto al de "Dirección" ya existente en
+  `InformeEditorMarketing.tsx`, para que el equipo pueda corregir el
+  color de cualquier fila manual o mal clasificada sin depender de que
+  el pre-llenado automático haya adivinado bien — mismo criterio que ya
+  permite editar `deltaDireccion` a mano.
+- **Alcance deliberado**: un informe ya generado antes de esta ronda
+  tiene filas sin el campo `favorable` en su `contenido_json` (no hay
+  validación de schema en la lectura, es un cast directo) — esas filas
+  degradan a rojo por defecto (`favorable` ausente es falsy), nunca
+  rompen el render; el equipo puede corregirlas a mano con el nuevo
+  selector si le importa. No se migró el campo hacia atrás a propósito,
+  mismo criterio ya usado para el campo `bajada` agregado a la
+  narrativa en una ronda anterior.
+- Verificado por cálculo directo (mismo criterio ya usado para el bug de
+  "Costo por resultado en 0" — no ameritaba repetir el ritual de
+  Postgres local + Playwright, cambio puro de color/clasificación sin
+  lógica de datos de por medio): Inversión 400 vs. 300 → "+33%" verde
+  (subir gasto no se penaliza, igual que en Resultados); Costo por
+  resultado 0,14 vs. 0,20 USD → "-30%" verde (bajar el costo es la buena
+  noticia); CPC subiendo 15% → rojo (antes habría salido verde, bug real
+  corregido de paso). Typecheck, lint y los 21 tests de vitest en verde.
+
 ---
 
 ## 1. Contexto

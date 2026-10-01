@@ -83,7 +83,14 @@ export interface InformeMarketingContenido {
     chips: string[];
   };
   comoVamosCifras: {
-    metricas: { etiqueta: string; valor: string; deltaTexto: string; deltaDireccion: "up" | "down" }[];
+    /**
+     * `favorable` separa el número/flecha (`deltaDireccion`, el signo literal
+     * del cambio) del color que se le pinta: para métricas donde bajar es
+     * bueno (costo por resultado, CPC) una flecha hacia abajo es la buena
+     * noticia — mismo criterio ya establecido en `lib/data/resultados.ts`
+     * (`Delta.favorable`), portado acá para el informe.
+     */
+    metricas: { etiqueta: string; valor: string; deltaTexto: string; deltaDireccion: "up" | "down"; favorable: boolean }[];
   };
   inversionDelMes: {
     presupuesto: string;
