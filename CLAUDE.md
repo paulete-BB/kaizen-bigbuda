@@ -2251,6 +2251,36 @@ Dos causas, ambas corregidas:
   de conversión subiendo → verde — los cinco casos exactos que reportó el
   usuario. Typecheck, lint y los 21 tests de vitest en verde.
 
+**Bug real reportado por el usuario — "me sigue saliendo una página en
+blanco al final del informe":** causa clásica de CSS de impresión, no
+relacionada con las rondas anteriores (colores/márgenes/Vercel Toolbar) —
+`.informe-slide{page-break-after:always;...}` (`ESTILOS_INFORME`,
+`lib/informes/render.ts`) aplicaba el salto de página **a todos los
+slides por igual, incluido el último**. Un salto de página después del
+último slide no tiene ningún slide siguiente que lo reciba, así que el
+navegador igual abre una página nueva — en blanco — para cerrar ese
+salto. `InformeDeck.tsx` concatena los slides (`slidesHtml.join("")`,
+sin separador) como hijos directos de un único div, así que
+`:not(:last-child)` los distingue de forma confiable sin tocar el HTML
+de los slides ni el orden de render. Corregido:
+`.informe-slide:not(:last-child){page-break-after:always;...}` — el
+salto solo va *entre* slides, nunca después del último.
+
+- **Bug real propio, encontrado al verificar el fix (no al escribirlo)**:
+  el primer intento rompió el build — usé comillas invertidas (`` ` ``)
+  dentro de un comentario de CSS que vive dentro de un template literal
+  de JS ya delimitado con comillas invertidas (`` ESTILOS_INFORME = `...` ``),
+  cerrando ese template literal antes de tiempo. `npx tsc --noEmit`
+  lo atrapó de inmediato (error de parseo en la línea exacta) — corregido
+  usando comillas dobles normales en el comentario en vez de backticks.
+- Verificado por inspección directa de `InformeDeck.tsx` (confirma que
+  los slides son hermanos directos sin wrapper intermedio, condición
+  necesaria para que `:last-child` apunte al slide correcto) y por
+  cálculo/lectura de la regla CSS resultante — mismo criterio que otros
+  fixes puramente de CSS de esta sesión (print-color-adjust), sin ritual
+  de Postgres local + Playwright porque no toca lógica de datos ni de
+  servidor. Typecheck, lint y los 21 tests de vitest en verde.
+
 ---
 
 ## 1. Contexto

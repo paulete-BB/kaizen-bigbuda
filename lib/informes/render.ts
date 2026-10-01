@@ -52,7 +52,12 @@ export const ESTILOS_INFORME = `
      papel. Forzar el color evita depender de que alguien marque esa casilla. */
   html,body,.informe-canvas,.informe-slide{-webkit-print-color-adjust:exact;print-color-adjust:exact;color-adjust:exact;}
   body{margin:0;}
-  .informe-slide{page-break-after:always;break-after:page;}
+  /* ":not(:last-child)" — sin esto, el ÚLTIMO slide también fuerza un salto
+     de página después de sí mismo, y como no hay ningún slide más detrás,
+     ese salto se renderiza como una página en blanco extra al final del PDF
+     (bug real reportado por el usuario). El salto solo tiene que ir ENTRE
+     slides, nunca después del último. */
+  .informe-slide:not(:last-child){page-break-after:always;break-after:page;}
   .informe-noprint{display:none !important;}
 }
 `;
