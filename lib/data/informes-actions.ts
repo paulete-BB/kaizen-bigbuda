@@ -313,7 +313,15 @@ export async function crearInforme(formData: FormData): Promise<void> {
   const duplicarDeId = String(formData.get("duplicarDeId") ?? "") || null;
   if (!clientId || !tipo || !periodoMes || !periodoAnio) return;
 
-  const { id } = await crearInformeInterno(clientId, tipo, periodoMes, periodoAnio, duplicarDeId);
+  let id: string;
+  try {
+    ({ id } = await crearInformeInterno(clientId, tipo, periodoMes, periodoAnio, duplicarDeId));
+  } catch {
+    // Nunca dejar que un error de creación (ej. esquema de base desactualizado,
+    // API externa caída) tire la pantalla completa de error de Next.js — se
+    // vuelve a la lista del cliente con un aviso en vez de un crash en blanco.
+    redirect(`/clientes/${clientId}/informes?errorCreando=1`);
+  }
   redirect(`/informes/${id}`);
 }
 

@@ -2456,6 +2456,52 @@ tal cual; historial de informes ya enviados no se toca ni se migra.
   Es distinto de la fila "Costo" que se sacó del grid de "¿Cómo vamos?"
   en la ronda anterior (esa decisión no cambió).
 
+**Bug real en producción — "ahora no puedo abrir los informes" (pantalla
+genérica de error de Next.js), reportado por el usuario justo después del
+deploy del informe combinado:** causa raíz confirmada, no teórica —
+`crearInformeAdsCombinadoInterno` compara `reports.tipo = 'ads_combinado'`,
+pero la migración `0017` que agrega ese valor al enum **nunca se aplicó
+contra producción** (había quedado documentado como pendiente en la
+ronda anterior, sin token de Management API disponible en ese momento).
+El código ya desplegado asumía un esquema que la base real todavía no
+tenía: Postgres rechaza la consulta (`invalid input value for enum
+service_tipo: "ads_combinado"`), y como `crearInforme` (la acción detrás
+del formulario "Crear borrador") no tenía manejo de ese error, la
+excepción sin capturar tiraba la pantalla completa de error de Next.js
+en vez de un mensaje — afecta específicamente a **Tecny Stand**, el
+único cliente real en producción con Meta Ads y Google Ads activos a la
+vez (el único elegible para el informe combinado).
+
+- **Reproducido localmente con el esquema exacto de producción** (no
+  solo inferido): se revirtió a mano la migración 0017 en la base local
+  (`alter table reports alter column tipo type service_tipo...`, fila de
+  `_migrations` borrada) y se repitió el flujo real con Tecny Stand vía
+  Playwright — confirmado el mismo error exacto, mismo cliente, misma
+  pantalla de crash.
+- **`crearInforme`** (`lib/data/informes-actions.ts`) ahora envuelve la
+  llamada a `crearInformeInterno` en `try/catch`: si falla (este
+  desajuste de esquema, o cualquier otra causa — API externa caída,
+  etc.), redirige de vuelta a `/clientes/{id}/informes?errorCreando=1` en
+  vez de dejar que la excepción tire la página completa.
+  `app/clientes/[id]/informes/page.tsx` lee ese query param y
+  `InformesClienteView.tsx` muestra un aviso visible en rojo — mismo
+  criterio de "nunca fallar en silencio" ya establecido en el resto de la
+  plataforma, aplicado acá a un error de servidor en vez de solo a
+  permisos.
+- **Verificado el fix contra el mismo esquema sin migrar**: mismo
+  procedimiento de reversión local + Playwright — el mismo flujo que
+  antes crasheaba ahora redirige con el aviso visible, cero errores de
+  consola, cero filas huérfanas en `reports` (la falla ocurre antes del
+  `insert`, así que no hay nada que limpiar). Migración 0017 restaurada
+  en la base local al terminar (confirmado `udt_name = report_tipo` de
+  nuevo). Typecheck, lint y los 21 tests de vitest en verde.
+- **La causa de fondo sigue pendiente**: este fix evita el crash, pero
+  mientras la migración 0017 no se aplique contra producción, Tecny Stand
+  simplemente no puede crear su informe combinado (la acción falla
+  limpio, con aviso, en vez de crashear) — sigue haciendo falta un token
+  de Management API de Supabase nuevo para aplicarla, igual que quedó
+  documentado en la ronda anterior.
+
 ---
 
 ## 1. Contexto

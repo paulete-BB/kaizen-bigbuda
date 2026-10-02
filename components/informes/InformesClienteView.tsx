@@ -35,10 +35,12 @@ const MESES = [
 export function InformesClienteView({
   cliente,
   informes,
+  errorCreando,
   usuario,
 }: {
   cliente: ClienteDetalleCompleto;
   informes: InformeResumen[];
+  errorCreando?: boolean;
   usuario: SidebarUsuario;
 }) {
   // Un cliente con Meta Ads y Google Ads activos (no pausados) a la vez
@@ -77,6 +79,12 @@ export function InformesClienteView({
         </header>
 
         <div className="flex w-full max-w-[900px] flex-col gap-6 px-[26px] pb-10 pt-[22px]">
+          {errorCreando && (
+            <div className="rounded-[14px] border border-danger/30 bg-danger-bg px-4 py-3 text-[13px] text-danger">
+              No se pudo crear el informe. Puede ser un problema temporal (una API externa caída) o un desajuste de
+              configuración — intenta de nuevo, y si sigue fallando avisa al equipo técnico.
+            </div>
+          )}
           <div className="rounded-[14px] border border-border bg-surface p-5">
             <div className="mb-4 text-[14.5px] font-bold">Nuevo informe</div>
             {tiposDisponibles.length === 0 ? (
