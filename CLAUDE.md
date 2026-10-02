@@ -2495,12 +2495,22 @@ vez (el único elegible para el informe combinado).
   `insert`, así que no hay nada que limpiar). Migración 0017 restaurada
   en la base local al terminar (confirmado `udt_name = report_tipo` de
   nuevo). Typecheck, lint y los 21 tests de vitest en verde.
-- **La causa de fondo sigue pendiente**: este fix evita el crash, pero
-  mientras la migración 0017 no se aplique contra producción, Tecny Stand
-  simplemente no puede crear su informe combinado (la acción falla
-  limpio, con aviso, en vez de crashear) — sigue haciendo falta un token
-  de Management API de Supabase nuevo para aplicarla, igual que quedó
-  documentado en la ronda anterior.
+- **Migración 0017 aplicada contra producción** (el usuario compartió un
+  token nuevo de Management API apenas se le explicó la causa raíz):
+  confirmado antes de tocar nada que `_migrations` real tenía hasta
+  `0016` y `reports.tipo` seguía siendo `udt_name = service_tipo` —
+  coincide exactamente con el diagnóstico. Aplicada vía
+  `POST /database/query` de la Management API (mismo mecanismo de
+  siempre) y registrada en `_migrations` (17 filas). Verificado después:
+  `reports.tipo` pasó a `udt_name = report_tipo` con los 4 valores del
+  enum (`seo_aeo_geo`/`meta_ads`/`google_ads`/`ads_combinado`); los 17
+  reports ya existentes quedaron intactos (2 SEO, 4 Meta, 11 Google Ads —
+  mismo conteo de antes); la consulta exacta que antes tiraba
+  `invalid input value for enum service_tipo: "ads_combinado"` para
+  Tecny Stand ahora corre limpio. **Causa de fondo resuelta** — Tecny
+  Stand ya puede crear su informe combinado en producción. El aviso en
+  rojo agregado en el fix anterior queda como red de seguridad permanente
+  para cualquier otro desajuste de esquema futuro, no se revierte.
 
 ---
 
