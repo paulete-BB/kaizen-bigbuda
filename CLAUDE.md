@@ -2325,6 +2325,137 @@ muestra:
   de datos nueva, así que no ameritó repetir el ritual de Postgres local +
   Playwright. Typecheck, lint y los 21 tests de vitest en verde.
 
+**Informe combinado Meta Ads + Google Ads (§3.4), para clientes con ambas
+campañas activas** — pedido explícito del usuario: "para estos clientes
+que tienen 2 servicios de campañas debería haber un solo informe con las
+2 campañas para poder comparar los resultados e ir viendo cuál rinde
+mejor en resultados de negocio". Confirmado con `AskUserQuestion`:
+reemplaza (un cliente con ambos servicios activos deja de generar 2
+informes de Ads separados, genera 1 combinado), mismo formato reducido
+con cifras de ambos canales lado a lado + un slide nuevo de comparación;
+un cliente con un solo servicio de Ads sigue con su informe individual
+tal cual; historial de informes ya enviados no se toca ni se migra.
+
+- **Nuevo enum `report_tipo`** (migración `0017_informe_ads_combinado.sql`,
+  `seo_aeo_geo | meta_ads | google_ads | ads_combinado`), deliberadamente
+  separado de `service_tipo` (compartido por `services.tipo`/
+  `optimizations.tipo`/`checklist_templates.servicio_tipo`) — "combinado"
+  es un concepto que solo existe para un informe, nunca para un servicio
+  contratado real; forzarlo dentro de `service_tipo` habría obligado a
+  que cada `Record<ServicioTipo, X>` del resto de la app (badges,
+  scheduling, offboarding, sync de ClickUp) supiera manejar un valor que
+  jamás puede ocurrir ahí. Mismo criterio en TypeScript: `ReportTipo`
+  (`lib/data/informes.ts`) es `ServicioTipo | "ads_combinado"`, un tipo
+  aparte que no reemplaza a `ServicioTipo` en ningún otro lado del código.
+  Migración idempotente (introspección de `pg_attribute`/`pg_type`, mismo
+  patrón ya usado en migraciones anteriores con `alter column type`).
+- **`lib/informes/tipos.ts`**: `InformeAdsCombinadoContenido` (portada,
+  cifras de "¿Cómo vamos?" de cada canal por separado, comparación de
+  canales, inversión del mes de cada canal, qué mejoramos conjunto, qué
+  proyectamos conjunto) + `contenidoAdsCombinadoVacio()`.
+- **Comparación de canales sin fabricar una equivalencia falsa**
+  (`compararCanalesAds`, `lib/informes/prellenado-apis.ts`): Meta Ads
+  gasta en USD y Google Ads en CLP en toda esta plataforma — declarar un
+  "canal más barato" cruzando monedas sin un tipo de cambio real habría
+  inventado un dato. Se compara solo "Resultados de negocio" (conteo de
+  conversiones, sin unidad de moneda de por medio) y se muestra la
+  inversión de cada canal en su propia moneda, con un aviso explícito
+  agregado al insight cuando las monedas difieren — mismo espíritu que la
+  limitación estructural ya documentada de Google Ads vía GA4.
+- **`lib/informes/slides-ads-combinado.ts`** (nuevo, 7 slides: portada,
+  ¿cómo vamos? a dos columnas, ¿cuál rinde mejor? nuevo, inversión del mes
+  de ambos canales, qué mejoramos, qué proyectamos, cierre) — mismos
+  tokens visuales que `slides-marketing.ts`, sin plantilla nueva de cero.
+  `lib/informes/render-informe.ts` pasa de un dispatch de 2 vías (SEO vs.
+  Ads) a 3 (SEO / `ads_combinado` / Ads individual).
+- **Narrativa de IA reutilizada, no un schema nuevo**: `crearInformeInterno`
+  arma un objeto sintético `Partial<InformeMarketingContenido>` (ambos
+  canales concatenados en un solo array de métricas, solo para construir
+  el prompt) y llama a `generarNarrativaMarketing` tal cual — evitó un
+  segundo schema de Zod + prompt de sistema paralelo solo para este caso.
+- **`components/informes/InformeEditorAdsCombinado.tsx`** (nuevo, espejo
+  de `InformeEditorMarketing.tsx`: mismo autoguardado, mismos
+  sub-componentes `FilaMetrica`/`BloqueInversionCanal` reusados para
+  ambos canales). `InformesClienteView.tsx`: un cliente con Meta Ads y
+  Google Ads activos a la vez ofrece "Meta Ads + Google Ads" en el
+  selector en vez de los dos por separado; con uno solo activo, sigue
+  igual que siempre.
+- **`lib/informes/auto-generar.ts`** (cron diario de Ads): resuelve
+  primero los clientes con ambos servicios activos y genera su informe
+  combinado, excluyéndolos del loop de informes individuales que sigue
+  — evita generar el combinado y uno individual el mismo día para el
+  mismo cliente. Ambos caminos siguen siendo idempotentes por el mismo
+  índice único de siempre (cliente, tipo, período).
+- **Dos bugs reales encontrados verificando contra Postgres local real
+  (no detectados por `tsc`/`eslint`/los 21 tests de vitest, los tres en
+  verde todo este tiempo)**:
+  1. **Cron de Ads roto para TODO cliente individual**: el loop de
+     informes individuales comparaba `reports.tipo` (ahora `report_tipo`)
+     contra `services.tipo` (`service_tipo`) en un `not exists` sin cast
+     — Postgres no tiene operador `=` implícito entre dos enums
+     distintos, así que el cron real tiraba `PostgresError: operator does
+     not exist: report_tipo = service_tipo` y nunca generaba ningún
+     informe de Ads individual, para ningún cliente, desde el momento en
+     que esta migración se desplegara. Encontrado recién al probar el
+     endpoint HTTP real (`curl` con el `CRON_SECRET` correcto), nunca al
+     invocar la función directo. Corregido con el cast explícito
+     (`s.tipo::text::report_tipo`).
+  2. **Resultados (§3.15) se habría caído para exactamente los clientes
+     que este feature apunta**: `obtenerTodosLosHitos` (overlay de
+     hitos de informe enviado sobre los gráficos) tipaba la columna
+     `reports.tipo` como `ServicioTipo` (ya no es verdad) y hacía
+     `porTipo[r.tipo].push(...)` contra un `Record` de solo 3 llaves —
+     para un informe `ads_combinado`, `porTipo["ads_combinado"]` es
+     `undefined`, y `.push()` sobre `undefined` tira un `TypeError` que
+     se lleva puesta toda la página. Encontrado por auditoría propia
+     (grep de otros usos de `reports.tipo` después de corregir el bug
+     del cron), no reportado por el usuario. Corregido tipando la
+     columna como `ReportTipo` y empujando el mismo hito de "informe
+     enviado" a **ambos** baldes (`meta_ads` y `google_ads`) cuando
+     `r.tipo === 'ads_combinado'` — la lectura correcta es que ese
+     informe sí habla de las dos líneas de servicio a la vez.
+- **Verificado de punta a punta contra un Postgres local recién
+  aprovisionado para esta ronda** (`.env.local` de este sandbox apunta a
+  producción real — se creó una base `kaizen_bigbuda` local nueva,
+  migrada y sembrada, nunca tocando `.env.local`; confirmado con una fila
+  centinela que el servidor realmente leía la base local antes de probar
+  nada) + `next dev` real + Playwright, logueado como Marcel: con Tecny
+  Stand (Meta Ads + Google Ads reales del seed), "Crear borrador" generó
+  un único informe "Meta Ads + Google Ads" (no dos), con cifras
+  pre-llenadas de ambos canales y la comparación de canales calculada; el
+  selector de tipo de informe dejó de ofrecer Meta/Google por separado
+  para ese cliente; crear de nuevo para el mismo período devolvió el
+  mismo id (idempotente, confirmado contra la base). El cron real
+  (`GET /api/cron/generar-informes` con el secret correcto) generó el
+  combinado sin duplicar nada tras una segunda corrida — recién ahí
+  apareció el bug #1 de arriba, con un cliente con un solo servicio de
+  Ads activo en el seed. Tras ambos fixes: el cron volvió a generar
+  informes individuales normalmente, y la página de Resultados de Tecny
+  Stand (con un informe `ads_combinado` real marcado `enviado` dentro del
+  rango de fechas consultado, confirmado por SQL directo) cargó sin
+  errores de consola ni 5xx. **No se pudo confirmar visualmente el punto
+  exacto del hito sobre el gráfico** (ninguno de los dos servicios de
+  Tecny Stand tiene `meta_ad_account_id`/`google_ads_ga4_property_id`
+  configurados en esta base de prueba local, así que ambas secciones
+  degradan a "Configura el..." sin llegar a renderizar ningún gráfico) —
+  la ausencia de crash con el dato real presente en rango es la
+  confirmación disponible en este entorno; si hace falta ver el punto
+  exacto superpuesto, requiere repetir contra un cliente con la
+  integración real configurada (mismo límite ya documentado varias veces
+  para todo lo que depende de credenciales reales de Google/Meta).
+  Typecheck, lint y los 21 tests de vitest en verde. Datos de prueba (los
+  informes `ads_combinado` creados para Tecny Stand y la mutación a
+  `enviado`) eliminados de la base local al terminar. **Migración 0017 no
+  aplicada contra producción** — sin token de Management API de Supabase
+  en este entorno esta ronda, queda pendiente para cuando se comparta uno
+  nuevo (mismo patrón ya documentado varias veces con otras migraciones).
+- **Sobre "inversión del mes"**: el slide "Inversión del mes" del formato
+  reducido de Ads (barra de pacing) no se tocó esta ronda — sigue
+  existiendo igual que siempre, por canal, tanto en el informe individual
+  como ahora en el combinado (`inversionDelMes.meta`/`inversionDelMes.google`).
+  Es distinto de la fila "Costo" que se sacó del grid de "¿Cómo vamos?"
+  en la ronda anterior (esa decisión no cambió).
+
 ---
 
 ## 1. Contexto

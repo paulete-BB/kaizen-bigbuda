@@ -114,6 +114,80 @@ export interface InformeMarketingContenido {
   };
 }
 
+export type MetricaAds = InformeMarketingContenido["comoVamosCifras"]["metricas"][number];
+export type InversionCanal = InformeMarketingContenido["inversionDelMes"];
+
+/**
+ * Informe único para clientes con Meta Ads **y** Google Ads activos a la
+ * vez (§3.4 → reemplaza a los dos informes separados de siempre cuando
+ * aplica) — pedido explícito del usuario: "deberia haber un solo informe
+ * con las 2 campañas para poder comparar los resultados e ir viendo cual
+ * rinde mejor". Reusa el mismo tipo de fila de métrica
+ * (`InformeMarketingContenido["comoVamosCifras"]["metricas"]`) y el mismo
+ * shape de "Inversión del mes" que el formato de un solo canal — uno por
+ * canal en vez de uno solo. `queMejoramos`/`queProyectamos` quedan
+ * compartidos (una sola lectura de negocio, no una por canal).
+ */
+export interface InformeAdsCombinadoContenido {
+  portada: {
+    bajada: string;
+    chips: string[];
+  };
+  comoVamosMeta: {
+    metricas: MetricaAds[];
+  };
+  comoVamosGoogle: {
+    metricas: MetricaAds[];
+  };
+  /**
+   * Comparación directa entre canales — la funcionalidad diferencial de
+   * este formato. `filas` compara solo lo que es seguro comparar entre
+   * canales (volumen de resultados, inversión en su propia moneda); nunca
+   * un "costo por resultado" cruzado entre monedas distintas (Meta en USD,
+   * Google en CLP en esta plataforma) sin una tasa de cambio real — eso
+   * sería fabricar una equivalencia que no existe. `insight` es texto
+   * calculado (no IA) a partir de esos mismos números, igual criterio que
+   * `insightAds` en `lib/data/resultados.ts` (regla simple, no alucinada).
+   */
+  comparacionCanales: {
+    filas: { etiqueta: string; meta: string; google: string }[];
+    insight: string;
+  };
+  inversionDelMes: {
+    meta: InversionCanal;
+    google: InversionCanal;
+  };
+  queMejoramos: {
+    acciones: AccionEfecto[];
+  };
+  queProyectamos: {
+    queEsperar: string;
+    insight: string;
+  };
+}
+
+const INVERSION_VACIA: InversionCanal = {
+  presupuesto: "",
+  gasto: "",
+  diaMes: "",
+  pctMesTranscurrido: "",
+  pctEjecutado: "",
+  estado: "dentro_rango",
+  nota: "",
+};
+
+export function contenidoAdsCombinadoVacio(): InformeAdsCombinadoContenido {
+  return {
+    portada: { bajada: "", chips: ["Meta Ads", "Google Ads"] },
+    comoVamosMeta: { metricas: [] },
+    comoVamosGoogle: { metricas: [] },
+    comparacionCanales: { filas: [], insight: "" },
+    inversionDelMes: { meta: { ...INVERSION_VACIA }, google: { ...INVERSION_VACIA } },
+    queMejoramos: { acciones: [] },
+    queProyectamos: { queEsperar: "", insight: "" },
+  };
+}
+
 export function contenidoSeoVacio(): InformeSeoContenido {
   return {
     portada: { bajada: "", chips: ["SEO", "AEO · IA", "GEO"] },

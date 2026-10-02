@@ -1,9 +1,9 @@
 import { conCacheDeSnapshot } from "@/lib/metricas/snapshot";
 import { obtenerResumenGSC } from "@/lib/google/gsc";
-import { obtenerTraficoIAGA4, obtenerTraficoPagadoGA4 } from "@/lib/google/ga4";
+import { obtenerTraficoIAGA4, obtenerTraficoPagadoGA4, type ResumenTraficoPagado } from "@/lib/google/ga4";
 import { obtenerResumenMeta, type ResumenInsightsMeta } from "@/lib/meta/client";
 import { criterioDeMetrica, criterioAFavorable } from "@/lib/informes/metricas-catalogo";
-import type { InformeMarketingContenido, InformeSeoContenido } from "@/lib/informes/tipos";
+import type { InformeAdsCombinadoContenido, InformeMarketingContenido, InformeSeoContenido } from "@/lib/informes/tipos";
 
 export interface ConfigApisCliente {
   gscProperty: string | null;
@@ -161,6 +161,38 @@ function metricasDesdeMeta(actual: ResumenInsightsMeta, anterior: ResumenInsight
 }
 
 /**
+ * Mismas cuatro métricas, mismo orden y mismas fórmulas que
+ * `seccionGoogleAds` en `lib/data/resultados.ts` — mismo pedido del
+ * usuario que `metricasDesdeMeta` más arriba. El costo total (gasto)
+ * sigue sin mostrarse como fila propia, igual que en Resultados; sigue
+ * disponible como `gastoReal`/`actual.costo` para el pacing automático de
+ * "Inversión del mes". Extraída a su propia función (antes vivía inline
+ * en `prellenarAdsDesdeApis`) para poder reusarla también desde
+ * `prellenarAdsCombinadoDesdeApis` sin duplicar las fórmulas.
+ */
+function metricasDesdeGoogleAds(actual: ResumenTraficoPagado, anterior: ResumenTraficoPagado): InformeMarketingContenido["comoVamosCifras"]["metricas"] {
+  // Derivadas de lo mismo ya traído (sesiones/conversiones/costo) — antes el
+  // equipo las agregaba a mano fila por fila, lo que dejaba "Costo por
+  // conversión"/"Tasa de conversión" sin `favorable` real (bug reportado:
+  // quedaban en rojo por defecto, mismo motivo que "Costo por resultado"
+  // de Meta más arriba).
+  const costoPorConvActual = actual.conversiones > 0 ? actual.costo / actual.conversiones : 0;
+  const costoPorConvAnterior = anterior.conversiones > 0 ? anterior.costo / anterior.conversiones : 0;
+  const tasaConvActual = actual.sesiones > 0 ? actual.conversiones / actual.sesiones : 0;
+  const tasaConvAnterior = anterior.sesiones > 0 ? anterior.conversiones / anterior.sesiones : 0;
+  const d = (etiqueta: string, a: number, b: number) => {
+    const { texto, direccion, favorable } = calcularDelta(etiqueta, a, b);
+    return { deltaTexto: texto, deltaDireccion: direccion, favorable };
+  };
+  return [
+    { etiqueta: "Sesiones pagas", valor: fmtNumero(actual.sesiones), ...d("Sesiones pagas", actual.sesiones, anterior.sesiones) },
+    { etiqueta: "Conversiones", valor: fmtNumero(actual.conversiones), ...d("Conversiones", actual.conversiones, anterior.conversiones) },
+    { etiqueta: "Tasa de conversión", valor: fmtPct(tasaConvActual), ...d("Tasa de conversión", tasaConvActual, tasaConvAnterior) },
+    { etiqueta: "Costo por conversión", valor: fmtMoneda(costoPorConvActual, "CLP"), ...d("Costo por conversión", costoPorConvActual, costoPorConvAnterior) },
+  ];
+}
+
+/**
  * Pre-llena "¿Cómo vamos?" del informe de Ads con datos reales — Meta
  * Insights para `meta_ads`; GA4 con filtro `sessionMedium=cpc/paid` para
  * `google_ads`, ya que no hay una API de Google Ads propia conectada
@@ -197,37 +229,108 @@ export async function prellenarAdsDesdeApis(
         conCacheDeSnapshot({ clientId, serviceId, fuente: "ga4", periodoInicio: inicio, periodoFin: fin, fetchLive: () => obtenerTraficoPagadoGA4(config.googleAdsGa4PropertyId!, inicio, fin) }),
         conCacheDeSnapshot({ clientId, serviceId, fuente: "ga4", periodoInicio: inicioAnt, periodoFin: finAnt, fetchLive: () => obtenerTraficoPagadoGA4(config.googleAdsGa4PropertyId!, inicioAnt, finAnt) }),
       ]);
-      const d = (etiqueta: string, a: number, b: number) => {
-        const { texto, direccion, favorable } = calcularDelta(etiqueta, a, b);
-        return { deltaTexto: texto, deltaDireccion: direccion, favorable };
-      };
-      // Derivadas de lo mismo ya traído (sesiones/conversiones/costo) — antes el
-      // equipo las agregaba a mano fila por fila, lo que dejaba "Costo por
-      // conversión"/"Tasa de conversión" sin `favorable` real (bug reportado:
-      // quedaban en rojo por defecto, mismo motivo que "Costo por resultado"
-      // de Meta más arriba).
-      const costoPorConvActual = actual.conversiones > 0 ? actual.costo / actual.conversiones : 0;
-      const costoPorConvAnterior = anterior.conversiones > 0 ? anterior.costo / anterior.conversiones : 0;
-      const tasaConvActual = actual.sesiones > 0 ? actual.conversiones / actual.sesiones : 0;
-      const tasaConvAnterior = anterior.sesiones > 0 ? anterior.conversiones / anterior.sesiones : 0;
-      // Mismas cuatro métricas, mismo orden, mismas fórmulas que
-      // `seccionGoogleAds` en `lib/data/resultados.ts` — mismo pedido que
-      // Meta más arriba. El costo total (gasto) sigue sin mostrarse como
-      // fila propia, igual que en Resultados; sigue disponible como
-      // `gastoReal` para el pacing automático de "Inversión del mes".
-      return {
-        metricas: [
-          { etiqueta: "Sesiones pagas", valor: fmtNumero(actual.sesiones), ...d("Sesiones pagas", actual.sesiones, anterior.sesiones) },
-          { etiqueta: "Conversiones", valor: fmtNumero(actual.conversiones), ...d("Conversiones", actual.conversiones, anterior.conversiones) },
-          { etiqueta: "Tasa de conversión", valor: fmtPct(tasaConvActual), ...d("Tasa de conversión", tasaConvActual, tasaConvAnterior) },
-          { etiqueta: "Costo por conversión", valor: fmtMoneda(costoPorConvActual, "CLP"), ...d("Costo por conversión", costoPorConvActual, costoPorConvAnterior) },
-        ],
-        gastoReal: { valor: actual.costo, moneda: "CLP" },
-      };
+      return { metricas: metricasDesdeGoogleAds(actual, anterior), gastoReal: { valor: actual.costo, moneda: "CLP" } };
     } catch {
       return { metricas: [], gastoReal: null };
     }
   }
 
   return { metricas: [], gastoReal: null };
+}
+
+interface ResultadoPrellenadoAdsCombinado {
+  meta: ResultadoPrellenadoAds | null;
+  google: ResultadoPrellenadoAds | null;
+  comparacionCanales: InformeAdsCombinadoContenido["comparacionCanales"];
+}
+
+/**
+ * Compara los dos canales por lo único que es seguro comparar sin
+ * fabricar una equivalencia: el volumen de resultados/conversiones (un
+ * conteo, no depende de moneda) y, por separado, cuánto invirtió cada uno
+ * en su propia moneda. Nunca declara "más barato" cruzando monedas
+ * (Meta en USD, Google en CLP en esta plataforma) sin una tasa de cambio
+ * real — mismo criterio del proyecto de no inventar comparaciones que no
+ * se pueden sostener con el dato real (mismo espíritu que la nota de
+ * "Google Ads vía GA4" ya documentada en CLAUDE.md).
+ */
+function compararCanalesAds(
+  meta: { resultados: number; gasto: { valor: number; moneda: string } } | null,
+  google: { conversiones: number; gasto: { valor: number; moneda: string } } | null,
+): InformeAdsCombinadoContenido["comparacionCanales"] {
+  if (!meta || !google) return { filas: [], insight: "" };
+
+  const filas = [
+    { etiqueta: "Resultados de negocio", meta: fmtNumero(meta.resultados), google: fmtNumero(google.conversiones) },
+    { etiqueta: "Inversión", meta: fmtMoneda(meta.gasto.valor, meta.gasto.moneda), google: fmtMoneda(google.gasto.valor, google.gasto.moneda) },
+  ];
+
+  const avisoMoneda =
+    meta.gasto.moneda !== google.gasto.moneda
+      ? ` El costo de cada canal está en monedas distintas (${meta.gasto.moneda} vs. ${google.gasto.moneda}) — compara el costo por resultado de cada uno en su propia moneda antes de decidir dónde priorizar presupuesto.`
+      : "";
+  const insight =
+    meta.resultados === google.conversiones
+      ? `Meta Ads y Google Ads generaron un volumen de resultados similar este mes (${fmtNumero(meta.resultados)}).${avisoMoneda}`
+      : meta.resultados > google.conversiones
+        ? `Meta Ads generó más resultados este mes (${fmtNumero(meta.resultados)} vs. ${fmtNumero(google.conversiones)} de Google Ads).${avisoMoneda}`
+        : `Google Ads generó más resultados este mes (${fmtNumero(google.conversiones)} vs. ${fmtNumero(meta.resultados)} de Meta Ads).${avisoMoneda}`;
+
+  return { filas, insight };
+}
+
+/**
+ * Pre-llena "¿Cómo vamos?" del informe combinado — misma fuente de datos
+ * que `prellenarAdsDesdeApis` (una llamada por canal, cacheada bajo el
+ * `service_id` real de cada uno, así que no colisiona con el snapshot de
+ * un eventual informe de un solo canal para el mismo servicio/período),
+ * más la comparación entre canales (§3.4, "para poder comparar los
+ * resultados e ir viendo cual rinde mejor").
+ */
+export async function prellenarAdsCombinadoDesdeApis(
+  clientId: string,
+  metaServiceId: string | null,
+  googleServiceId: string | null,
+  config: ConfigApisCliente,
+  periodoMes: number,
+  periodoAnio: number,
+): Promise<ResultadoPrellenadoAdsCombinado> {
+  const { inicio, fin } = limitesMes(periodoMes, periodoAnio);
+  const { inicio: inicioAnt, fin: finAnt } = limitesMesAnterior(periodoMes, periodoAnio);
+
+  let meta: (ResultadoPrellenadoAds & { resultados: number }) | null = null;
+  if (metaServiceId && config.metaAdAccountId) {
+    try {
+      const metaConfig = { adAccountId: config.metaAdAccountId, metaTokenKey: config.metaTokenKey };
+      const [{ datos: actual }, { datos: anterior }] = await Promise.all([
+        conCacheDeSnapshot({ clientId, serviceId: metaServiceId, fuente: "meta", periodoInicio: inicio, periodoFin: fin, fetchLive: () => obtenerResumenMeta(metaConfig, inicio, fin) }),
+        conCacheDeSnapshot({ clientId, serviceId: metaServiceId, fuente: "meta", periodoInicio: inicioAnt, periodoFin: finAnt, fetchLive: () => obtenerResumenMeta(metaConfig, inicioAnt, finAnt) }),
+      ]);
+      meta = { metricas: metricasDesdeMeta(actual, anterior), gastoReal: { valor: actual.gasto, moneda: "USD" }, resultados: actual.resultados };
+    } catch {
+      // sin Meta configurado, API caída y sin snapshot previo — esa mitad queda sin pre-llenar
+    }
+  }
+
+  let google: (ResultadoPrellenadoAds & { conversiones: number }) | null = null;
+  if (googleServiceId && config.googleAdsGa4PropertyId) {
+    try {
+      const [{ datos: actual }, { datos: anterior }] = await Promise.all([
+        conCacheDeSnapshot({ clientId, serviceId: googleServiceId, fuente: "ga4", periodoInicio: inicio, periodoFin: fin, fetchLive: () => obtenerTraficoPagadoGA4(config.googleAdsGa4PropertyId!, inicio, fin) }),
+        conCacheDeSnapshot({ clientId, serviceId: googleServiceId, fuente: "ga4", periodoInicio: inicioAnt, periodoFin: finAnt, fetchLive: () => obtenerTraficoPagadoGA4(config.googleAdsGa4PropertyId!, inicioAnt, finAnt) }),
+      ]);
+      google = { metricas: metricasDesdeGoogleAds(actual, anterior), gastoReal: { valor: actual.costo, moneda: "CLP" }, conversiones: actual.conversiones };
+    } catch {
+      // sin GA4 de la landing configurado, API caída y sin snapshot previo — esa mitad queda sin pre-llenar
+    }
+  }
+
+  return {
+    meta,
+    google,
+    comparacionCanales: compararCanalesAds(
+      meta && { resultados: meta.resultados, gasto: meta.gastoReal! },
+      google && { conversiones: google.conversiones, gasto: google.gastoReal! },
+    ),
+  };
 }

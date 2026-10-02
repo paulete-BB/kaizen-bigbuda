@@ -3,15 +3,16 @@
 import { useMemo, useState } from "react";
 import Link from "next/link";
 import { Sidebar, type SidebarUsuario } from "@/components/layout/Sidebar";
-import type { ClienteDetalleCompleto, ServicioTipo } from "@/lib/data/cliente-detalle";
-import type { InformeResumen } from "@/lib/data/informes";
+import type { ClienteDetalleCompleto } from "@/lib/data/cliente-detalle";
+import type { InformeResumen, ReportTipo } from "@/lib/data/informes";
 import { crearInforme } from "@/lib/data/informes-actions";
 import { fmtMesAnio } from "@/lib/informes/tipos";
 
-const TIPO_LABEL: Record<ServicioTipo, string> = {
+const TIPO_LABEL: Record<ReportTipo, string> = {
   seo_aeo_geo: "SEO · AEO · GEO",
   meta_ads: "Meta Ads",
   google_ads: "Google Ads",
+  ads_combinado: "Meta Ads + Google Ads",
 };
 
 const ESTADO_LABEL: Record<InformeResumen["estado"], string> = {
@@ -40,9 +41,19 @@ export function InformesClienteView({
   informes: InformeResumen[];
   usuario: SidebarUsuario;
 }) {
-  const tiposDisponibles = cliente.serviciosTiposExistentes;
+  // Un cliente con Meta Ads y Google Ads activos (no pausados) a la vez
+  // pasa a ofrecer un solo informe combinado en vez de los dos separados
+  // — pedido explícito del usuario: "deberia haber un solo informe con
+  // las 2 campañas". `cliente.servicios` ya trae `pausado` por fila
+  // (a diferencia de `serviciosTiposExistentes`, que no filtra pausados),
+  // así que no hace falta ninguna consulta nueva para esto.
+  const activos = cliente.servicios.filter((s) => !s.pausado).map((s) => s.tipo);
+  const tieneAdsCombinado = activos.includes("meta_ads") && activos.includes("google_ads");
+  const tiposDisponibles: ReportTipo[] = tieneAdsCombinado
+    ? [...cliente.serviciosTiposExistentes.filter((t) => t !== "meta_ads" && t !== "google_ads"), "ads_combinado"]
+    : cliente.serviciosTiposExistentes;
   const hoy = new Date();
-  const [tipo, setTipo] = useState<ServicioTipo | "">(tiposDisponibles[0] ?? "");
+  const [tipo, setTipo] = useState<ReportTipo | "">(tiposDisponibles[0] ?? "");
   const [periodoMes, setPeriodoMes] = useState(hoy.getMonth() + 1);
   const [periodoAnio, setPeriodoAnio] = useState(hoy.getFullYear());
   const [duplicarDeId, setDuplicarDeId] = useState("");
@@ -82,7 +93,7 @@ export function InformesClienteView({
                   <select
                     name="tipo"
                     value={tipo}
-                    onChange={(e) => setTipo(e.target.value as ServicioTipo)}
+                    onChange={(e) => setTipo(e.target.value as ReportTipo)}
                     className="rounded-lg border border-border bg-surface px-3 py-2.5 text-[13px] text-ink"
                   >
                     {tiposDisponibles.map((t) => (

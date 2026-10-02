@@ -19,6 +19,7 @@ import {
 } from "@/lib/google/ga4";
 import { obtenerCampanasMeta, obtenerResumenMeta, obtenerSerieDiariaMeta, type ResumenInsightsMeta } from "@/lib/meta/client";
 import type { ServicioTipo } from "@/lib/data/cliente-detalle";
+import type { ReportTipo } from "@/lib/data/informes";
 import { RANGOS_RESULTADOS, type RangoResultados } from "@/lib/resultados-rango";
 
 export { RANGOS_RESULTADOS, type RangoResultados };
@@ -115,7 +116,7 @@ async function obtenerTodosLosHitos(clientId: string, desde: string, hasta: stri
       where client_id = ${clientId} and estado = 'realizada'
         and fecha_realizada between ${desde} and ${hasta}
     `,
-    sql<{ tipo: ServicioTipo; fecha: string }[]>`
+    sql<{ tipo: ReportTipo; fecha: string }[]>`
       select tipo, enviado_en::date as fecha from reports
       where client_id = ${clientId} and estado = 'enviado'
         and enviado_en::date between ${desde} and ${hasta}
@@ -123,7 +124,19 @@ async function obtenerTodosLosHitos(clientId: string, desde: string, hasta: stri
   ]);
   const porTipo: Record<ServicioTipo, Hito[]> = { seo_aeo_geo: [], meta_ads: [], google_ads: [] };
   for (const o of optimizaciones) porTipo[o.tipo].push({ fecha: o.fecha_realizada, tipo: "optimizacion", etiqueta: "Optimización realizada" });
-  for (const r of informes) porTipo[r.tipo].push({ fecha: r.fecha, tipo: "informe", etiqueta: "Informe enviado" });
+  for (const r of informes) {
+    const hito: Hito = { fecha: r.fecha, tipo: "informe", etiqueta: "Informe enviado" };
+    // `ads_combinado` (§3.4) reporta sobre los dos canales a la vez — el
+    // hito de "informe enviado" tiene que verse superpuesto en el gráfico
+    // de Meta Ads Y en el de Google Ads, no en un cuarto balde que no
+    // existe (`porTipo` solo tiene las tres líneas de servicio reales).
+    if (r.tipo === "ads_combinado") {
+      porTipo.meta_ads.push(hito);
+      porTipo.google_ads.push(hito);
+    } else {
+      porTipo[r.tipo].push(hito);
+    }
+  }
   return porTipo;
 }
 

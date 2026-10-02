@@ -8,26 +8,30 @@ import { requireUser } from "@/lib/auth/server";
 import { hoySantiago } from "@/lib/dates";
 import { syncLogEntryToClickUp } from "@/lib/clickup/client";
 import {
+  contenidoAdsCombinadoVacio,
   contenidoMarketingVacio,
   contenidoSeoVacio,
   fmtMesAnio,
+  type InformeAdsCombinadoContenido,
   type InformeMarketingContenido,
   type InformeSeoContenido,
 } from "@/lib/informes/tipos";
-import { prellenarAdsDesdeApis, prellenarSeoDesdeApis, type ConfigApisCliente } from "@/lib/informes/prellenado-apis";
+import { prellenarAdsCombinadoDesdeApis, prellenarAdsDesdeApis, prellenarSeoDesdeApis, type ConfigApisCliente } from "@/lib/informes/prellenado-apis";
 import { generarNarrativaMarketing, generarNarrativaSeo } from "@/lib/informes/generacion-ia";
 import { getSettings } from "@/lib/data/settings";
 import type { ServicioTipo } from "@/lib/data/cliente-detalle";
+import type { ReportTipo } from "@/lib/data/informes";
 
 export interface AccionInformeResultado {
   ok: boolean;
   error?: string;
 }
 
-const TIPO_LABEL: Record<ServicioTipo, string> = {
+const TIPO_LABEL: Record<ReportTipo, string> = {
   seo_aeo_geo: "SEO · AEO · GEO",
   meta_ads: "Meta Ads",
   google_ads: "Google Ads",
+  ads_combinado: "Meta Ads + Google Ads",
 };
 
 function esFormatoAds(tipo: ServicioTipo) {
@@ -139,11 +143,15 @@ export interface InformeCreado {
  */
 export async function crearInformeInterno(
   clientId: string,
-  tipo: ServicioTipo,
+  tipo: ReportTipo,
   periodoMes: number,
   periodoAnio: number,
   duplicarDeId: string | null,
 ): Promise<InformeCreado> {
+  if (tipo === "ads_combinado") {
+    return crearInformeAdsCombinadoInterno(clientId, periodoMes, periodoAnio, duplicarDeId);
+  }
+
   const [existente] = await sql<{ id: string }[]>`
     select id from reports where client_id = ${clientId} and tipo = ${tipo} and periodo_mes = ${periodoMes} and periodo_anio = ${periodoAnio}
   `;
@@ -195,11 +203,111 @@ export async function crearInformeInterno(
   return { id: creado.id, creado: true };
 }
 
+/**
+ * Informe único para clientes con Meta Ads **y** Google Ads activos a la
+ * vez (§3.4 → reemplaza a los dos informes separados de siempre) — pedido
+ * explícito del usuario: "deberia haber un solo informe con las 2
+ * campañas para poder comparar los resultados e ir viendo cual rinde
+ * mejor". `service_id` queda `null` en `reports` (no hay un único
+ * servicio dueño del informe); cada mitad igual se cachea en
+ * `metric_snapshots` bajo el `service_id` real de su propio canal
+ * (`prellenarAdsCombinadoDesdeApis`), así que no colisiona con un
+ * eventual informe de un solo canal para el mismo servicio/período.
+ */
+async function crearInformeAdsCombinadoInterno(
+  clientId: string,
+  periodoMes: number,
+  periodoAnio: number,
+  duplicarDeId: string | null,
+): Promise<InformeCreado> {
+  const [existente] = await sql<{ id: string }[]>`
+    select id from reports where client_id = ${clientId} and tipo = 'ads_combinado' and periodo_mes = ${periodoMes} and periodo_anio = ${periodoAnio}
+  `;
+  if (existente) return { id: existente.id, creado: false };
+
+  const servicios = await sql<{ id: string; tipo: "meta_ads" | "google_ads" }[]>`
+    select id, tipo from services where client_id = ${clientId} and tipo in ('meta_ads', 'google_ads') and not pausado
+  `;
+  const metaServiceId = servicios.find((s) => s.tipo === "meta_ads")?.id ?? null;
+  const googleServiceId = servicios.find((s) => s.tipo === "google_ads")?.id ?? null;
+
+  let contenido: InformeAdsCombinadoContenido;
+  if (duplicarDeId) {
+    const [origen] = await sql<{ contenido_json: InformeAdsCombinadoContenido }[]>`
+      select contenido_json from reports where id = ${duplicarDeId} and client_id = ${clientId} and tipo = 'ads_combinado'
+    `;
+    contenido = origen ? origen.contenido_json : contenidoAdsCombinadoVacio();
+  } else {
+    const combinado = contenidoAdsCombinadoVacio();
+    const config = await obtenerConfigApisCliente(clientId);
+    const [accionesMeta, accionesGoogle, ads] = await Promise.all([
+      metaServiceId ? prellenarAccionesDesdeBitacora(metaServiceId, periodoMes, periodoAnio) : Promise.resolve([]),
+      googleServiceId ? prellenarAccionesDesdeBitacora(googleServiceId, periodoMes, periodoAnio) : Promise.resolve([]),
+      prellenarAdsCombinadoDesdeApis(clientId, metaServiceId, googleServiceId, config, periodoMes, periodoAnio),
+    ]);
+
+    if (ads.meta) {
+      combinado.comoVamosMeta.metricas = ads.meta.metricas;
+      if (metaServiceId) {
+        const inv = await prellenarInversionDelMes(metaServiceId, periodoMes, periodoAnio, ads.meta.gastoReal);
+        if (inv) combinado.inversionDelMes.meta = inv;
+      }
+    }
+    if (ads.google) {
+      combinado.comoVamosGoogle.metricas = ads.google.metricas;
+      if (googleServiceId) {
+        const inv = await prellenarInversionDelMes(googleServiceId, periodoMes, periodoAnio, ads.google.gastoReal);
+        if (inv) combinado.inversionDelMes.google = inv;
+      }
+    }
+    combinado.comparacionCanales = ads.comparacionCanales;
+    const acciones = [...accionesMeta, ...accionesGoogle];
+    if (acciones.length > 0) combinado.queMejoramos.acciones = acciones;
+
+    // Asistencia de IA (§3.4, Fase 4): mismo mecanismo que el informe de un
+    // solo canal — `generarNarrativaMarketing` solo lee `portada`/
+    // `comoVamosCifras`/devuelve `portada`/`queMejoramos`/`queProyectamos`,
+    // tres shapes idénticas entre `InformeMarketingContenido` y
+    // `InformeAdsCombinadoContenido` — se arma un objeto sintético con las
+    // cifras de ambos canales juntas solo para que el prompt tenga
+    // contexto de los dos, sin necesitar un schema/función nuevos.
+    const metricasParaPrompt = [...combinado.comoVamosMeta.metricas, ...combinado.comoVamosGoogle.metricas];
+    const narrativa = await generarNarrativaMarketing(
+      clientId,
+      periodoMes,
+      periodoAnio,
+      fmtMesAnio(periodoMes, periodoAnio),
+      TIPO_LABEL.ads_combinado,
+      { portada: combinado.portada, comoVamosCifras: { metricas: metricasParaPrompt } },
+    );
+    // Spread selectivo, no `{ ...combinado, ...narrativa }`: `narrativa` tipa
+    // `Partial<InformeMarketingContenido>`, que a nivel de tipos también
+    // admite `comoVamosCifras`/`inversionDelMes` (shape de un solo canal,
+    // incompatible con los de acá) — nunca vienen en la práctica (la función
+    // solo arma esos tres campos), pero el spread completo igual rompería el
+    // chequeo de tipos de `InformeAdsCombinadoContenido`.
+    contenido = {
+      ...combinado,
+      ...(narrativa.portada ? { portada: narrativa.portada } : {}),
+      ...(narrativa.queMejoramos ? { queMejoramos: narrativa.queMejoramos } : {}),
+      ...(narrativa.queProyectamos ? { queProyectamos: narrativa.queProyectamos } : {}),
+    };
+  }
+
+  const [creado] = await sql<{ id: string }[]>`
+    insert into reports (client_id, service_id, tipo, periodo_mes, periodo_anio, contenido_json)
+    values (${clientId}, null, 'ads_combinado', ${periodoMes}, ${periodoAnio}, ${sql.json(contenido as unknown as Parameters<typeof sql.json>[0])})
+    returning id
+  `;
+  revalidatePath(`/clientes/${clientId}/informes`);
+  return { id: creado.id, creado: true };
+}
+
 /** Wrapper del formulario manual "Crear borrador" (ficha de cliente → Informes) sobre `crearInformeInterno`. */
 export async function crearInforme(formData: FormData): Promise<void> {
   await requireUser();
   const clientId = String(formData.get("clientId") ?? "");
-  const tipo = String(formData.get("tipo") ?? "") as ServicioTipo;
+  const tipo = String(formData.get("tipo") ?? "") as ReportTipo;
   const periodoMes = Number(formData.get("periodoMes"));
   const periodoAnio = Number(formData.get("periodoAnio"));
   const duplicarDeId = String(formData.get("duplicarDeId") ?? "") || null;
@@ -209,7 +317,7 @@ export async function crearInforme(formData: FormData): Promise<void> {
   redirect(`/informes/${id}`);
 }
 
-export async function guardarContenidoInforme(reportId: string, contenido: InformeSeoContenido | InformeMarketingContenido): Promise<AccionInformeResultado> {
+export async function guardarContenidoInforme(reportId: string, contenido: InformeSeoContenido | InformeMarketingContenido | InformeAdsCombinadoContenido): Promise<AccionInformeResultado> {
   await requireUser();
   const [reporte] = await sql<{ estado: string; client_id: string }[]>`select estado, client_id from reports where id = ${reportId}`;
   if (!reporte) return { ok: false, error: "Informe no encontrado." };
@@ -243,7 +351,7 @@ export async function registrarEnvioInforme(formData: FormData): Promise<AccionI
   const destinatario = String(formData.get("destinatario") ?? "").trim();
   if (!medio || !destinatario) return { ok: false, error: "Completa medio y destinatario." };
 
-  const [reporte] = await sql<{ client_id: string; tipo: ServicioTipo; periodo_mes: number; periodo_anio: number; estado: string }[]>`
+  const [reporte] = await sql<{ client_id: string; tipo: ReportTipo; periodo_mes: number; periodo_anio: number; estado: string }[]>`
     select client_id, tipo, periodo_mes, periodo_anio, estado from reports where id = ${reportId}
   `;
   if (!reporte) return { ok: false, error: "Informe no encontrado." };

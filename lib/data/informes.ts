@@ -1,12 +1,20 @@
 import { sql } from "@/lib/db";
-import type { InformeMarketingContenido, InformeSeoContenido } from "@/lib/informes/tipos";
+import type { InformeAdsCombinadoContenido, InformeMarketingContenido, InformeSeoContenido } from "@/lib/informes/tipos";
 import type { ServicioTipo } from "@/lib/data/cliente-detalle";
 
 export type { ServicioTipo };
 
+/**
+ * `reports.tipo` ya no reusa `ServicioTipo` tal cual — `ads_combinado`
+ * (§3.4, informe único para clientes con Meta Ads y Google Ads activos)
+ * nunca es un tipo de servicio real (`services.tipo` nunca tiene ese
+ * valor), así que vive en su propio tipo, solo para la capa de informes.
+ */
+export type ReportTipo = ServicioTipo | "ads_combinado";
+
 export interface InformeResumen {
   id: string;
-  tipo: ServicioTipo;
+  tipo: ReportTipo;
   periodoMes: number;
   periodoAnio: number;
   estado: "borrador" | "listo" | "enviado";
@@ -17,7 +25,7 @@ export interface InformeCompleto {
   id: string;
   clientId: string;
   serviceId: string | null;
-  tipo: ServicioTipo;
+  tipo: ReportTipo;
   periodoMes: number;
   periodoAnio: number;
   estado: "borrador" | "listo" | "enviado";
@@ -27,12 +35,12 @@ export interface InformeCompleto {
   clienteEmpresa: string;
   contactoNombre: string;
   sitioWeb: string | null;
-  contenido: InformeSeoContenido | InformeMarketingContenido;
+  contenido: InformeSeoContenido | InformeMarketingContenido | InformeAdsCombinadoContenido;
 }
 
 export async function listarInformesPorCliente(clientId: string): Promise<InformeResumen[]> {
   const rows = await sql<
-    { id: string; tipo: ServicioTipo; periodo_mes: number; periodo_anio: number; estado: "borrador" | "listo" | "enviado"; actualizado_en: string }[]
+    { id: string; tipo: ReportTipo; periodo_mes: number; periodo_anio: number; estado: "borrador" | "listo" | "enviado"; actualizado_en: string }[]
   >`
     select id, tipo, periodo_mes, periodo_anio, estado, actualizado_en
     from reports
@@ -55,13 +63,13 @@ export async function obtenerInforme(id: string): Promise<InformeCompleto | null
       id: string;
       client_id: string;
       service_id: string | null;
-      tipo: ServicioTipo;
+      tipo: ReportTipo;
       periodo_mes: number;
       periodo_anio: number;
       estado: "borrador" | "listo" | "enviado";
       enviado_en: string | null;
       destinatario: string | null;
-      contenido_json: InformeSeoContenido | InformeMarketingContenido;
+      contenido_json: InformeSeoContenido | InformeMarketingContenido | InformeAdsCombinadoContenido;
       cliente_nombre: string;
       cliente_empresa: string;
       contacto_nombre: string;
