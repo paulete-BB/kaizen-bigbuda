@@ -135,6 +135,15 @@ interface ResultadoPrellenadoAds {
   gastoReal: { valor: number; moneda: string } | null;
 }
 
+/**
+ * Mismas cinco métricas, mismo orden y mismas fórmulas que `seccionMeta`
+ * en `lib/data/resultados.ts` (pestaña Resultados) — pedido explícito del
+ * usuario: "las metricas debieran venir directamente como en la sección
+ * resultados y debieran ser las mismas métricas". No se comparte el
+ * helper entre ambos módulos (convención ya establecida del proyecto),
+ * pero el conjunto/orden/fórmula se mantiene idéntico a propósito. CPC no
+ * se muestra acá porque tampoco se muestra en Resultados.
+ */
 function metricasDesdeMeta(actual: ResumenInsightsMeta, anterior: ResumenInsightsMeta): InformeMarketingContenido["comoVamosCifras"]["metricas"] {
   const costoActual = actual.resultados > 0 ? actual.gasto / actual.resultados : 0;
   const costoAnterior = anterior.resultados > 0 ? anterior.gasto / anterior.resultados : 0;
@@ -147,7 +156,6 @@ function metricasDesdeMeta(actual: ResumenInsightsMeta, anterior: ResumenInsight
     { etiqueta: "Resultados", valor: fmtNumero(actual.resultados), ...d("Resultados", actual.resultados, anterior.resultados) },
     { etiqueta: "Costo por resultado", valor: fmtMoneda(costoActual, "USD"), ...d("Costo por resultado", costoActual, costoAnterior) },
     { etiqueta: "CTR", valor: `${actual.ctr.toFixed(2)}%`, ...d("CTR", actual.ctr, anterior.ctr) },
-    { etiqueta: "CPC", valor: fmtMoneda(actual.cpc, "USD"), ...d("CPC", actual.cpc, anterior.cpc) },
     { etiqueta: "Alcance", valor: fmtNumero(actual.alcance), ...d("Alcance", actual.alcance, anterior.alcance) },
   ];
 }
@@ -197,18 +205,22 @@ export async function prellenarAdsDesdeApis(
       // equipo las agregaba a mano fila por fila, lo que dejaba "Costo por
       // conversión"/"Tasa de conversión" sin `favorable` real (bug reportado:
       // quedaban en rojo por defecto, mismo motivo que "Costo por resultado"
-      // de Meta más abajo).
+      // de Meta más arriba).
       const costoPorConvActual = actual.conversiones > 0 ? actual.costo / actual.conversiones : 0;
       const costoPorConvAnterior = anterior.conversiones > 0 ? anterior.costo / anterior.conversiones : 0;
       const tasaConvActual = actual.sesiones > 0 ? actual.conversiones / actual.sesiones : 0;
       const tasaConvAnterior = anterior.sesiones > 0 ? anterior.conversiones / anterior.sesiones : 0;
+      // Mismas cuatro métricas, mismo orden, mismas fórmulas que
+      // `seccionGoogleAds` en `lib/data/resultados.ts` — mismo pedido que
+      // Meta más arriba. El costo total (gasto) sigue sin mostrarse como
+      // fila propia, igual que en Resultados; sigue disponible como
+      // `gastoReal` para el pacing automático de "Inversión del mes".
       return {
         metricas: [
           { etiqueta: "Sesiones pagas", valor: fmtNumero(actual.sesiones), ...d("Sesiones pagas", actual.sesiones, anterior.sesiones) },
           { etiqueta: "Conversiones", valor: fmtNumero(actual.conversiones), ...d("Conversiones", actual.conversiones, anterior.conversiones) },
-          { etiqueta: "Costo", valor: fmtMoneda(actual.costo, "CLP"), ...d("Costo", actual.costo, anterior.costo) },
-          { etiqueta: "Costo por conversión", valor: fmtMoneda(costoPorConvActual, "CLP"), ...d("Costo por conversión", costoPorConvActual, costoPorConvAnterior) },
           { etiqueta: "Tasa de conversión", valor: fmtPct(tasaConvActual), ...d("Tasa de conversión", tasaConvActual, tasaConvAnterior) },
+          { etiqueta: "Costo por conversión", valor: fmtMoneda(costoPorConvActual, "CLP"), ...d("Costo por conversión", costoPorConvActual, costoPorConvAnterior) },
         ],
         gastoReal: { valor: actual.costo, moneda: "CLP" },
       };

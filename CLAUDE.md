@@ -2281,6 +2281,50 @@ salto solo va *entre* slides, nunca después del último.
   de Postgres local + Playwright porque no toca lógica de datos ni de
   servidor. Typecheck, lint y los 21 tests de vitest en verde.
 
+**"El mes en números" del informe de Ads ahora muestra exactamente las
+mismas métricas que la pestaña Resultados** — pedido explícito del
+usuario: "en la seccion 'el mes en numeros' las metricas debieran venir
+directamente como en la sección resultados y debieran ser las mismas
+metricas". Comparando `metricasDesdeMeta`/la rama `google_ads` de
+`prellenarAdsDesdeApis` (`lib/informes/prellenado-apis.ts`) contra
+`seccionMeta`/`seccionGoogleAds` (`lib/data/resultados.ts`, pestaña
+Resultados, §3.15) había dos métricas en el informe que Resultados nunca
+muestra:
+
+- **Meta Ads**: el informe traía 6 métricas (Inversión, Resultados, Costo
+  por resultado, CTR, **CPC**, Alcance) — Resultados solo muestra 5 (sin
+  CPC). Sacado del informe.
+- **Google Ads**: el informe traía 5 (Sesiones pagas, Conversiones,
+  **Costo**, Costo por conversión, Tasa de conversión) — Resultados
+  muestra 4, sin el costo total como fila propia (solo lo usa internamente
+  para calcular "Costo por conversión"). Sacado del informe, mismo orden
+  que Resultados (Sesiones pagas, Conversiones, Tasa de conversión, Costo
+  por conversión).
+- `actual.costo`/`actual.gasto` (el gasto total) siguen calculándose
+  igual — no se perdió nada funcional, solo dejaron de mostrarse como fila
+  visible en el slide: `gastoReal` (que alimenta el pacing automático de
+  "Inversión del mes", §3.9 → automático) sigue usando ese mismo valor.
+- `lib/informes/metricas-catalogo.ts` (el catálogo de "¿es buena/mala
+  noticia?" de la ronda anterior) se recorta a las mismas 9 etiquetas que
+  ahora se auto-generan — "CPC" y "Costo" (total) salen del catálogo y del
+  `<select>` de métricas del editor, para no ofrecer como opción algo que
+  ya no se pre-llena ni existe en Resultados. El equipo todavía puede
+  agregar cualquier métrica a mano vía "Otra (personalizada)" si necesita
+  una fila fuera de este set.
+- **Sin compartir código entre `lib/data/resultados.ts` y
+  `lib/informes/*`** (convención ya establecida del proyecto, documentada
+  varias veces): el conjunto/orden/fórmula de cada métrica se replicó a
+  mano, no se importó — mismo criterio que ya se usó para portar
+  `favorable`/`invertido` de un módulo al otro en una ronda anterior.
+- Verificado por comparación directa línea a línea entre ambos archivos
+  (mismas fórmulas: `costoActual = gasto/resultados` para Meta,
+  `costoPorConvActual = costo/conversiones` y `tasaConvActual =
+  conversiones/sesiones` para Google Ads, idénticas a las de
+  `seccionMeta`/`seccionGoogleAds`) y cálculo directo de los valores
+  resultantes — cambio de qué filas se generan y en qué orden, sin lógica
+  de datos nueva, así que no ameritó repetir el ritual de Postgres local +
+  Playwright. Typecheck, lint y los 21 tests de vitest en verde.
+
 ---
 
 ## 1. Contexto
