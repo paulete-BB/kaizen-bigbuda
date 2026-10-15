@@ -14,6 +14,32 @@ export function NuevoPromptDrawer() {
   // NuevoClienteDrawer, el mismo patrón). Este ref sí corta la segunda
   // invocación en el mismo tick, antes de cualquier render.
   const enviandoRef = useRef(false);
+  const formRef = useRef<HTMLFormElement>(null);
+  // React 19 no deja reenviar el mismo `<form action={fn}>` una segunda vez
+  // después de que la acción ya corrió una vez (confirmado con Playwright
+  // contra un build de producción real en NuevoClienteDrawer: ni un clic
+  // directo sobre el botón dispara un segundo intento). La única forma
+  // confirmada de reactivarlo es remontar el `<form>` (cambiar su `key`);
+  // como eso borraría los campos no controlados, se guarda una foto de lo
+  // ya escrito justo antes de remontar y se restaura vía `defaultValue`.
+  const [formKey, setFormKey] = useState(0);
+  const [snapshot, setSnapshot] = useState<Record<string, string>>({});
+
+  function cerrar() {
+    setOpen(false);
+    setSnapshot({});
+  }
+
+  function reintentarConservandoDatos() {
+    if (formRef.current) {
+      const snap: Record<string, string> = {};
+      for (const [k, v] of new FormData(formRef.current).entries()) {
+        if (typeof v === "string") snap[k] = v;
+      }
+      setSnapshot(snap);
+    }
+    setFormKey((k) => k + 1);
+  }
 
   async function onSubmit(formData: FormData) {
     if (enviandoRef.current) return;
@@ -27,6 +53,7 @@ export function NuevoPromptDrawer() {
       // otra forma de saberlo. Reactivamos para poder reintentar.
       enviandoRef.current = false;
       setPending(false);
+      reintentarConservandoDatos();
     } catch (err) {
       // Dejar pasar la excepción del `redirect()` sin tocar `pending`: el
       // botón se mantiene deshabilitado hasta que la navegación ocurra, para
@@ -35,6 +62,7 @@ export function NuevoPromptDrawer() {
       unstable_rethrow(err);
       enviandoRef.current = false;
       setPending(false);
+      reintentarConservandoDatos();
     }
   }
 
@@ -48,7 +76,7 @@ export function NuevoPromptDrawer() {
       </button>
 
       {open && (
-        <div className="fixed inset-0 z-20 flex justify-end bg-black/30" onClick={() => setOpen(false)}>
+        <div className="fixed inset-0 z-20 flex justify-end bg-black/30" onClick={() => cerrar()}>
           <div
             onClick={(e) => e.stopPropagation()}
             className="flex h-full w-full max-w-[460px] flex-col gap-4 overflow-y-auto bg-surface p-6"
@@ -62,15 +90,25 @@ export function NuevoPromptDrawer() {
               </div>
             </div>
 
-            <form action={onSubmit} className="flex flex-col gap-3.5">
+            <form key={formKey} ref={formRef} action={onSubmit} className="flex flex-col gap-3.5">
               <label className="flex flex-col gap-1.5">
                 <span className="text-[11.5px] font-semibold text-muted-2">Título</span>
-                <input name="titulo" required className="rounded-lg border border-border bg-surface px-3 py-2 text-[12.5px] text-ink" />
+                <input
+                  name="titulo"
+                  required
+                  defaultValue={snapshot.titulo}
+                  className="rounded-lg border border-border bg-surface px-3 py-2 text-[12.5px] text-ink"
+                />
               </label>
               <div className="flex gap-2.5">
                 <label className="flex flex-1 flex-col gap-1.5">
                   <span className="text-[11.5px] font-semibold text-muted-2">Categoría</span>
-                  <select name="categoria" required defaultValue="" className="rounded-lg border border-border bg-surface px-3 py-2 text-[12.5px] text-ink">
+                  <select
+                    name="categoria"
+                    required
+                    defaultValue={snapshot.categoria ?? ""}
+                    className="rounded-lg border border-border bg-surface px-3 py-2 text-[12.5px] text-ink"
+                  >
                     <option value="" disabled>
                       Elegir…
                     </option>
@@ -83,12 +121,22 @@ export function NuevoPromptDrawer() {
                 </label>
                 <label className="flex flex-1 flex-col gap-1.5">
                   <span className="text-[11.5px] font-semibold text-muted-2">Herramienta destino (opcional)</span>
-                  <input name="herramienta" placeholder="Claude, ChatGPT…" className="rounded-lg border border-border bg-surface px-3 py-2 text-[12.5px] text-ink" />
+                  <input
+                    name="herramienta"
+                    placeholder="Claude, ChatGPT…"
+                    defaultValue={snapshot.herramienta}
+                    className="rounded-lg border border-border bg-surface px-3 py-2 text-[12.5px] text-ink"
+                  />
                 </label>
               </div>
               <label className="flex flex-col gap-1.5">
                 <span className="text-[11.5px] font-semibold text-muted-2">Sub-etiquetas (separadas por coma, opcional)</span>
-                <input name="tags" placeholder="keywords, técnico, onboarding" className="rounded-lg border border-border bg-surface px-3 py-2 text-[12.5px] text-ink" />
+                <input
+                  name="tags"
+                  placeholder="keywords, técnico, onboarding"
+                  defaultValue={snapshot.tags}
+                  className="rounded-lg border border-border bg-surface px-3 py-2 text-[12.5px] text-ink"
+                />
               </label>
               <label className="flex flex-col gap-1.5">
                 <span className="text-[11.5px] font-semibold text-muted-2">Contenido del prompt</span>
@@ -96,12 +144,18 @@ export function NuevoPromptDrawer() {
                   name="contenido"
                   required
                   rows={10}
+                  defaultValue={snapshot.contenido}
                   className="rounded-lg border border-border bg-surface px-3 py-2 font-mono text-[12px] text-ink"
                 />
               </label>
               <label className="flex flex-col gap-1.5">
                 <span className="text-[11.5px] font-semibold text-muted-2">Notas de uso (opcional)</span>
-                <textarea name="notas" rows={2} className="rounded-lg border border-border bg-surface px-3 py-2 text-[12.5px] text-ink" />
+                <textarea
+                  name="notas"
+                  rows={2}
+                  defaultValue={snapshot.notas}
+                  className="rounded-lg border border-border bg-surface px-3 py-2 text-[12.5px] text-ink"
+                />
               </label>
 
               <div className="mt-2 flex gap-2">
@@ -114,7 +168,7 @@ export function NuevoPromptDrawer() {
                 </button>
                 <button
                   type="button"
-                  onClick={() => setOpen(false)}
+                  onClick={() => cerrar()}
                   className="ghost rounded-lg border border-border bg-surface px-4 py-2.5 font-sans text-[12.5px] font-semibold text-muted"
                 >
                   Cancelar

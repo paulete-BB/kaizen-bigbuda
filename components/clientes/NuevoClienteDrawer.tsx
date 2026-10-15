@@ -30,10 +30,32 @@ export function NuevoClienteDrawer({ responsables }: { responsables: UsuarioResu
   // síncrona, en el mismo tick del evento, así que sí corta la segunda
   // invocación aunque el DOM todavía no se haya actualizado.
   const enviandoRef = useRef(false);
+  const formRef = useRef<HTMLFormElement>(null);
+  // Después de un error, React 19 no deja reenviar el mismo `<form
+  // action={fn}>` una segunda vez — confirmado con Playwright: ni un clic
+  // directo sobre el botón ni sobre el DOM disparan un segundo intento, aun
+  // con el botón habilitado. La única forma confirmada de volver a poder
+  // enviar es remontar el `<form>` (cambiar su `key`); como eso borraría
+  // los campos no controlados (uncontrolled), se guarda una foto de lo ya
+  // escrito justo antes de remontar y se restaura vía `defaultValue`.
+  const [formKey, setFormKey] = useState(0);
+  const [snapshot, setSnapshot] = useState<Record<string, string>>({});
 
   function reset() {
     setActivos({ seo_aeo_geo: false, meta_ads: false, google_ads: false });
     setError(null);
+    setSnapshot({});
+  }
+
+  function reintentarConservandoDatos() {
+    if (formRef.current) {
+      const snap: Record<string, string> = {};
+      for (const [k, v] of new FormData(formRef.current).entries()) {
+        if (typeof v === "string") snap[k] = v;
+      }
+      setSnapshot(snap);
+    }
+    setFormKey((k) => k + 1);
   }
 
   async function onSubmit(formData: FormData) {
@@ -55,12 +77,14 @@ export function NuevoClienteDrawer({ responsables }: { responsables: UsuarioResu
       enviandoRef.current = false;
       setPending(false);
       setError("No se pudo crear el cliente. Intenta de nuevo.");
+      reintentarConservandoDatos();
       return;
     }
     if (!res.ok) {
       enviandoRef.current = false;
       setPending(false);
       setError(res.error ?? "No se pudo crear el cliente.");
+      reintentarConservandoDatos();
       return;
     }
     setOpen(false);
@@ -103,38 +127,71 @@ export function NuevoClienteDrawer({ responsables }: { responsables: UsuarioResu
               </div>
             )}
 
-            <form action={onSubmit} className="flex flex-col gap-3.5">
+            <form key={formKey} ref={formRef} action={onSubmit} className="flex flex-col gap-3.5">
               <label className="flex flex-col gap-1.5">
                 <span className="text-[11.5px] font-semibold text-muted-2">Nombre del cliente</span>
-                <input name="nombre" required className="rounded-lg border border-border bg-surface px-3 py-2 text-[12.5px] text-ink" />
+                <input
+                  name="nombre"
+                  required
+                  defaultValue={snapshot.nombre}
+                  className="rounded-lg border border-border bg-surface px-3 py-2 text-[12.5px] text-ink"
+                />
               </label>
               <label className="flex flex-col gap-1.5">
                 <span className="text-[11.5px] font-semibold text-muted-2">Empresa</span>
-                <input name="empresa" required className="rounded-lg border border-border bg-surface px-3 py-2 text-[12.5px] text-ink" />
+                <input
+                  name="empresa"
+                  required
+                  defaultValue={snapshot.empresa}
+                  className="rounded-lg border border-border bg-surface px-3 py-2 text-[12.5px] text-ink"
+                />
               </label>
               <div className="flex gap-2.5">
                 <label className="flex flex-1 flex-col gap-1.5">
                   <span className="text-[11.5px] font-semibold text-muted-2">Contacto</span>
-                  <input name="contactoNombre" required className="rounded-lg border border-border bg-surface px-3 py-2 text-[12.5px] text-ink" />
+                  <input
+                    name="contactoNombre"
+                    required
+                    defaultValue={snapshot.contactoNombre}
+                    className="rounded-lg border border-border bg-surface px-3 py-2 text-[12.5px] text-ink"
+                  />
                 </label>
                 <label className="flex flex-1 flex-col gap-1.5">
                   <span className="text-[11.5px] font-semibold text-muted-2">Email del contacto</span>
-                  <input type="email" name="contactoEmail" required className="rounded-lg border border-border bg-surface px-3 py-2 text-[12.5px] text-ink" />
+                  <input
+                    type="email"
+                    name="contactoEmail"
+                    required
+                    defaultValue={snapshot.contactoEmail}
+                    className="rounded-lg border border-border bg-surface px-3 py-2 text-[12.5px] text-ink"
+                  />
                 </label>
               </div>
               <div className="flex gap-2.5">
                 <label className="flex flex-1 flex-col gap-1.5">
                   <span className="text-[11.5px] font-semibold text-muted-2">Teléfono (opcional)</span>
-                  <input name="contactoTelefono" className="rounded-lg border border-border bg-surface px-3 py-2 text-[12.5px] text-ink" />
+                  <input
+                    name="contactoTelefono"
+                    defaultValue={snapshot.contactoTelefono}
+                    className="rounded-lg border border-border bg-surface px-3 py-2 text-[12.5px] text-ink"
+                  />
                 </label>
                 <label className="flex flex-1 flex-col gap-1.5">
                   <span className="text-[11.5px] font-semibold text-muted-2">Sitio web (opcional)</span>
-                  <input name="sitioWeb" className="rounded-lg border border-border bg-surface px-3 py-2 text-[12.5px] text-ink" />
+                  <input
+                    name="sitioWeb"
+                    defaultValue={snapshot.sitioWeb}
+                    className="rounded-lg border border-border bg-surface px-3 py-2 text-[12.5px] text-ink"
+                  />
                 </label>
               </div>
               <label className="flex flex-col gap-1.5">
                 <span className="text-[11.5px] font-semibold text-muted-2">Industria (opcional)</span>
-                <input name="industria" className="rounded-lg border border-border bg-surface px-3 py-2 text-[12.5px] text-ink" />
+                <input
+                  name="industria"
+                  defaultValue={snapshot.industria}
+                  className="rounded-lg border border-border bg-surface px-3 py-2 text-[12.5px] text-ink"
+                />
               </label>
 
               <div className="mt-1 text-[11.5px] font-bold uppercase text-faint [letter-spacing:.03em]">
@@ -161,7 +218,7 @@ export function NuevoClienteDrawer({ responsables }: { responsables: UsuarioResu
                           <input
                             type="date"
                             name={`fechaInicio_${s.tipo}`}
-                            defaultValue={new Date().toISOString().slice(0, 10)}
+                            defaultValue={snapshot[`fechaInicio_${s.tipo}`] ?? new Date().toISOString().slice(0, 10)}
                             className="rounded-lg border border-border bg-surface px-2.5 py-1.5 text-[12px] text-ink"
                           />
                         </label>
@@ -169,7 +226,7 @@ export function NuevoClienteDrawer({ responsables }: { responsables: UsuarioResu
                           <span className="text-[11px] font-semibold text-muted-2">Período contratado</span>
                           <select
                             name={`periodoMeses_${s.tipo}`}
-                            defaultValue=""
+                            defaultValue={snapshot[`periodoMeses_${s.tipo}`] ?? ""}
                             className="rounded-lg border border-border bg-surface px-2.5 py-1.5 text-[12px] text-ink"
                           >
                             <option value="">Indefinido</option>
@@ -187,6 +244,7 @@ export function NuevoClienteDrawer({ responsables }: { responsables: UsuarioResu
                               type="number"
                               min={0}
                               name={`presupuesto_${s.tipo}`}
+                              defaultValue={snapshot[`presupuesto_${s.tipo}`]}
                               className="rounded-lg border border-border bg-surface px-2.5 py-1.5 text-[12px] text-ink"
                             />
                           </label>
@@ -194,7 +252,7 @@ export function NuevoClienteDrawer({ responsables }: { responsables: UsuarioResu
                             <span className="text-[11px] font-semibold text-muted-2">Moneda</span>
                             <select
                               name={`moneda_${s.tipo}`}
-                              defaultValue="CLP"
+                              defaultValue={snapshot[`moneda_${s.tipo}`] ?? "CLP"}
                               className="rounded-lg border border-border bg-surface px-2.5 py-1.5 text-[12px] text-ink"
                             >
                               <option value="CLP">CLP</option>
@@ -207,7 +265,7 @@ export function NuevoClienteDrawer({ responsables }: { responsables: UsuarioResu
                         <span className="text-[11px] font-semibold text-muted-2">Responsable</span>
                         <select
                           name={`responsable_${s.tipo}`}
-                          defaultValue=""
+                          defaultValue={snapshot[`responsable_${s.tipo}`] ?? ""}
                           className="rounded-lg border border-border bg-surface px-2.5 py-1.5 text-[12px] text-ink"
                         >
                           <option value="">Sin asignar</option>

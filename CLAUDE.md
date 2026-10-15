@@ -2580,6 +2580,72 @@ exactamente el "casi vacío" que describió el usuario.
   que el bug actual. Afecta potencialmente a los mismos tres formularios
   del punto anterior. Pendiente de una ronda dedicada.
 
+**Limpieza del duplicado real + resuelto el bug de "el formulario no
+reenvía tras un error"** — a pedido explícito del usuario ("sí, elimínalo
+y arreglemos el otro bug también"). El "Luciano Store" huérfano
+(`029f815e-9d1a-4b8f-acd1-df418ffe3b1d`, 0 actividad) se eliminó de
+producción vía la Management API de Supabase (cascada a `services`/
+`checklist_instances`, confirmado que no quedó rastro). Queda uno solo,
+el real.
+
+- **Causa raíz encontrada leyendo el código fuente de `react-dom`**
+  (`node_modules/react-dom/cjs/react-dom-client.development.js`, con
+  node_modules instalado esta ronda — el sandbox llegó sin `node_modules`):
+  un `<form action={fn}>` de React 19, tras procesar una invocación de su
+  action (exitosa o no), **no vuelve a dispachar el evento nativo `submit`
+  para un segundo clic sobre el mismo elemento `<form>`** — confirmado con
+  instrumentación directa (`addEventListener('submit', ..., true)` en fase
+  de captura, antes de cualquier handler de React): el conteo de eventos
+  `submit` capturados fue 0 incluso para la primera invocación exitosa (el
+  click en sí sí se captura, `defaultPrevented=false`, el botón no está
+  `disabled` — pero ningún POST sale al hacer un segundo clic, ni con
+  Playwright ni con `.click()` nativo sobre el DOM). Descartado que fuera
+  ruido de Fast Refresh: reproducido igual contra un build de producción
+  real (`next build && next start`).
+- **`requestFormReset` (exportado públicamente por `react-dom`, pensado
+  justo para "re-armar" un formulario con `action` tras una invocación) se
+  probó primero y se descartó**: si bien existe y no tira error, en la
+  práctica **limpia todos los campos no controlados** (como si fuera
+  `form.reset()`) y aun así **no logró que un segundo envío llegara al
+  servidor** en la prueba — ni resuelve el problema ni evita la pérdida de
+  datos.
+- **La única forma confirmada de volver a poder enviar el mismo formulario
+  es remontarlo** (cambiar su `key`) — verificado antes con el drawer
+  cerrado y reabierto a mano ("Variante A" de una ronda de pruebas
+  anterior), que sí deja reintentar. Implementado sin perder lo ya
+  escrito: justo antes de remontar, se toma una foto de
+  `new FormData(formRef.current)` en un estado `snapshot` y cada campo no
+  controlado pasa a leer `defaultValue={snapshot[nombre] ?? valorOriginal}`
+  — los campos siguen siendo no controlados (sin `onChange`/`value`), solo
+  su valor inicial post-remount viene de la foto en vez de estar
+  hardcodeado. Aplicado a `NuevoClienteDrawer.tsx` y
+  `NuevoPromptDrawer.tsx` (los dos que usan `<form action={fn}>`).
+- **`RegistroSeoView.tsx` no necesitó el mismo fix**: su botón "Guardar"
+  no es un `<form action={fn}>` — es un `onClick` plano sobre un
+  `FormData` armado a mano, con todos los campos ya completamente
+  controlados por `useState`. Esa arquitectura nunca tuvo la limitación de
+  React descrita arriba (no hay ningún `<form>` cuyo evento nativo haga
+  falta re-disparar), así que el fix de duplicados por doble clic de la
+  ronda anterior ya lo dejó completo.
+- **Verificado de punta a punta contra Postgres local + Playwright, con
+  dos builds de producción reales** (`next build && next start`, no
+  `next dev`): en `NuevoClienteDrawer`, un error de validación ("Selecciona
+  al menos un servicio") preserva los 7 campos de texto ya escritos
+  (nombre, empresa, contacto, email, teléfono, sitio web, industria,
+  confirmados uno por uno); marcar el servicio faltante y reintentar sin
+  cerrar el drawer navega con éxito a la ficha del cliente nuevo, con el
+  servicio correcto guardado. En `NuevoPromptDrawer`, forzando un no-op
+  real del servidor (quitando el `required` nativo del `<select
+  name="categoria">` para que el navegador no bloquee el envío antes de
+  que React intervenga — con el `required` puesto, el propio HTML5 ya
+  impide este caso en el uso real, así que hizo falta forzarlo para
+  probar el camino del servidor): título/contenido/tags se conservaron,
+  elegir la categoría y reintentar creó el prompt y navegó a su ficha, 2
+  POSTs totales confirmados por red (uno fallido, uno exitoso) en ambos
+  componentes. Typecheck, lint y los 21 tests de vitest en verde. Datos de
+  prueba (clientes y prompts sintéticos de las pruebas) limpiados de la
+  base local al terminar; procesos de `next build`/`next start` detenidos.
+
 ---
 
 ## 1. Contexto
