@@ -1,6 +1,7 @@
 "use client";
 
-import { useState } from "react";
+import { useRef, useState } from "react";
+import { unstable_rethrow } from "next/navigation";
 import { crearCliente } from "@/lib/data/clients-actions";
 import type { UsuarioResumen } from "@/lib/data/users";
 
@@ -21,6 +22,14 @@ export function NuevoClienteDrawer({ responsables }: { responsables: UsuarioResu
   });
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // `disabled={pending}` por sí solo no alcanza contra un doble clic real y
+  // rápido: depende de que React vuelva a renderizar para deshabilitar el
+  // botón en el DOM, y dos clics casi simultáneos pueden ocurrir antes de
+  // ese render — confirmado con Playwright, seguía duplicando el cliente
+  // incluso con `pending` ya en `true`. Este ref se lee/escribe de forma
+  // síncrona, en el mismo tick del evento, así que sí corta la segunda
+  // invocación aunque el DOM todavía no se haya actualizado.
+  const enviandoRef = useRef(false);
 
   function reset() {
     setActivos({ seo_aeo_geo: false, meta_ads: false, google_ads: false });
@@ -28,19 +37,34 @@ export function NuevoClienteDrawer({ responsables }: { responsables: UsuarioResu
   }
 
   async function onSubmit(formData: FormData) {
+    if (enviandoRef.current) return;
+    enviandoRef.current = true;
     setPending(true);
     setError(null);
+    let res;
     try {
-      const res = await crearCliente(formData);
-      if (!res.ok) {
-        setError(res.error ?? "No se pudo crear el cliente.");
-        return;
-      }
-      setOpen(false);
-      reset();
-    } finally {
+      res = await crearCliente(formData);
+    } catch (err) {
+      // `crearCliente` termina en `redirect()` cuando todo sale bien, lo que
+      // en Next.js se implementa lanzando una excepción especial — hay que
+      // dejarla pasar tal cual (sin tocar `pending`) para que la navegación
+      // real ocurra; el botón se mantiene deshabilitado hasta que la página
+      // cambie. Si en cambio es un error real, recién ahí reactivamos el
+      // formulario para que se pueda reintentar.
+      unstable_rethrow(err);
+      enviandoRef.current = false;
       setPending(false);
+      setError("No se pudo crear el cliente. Intenta de nuevo.");
+      return;
     }
+    if (!res.ok) {
+      enviandoRef.current = false;
+      setPending(false);
+      setError(res.error ?? "No se pudo crear el cliente.");
+      return;
+    }
+    setOpen(false);
+    reset();
   }
 
   return (

@@ -2512,6 +2512,74 @@ vez (el único elegible para el informe combinado).
   rojo agregado en el fix anterior queda como red de seguridad permanente
   para cualquier otro desajuste de esquema futuro, no se revierte.
 
+**Bug real reportado por el usuario — "cuando creo un nuevo cliente se crea
+doble, uno con toda la información... y el otro casi vacío":** causa raíz
+confirmada contra datos reales de producción, no teórica — se encontraron
+dos filas `Luciano Store` creadas con **4.5 segundos de diferencia**,
+mismos datos de contacto y servicios; la que recibió toda la actividad
+posterior (13 ítems de checklist, 1 entrada de bitácora, 2 optimizaciones)
+fue a la que el navegador redirigió; la otra quedó huérfana con 0 de todo,
+exactamente el "casi vacío" que describió el usuario.
+
+- **Causa real, en `NuevoClienteDrawer.tsx`**: `crearCliente` termina en
+  `redirect()` al tener éxito — en Next.js esto se implementa lanzando una
+  excepción especial (`NEXT_REDIRECT`) que el framework intercepta más
+  arriba para navegar. El `onSubmit` del drawer envolvía la llamada en
+  `try { ... } finally { setPending(false) }` — ese `finally` se ejecuta
+  también en el camino exitoso (la excepción pasa por ahí antes de que el
+  framework complete la navegación real), reactivando el botón "Crear
+  cliente" uno o dos segundos *antes* de que la página efectivamente
+  cambie. Si el usuario, impaciente porque "no pasó nada", hace clic de
+  nuevo en esa ventana, dispara una segunda creación completa e idéntica.
+- **Mismo patrón exacto encontrado en otros dos lugares** (ninguno
+  reportado todavía, hallados por grep deliberado tras identificar la
+  causa): `NuevoPromptDrawer.tsx` (`crearPrompt`) y `RegistroSeoView.tsx`
+  (`guardarRegistroSeo`) — ambos envuelven una server action terminada en
+  `redirect()` con el mismo `try/finally`. Corregidos los tres con el
+  mismo criterio: solo reactivar el formulario en los caminos de error
+  reales (`unstable_rethrow(err)` de `next/navigation` deja pasar la
+  excepción del redirect sin tocarla, documentado oficialmente para este
+  caso exacto — catch que también se dispara en el camino de éxito).
+- **Segundo problema real encontrado verificando el fix, más serio que el
+  primero**: un doble clic genuinamente rápido (sin espera entre clics)
+  seguía duplicando el cliente **incluso con el fix de `unstable_rethrow`
+  puesto** — confirmado con Playwright disparando dos clics casi
+  simultáneos. Causa: `disabled={pending}` depende de que React vuelva a
+  renderizar para deshabilitar el botón en el DOM, y dos clics en el mismo
+  tick (antes de ese render) no alcanzan a verlo. Corregido agregando un
+  `useRef(false)` (`enviandoRef`) que se lee/escribe de forma síncrona al
+  entrar a la función — corta la segunda invocación en el mismo tick,
+  sin depender de ningún render. Aplicado a los tres mismos archivos.
+- **Verificado de punta a punta contra Postgres local + Playwright,
+  simulando el doble clic real**: con el fix completo, un doble clic
+  disparado sin espera entre ambos (`Promise.all` de dos `.click()`)
+  genera **una sola fila** (repetido 4 veces seguidas, sin fallos); el
+  escenario que replica la producción (clic, esperar 1.5s, clic de nuevo)
+  confirma que el segundo clic queda **bloqueado** por Playwright porque
+  el botón sigue deshabilitado (`locator.click: Timeout exceeded`), no
+  solo por buena suerte de timing. El camino de error (sin servicio
+  seleccionado) sigue mostrando el mensaje y reactivando el botón
+  correctamente. Typecheck, lint (sin nuevos errores — los 8 de
+  `AjustesView.tsx` son preexistentes) y los 21 tests de vitest en verde.
+  Datos de prueba (clientes sintéticos de la simulación) limpiados de la
+  base local al terminar.
+- **Tercer problema real, distinto, encontrado en el camino — no
+  corregido esta ronda, queda documentado**: después de un error de
+  validación (ej. "Selecciona al menos un servicio"), reintentar sin
+  cerrar el drawer **no reenvía nada** — ni un clic directo sobre el DOM
+  dispara el evento `submit` del formulario una segunda vez. Reproducido
+  contra un build de producción real (`next build && next start`, no
+  `next dev` — se descartó explícitamente que fuera ruido de Fast
+  Refresh) y confirmado que cerrar y reabrir el drawer sí permite
+  reintentar (remonta el `<form>`). Causa probable: una limitación conocida
+  de `<form action={fn}>` de React 19 cuando se envuelve manualmente con
+  `useState` para `pending`/`error` en vez de usar `useActionState` (el
+  hook oficialmente pensado para este patrón) — no se investigó más a
+  fondo ni se corrigió porque un fix ingenuo (remontar el formulario con
+  un `key` que cambie) perdería todo lo que el usuario ya escribió, peor
+  que el bug actual. Afecta potencialmente a los mismos tres formularios
+  del punto anterior. Pendiente de una ronda dedicada.
+
 ---
 
 ## 1. Contexto

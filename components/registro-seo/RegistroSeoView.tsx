@@ -1,7 +1,7 @@
 "use client";
 
-import { useState } from "react";
-import { useRouter } from "next/navigation";
+import { useRef, useState } from "react";
+import { useRouter, unstable_rethrow } from "next/navigation";
 import Link from "next/link";
 import { Sidebar, type SidebarUsuario } from "@/components/layout/Sidebar";
 import type { RegistroSeoDetalle } from "@/lib/data/registro-seo";
@@ -24,6 +24,12 @@ export function RegistroSeoView({
   const [fechaInforme, setFechaInforme] = useState(registro.informeEnviadoEn ?? registro.fechaProgramada);
   const [simulandoError, setSimulandoError] = useState(false);
   const [pending, setPending] = useState(false);
+  // Guard síncrono: `disabled={pending}` no alcanza contra un doble clic
+  // real y rápido en "Guardar", porque depende de que React vuelva a
+  // renderizar para deshabilitar el botón en el DOM (confirmado con
+  // Playwright en NuevoClienteDrawer, mismo patrón). Este ref corta la
+  // segunda invocación en el mismo tick, antes de cualquier render.
+  const enviandoRef = useRef(false);
   const ckDone = registro.checklist.filter((c) => c.completado).length;
 
   async function toggleItem(itemId: string) {
@@ -35,6 +41,8 @@ export function RegistroSeoView({
   }
 
   async function guardar() {
+    if (enviandoRef.current) return;
+    enviandoRef.current = true;
     setPending(true);
     const fd = new FormData();
     fd.set("optimizationId", registro.optimizationId);
@@ -50,7 +58,16 @@ export function RegistroSeoView({
     if (registro.responsableId) fd.set("responsableId", registro.responsableId);
     try {
       await guardarRegistroSeo(fd);
-    } finally {
+      // Solo llega hasta acá si `optimizationId` venía vacío (caso de borde
+      // que no debería pasar desde esta UI) — el camino normal redirige.
+      enviandoRef.current = false;
+      setPending(false);
+    } catch (err) {
+      // Igual que en NuevoClienteDrawer/NuevoPromptDrawer: no reactivar el
+      // botón en el camino exitoso (el `redirect()` lanza esta excepción),
+      // para que un segundo clic mientras navega no duplique el registro.
+      unstable_rethrow(err);
+      enviandoRef.current = false;
       setPending(false);
     }
   }

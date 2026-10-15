@@ -1,18 +1,39 @@
 "use client";
 
-import { useState } from "react";
+import { useRef, useState } from "react";
+import { unstable_rethrow } from "next/navigation";
 import { crearPrompt } from "@/lib/data/prompts-actions";
 import { CATEGORIAS_PROMPT } from "@/lib/prompts-categorias";
 
 export function NuevoPromptDrawer() {
   const [open, setOpen] = useState(false);
   const [pending, setPending] = useState(false);
+  // Guard síncrono: `disabled={pending}` no alcanza contra un doble clic
+  // real y rápido, porque depende de que React vuelva a renderizar para
+  // deshabilitar el botón en el DOM (confirmado con Playwright en
+  // NuevoClienteDrawer, el mismo patrón). Este ref sí corta la segunda
+  // invocación en el mismo tick, antes de cualquier render.
+  const enviandoRef = useRef(false);
 
   async function onSubmit(formData: FormData) {
+    if (enviandoRef.current) return;
+    enviandoRef.current = true;
     setPending(true);
     try {
       await crearPrompt(formData);
-    } finally {
+      // `crearPrompt` redirige al éxito (lanzando una excepción especial de
+      // Next.js, atrapada más abajo) — si llega hasta acá es que la
+      // validación de título/contenido/categoría falló en silencio, no hay
+      // otra forma de saberlo. Reactivamos para poder reintentar.
+      enviandoRef.current = false;
+      setPending(false);
+    } catch (err) {
+      // Dejar pasar la excepción del `redirect()` sin tocar `pending`: el
+      // botón se mantiene deshabilitado hasta que la navegación ocurra, para
+      // que un segundo clic en esa ventana no cree un prompt duplicado
+      // (mismo bug ya corregido en NuevoClienteDrawer).
+      unstable_rethrow(err);
+      enviandoRef.current = false;
       setPending(false);
     }
   }
