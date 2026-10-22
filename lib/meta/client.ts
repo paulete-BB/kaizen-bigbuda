@@ -36,9 +36,35 @@ export interface ResumenInsightsMeta {
   resultados: number;
 }
 
-/** Mismo criterio de "resultado" que usaba el dashboard: prioriza vistas de landing/clics/compras del píxel antes de sumar todas las acciones a ciegas. */
+/**
+ * "Resultado" de una campaña/cuenta de Meta. Pedido explícito del usuario
+ * tras preguntar qué contaba esta función: prioriza las **conversiones
+ * personalizadas marcadas en la cuenta** (`action_type` con el prefijo
+ * `offsite_conversion.custom.<id>` — el evento real que Ads Manager
+ * reporta como "Resultados" cuando la campaña está optimizada hacia una
+ * conversión personalizada, confirmado contra la documentación de la
+ * Graph API de Meta Insights) — es justo lo que el equipo está dejando
+ * bien configurado cliente por cliente, no una señal genérica de
+ * clics/vistas. Si en el período se dispara más de una conversión
+ * personalizada distinta, se toma la de **mayor valor** (no se suman):
+ * sumarlas contaría dos veces al mismo usuario si una es un evento de
+ * embudo más temprano que la otra (ej. "Agregar al carrito" +
+ * "Compra" para la misma persona) — la de mayor valor es la aproximación
+ * más razonable al evento de fondo de embudo real sin consultar el
+ * `optimization_goal` exacto de cada ad set (la agencia no siempre tiene
+ * un solo conjunto de anuncios por campaña). Solo si la cuenta no tiene
+ * ninguna conversión personalizada configurada (o ninguna se disparó en
+ * el período) cae al criterio anterior: landing_page_view/link_click/
+ * compra de píxel, o la suma de todas las acciones si ninguna de esas
+ * tampoco existe — mismo comportamiento que antes para cuentas sin
+ * conversiones personalizadas todavía.
+ */
 function contarResultados(actions: { action_type: string; value: string }[] | undefined): number {
   if (!actions) return 0;
+  const personalizadas = actions.filter((a) => a.action_type.startsWith("offsite_conversion.custom."));
+  if (personalizadas.length > 0) {
+    return Math.max(...personalizadas.map((a) => parseFloat(a.value) || 0));
+  }
   const prioritaria = actions.find(
     (a) => a.action_type === "landing_page_view" || a.action_type === "link_click" || a.action_type === "offsite_conversion.fb_pixel_purchase",
   );

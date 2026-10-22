@@ -2721,6 +2721,54 @@ sigue con el criterio de Meta de siempre — no se tocó).
   varias veces: credenciales reales copiadas temporalmente a una base
   local, nunca commiteadas.
 
+**"Resultados" de Meta Ads prioriza las conversiones personalizadas
+marcadas en la cuenta, no el heurístico de clics/vistas** — pedido
+explícito del usuario en la misma conversación, justo después de
+preguntar qué contaba `contarResultados`: "ahora me estoy preocupando de
+que todos los clientes tengan las conversiones bien marcadas", es decir,
+el equipo está revisando cuenta por cuenta que las conversiones
+personalizadas de Meta estén bien configuradas y quiere que el sistema
+las use como la fuente real del "Resultado", no una señal genérica de
+clics/vistas de landing.
+
+- **`contarResultados`** (`lib/meta/client.ts`) ahora busca primero
+  cualquier `action_type` con el prefijo `offsite_conversion.custom.` (el
+  evento que Ads Manager reporta como "Resultados" cuando una campaña
+  está optimizada hacia una conversión personalizada — confirmado contra
+  la documentación de Meta Insights API, no asumido). Si hay más de una
+  conversión personalizada con actividad en el período, toma la de
+  **mayor valor** en vez de sumarlas — sumar arriesgaría contar dos veces
+  al mismo usuario si una conversión personalizada es un evento de
+  embudo más temprano que otra (ej. "Agregar al carrito" + "Compra" para
+  la misma persona); tomar el máximo es la aproximación más razonable al
+  evento de fondo de embudo real sin consultar el `optimization_goal`
+  exacto de cada ad set (que requeriría llamadas adicionales a la API y
+  no siempre hay un solo ad set por campaña). **Solo si la cuenta no
+  tiene ninguna conversión personalizada configurada** (o ninguna se
+  disparó en el período) cae al criterio anterior
+  (landing_page_view/link_click/compra de píxel, o la suma de todas las
+  acciones) — mismo comportamiento que antes para las cuentas que
+  todavía no tienen conversiones personalizadas marcadas.
+- **Afecta las tres vistas que ya usaban `contarResultados`**, a
+  diferencia de la ronda anterior (que dejó el tile "Resultados" de
+  cuenta explícitamente sin tocar): el tile "Resultados" (nivel cuenta),
+  el fallback de la línea "Conversiones" del gráfico diario (cuando el
+  cliente no tiene `ga4_property_id` configurado), y el fallback de la
+  columna "Conversiones" de la tabla de campañas (mismo caso, sin GA4
+  configurado) — los tres pasan por la misma función, así que el cambio
+  es automático en los tres sin tocar `seccionMeta`.
+- **Sin verificar contra datos reales** (mismo límite de siempre: este
+  entorno no tiene `META_TOKEN`/`META_TOKEN_*`) — en particular, la regla
+  de "tomar el máximo entre varias conversiones personalizadas" es una
+  heurística razonable pero no verificada contra una cuenta real con más
+  de una conversión personalizada activa a la vez; si el equipo encuentra
+  un cliente donde esto da un número que no coincide con lo que ve en
+  Ads Manager, lo más probable es que ese cliente tenga configuradas
+  varias conversiones personalizadas simultáneas y haga falta en cambio
+  resolver el `optimization_goal` real del ad set (llamada adicional a la
+  API, no implementada esta ronda). Typecheck, lint y los 21 tests de
+  vitest en verde.
+
 ---
 
 ## 1. Contexto
