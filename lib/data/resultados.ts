@@ -4,7 +4,9 @@ import { conCacheDeSnapshot } from "@/lib/metricas/snapshot";
 import { obtenerKeywordsGSC, obtenerResumenGSC, obtenerSerieDiariaGSC, type ResumenGSC } from "@/lib/google/gsc";
 import {
   DOMINIOS_IA,
+  obtenerCampanasMetaGA4,
   obtenerCampanasPagadoGA4,
+  obtenerConversionesPaidSocialDiarioGA4,
   obtenerPaginasDestinoIAGA4,
   obtenerTraficoIADiarioGA4,
   obtenerTraficoIAGA4,
@@ -12,7 +14,9 @@ import {
   obtenerTraficoOrganicoGA4,
   obtenerTraficoPagadoDiarioGA4,
   obtenerTraficoPagadoGA4,
+  type CampanaMetaGA4,
   type PuntoDiarioFuenteIA,
+  type PuntoDiarioPaidSocial,
   type ResumenGA4Organico,
   type ResumenTraficoIA,
   type ResumenTraficoPagado,
@@ -547,6 +551,7 @@ async function seccionMeta(
   serviceId: string | null,
   metaAdAccountId: string | null,
   metaTokenKey: string | null,
+  ga4PropertyId: string | null,
   desde: string,
   hasta: string,
   desdeAnt: string,
@@ -558,14 +563,30 @@ async function seccionMeta(
   }
   const config = { adAccountId: metaAdAccountId, metaTokenKey };
   try {
-    const [{ datos: actual, deCache }, { datos: anterior }, serieDiaria, campanas] = await Promise.all([
+    const [{ datos: actual, deCache }, { datos: anterior }, serieDiaria, campanas, campanasGa4, conversionesPaidSocialDiaria] = await Promise.all([
       conCacheDeSnapshot<ResumenInsightsMeta>({ clientId, serviceId, fuente: "meta", periodoInicio: desde, periodoFin: hasta, fetchLive: () => obtenerResumenMeta(config, desde, hasta) }),
       conCacheDeSnapshot<ResumenInsightsMeta>({ clientId, serviceId, fuente: "meta", periodoInicio: desdeAnt, periodoFin: hastaAnt, fetchLive: () => obtenerResumenMeta(config, desdeAnt, hastaAnt) }),
       obtenerSerieDiariaMeta(config, desde, hasta),
       obtenerCampanasMeta(config, desde, hasta, 8),
+      // Conversiones reales (GA4, Paid Social) por campaña y por día — sin
+      // conCacheDeSnapshot: mismo motivo que el desglose de campañas de
+      // Google Ads (otra forma que el resumen actual/anterior de arriba,
+      // cachearla ahí colisionaría). Solo si el cliente tiene GA4 del sitio
+      // configurado (Meta, a diferencia de Google Ads, no tiene una landing
+      // dedicada — apunta al sitio principal); si no, cada rama degrada al
+      // conteo propio de Meta más abajo.
+      ga4PropertyId ? obtenerCampanasMetaGA4(ga4PropertyId, desde, hasta, 20).catch(() => [] as CampanaMetaGA4[]) : Promise.resolve([] as CampanaMetaGA4[]),
+      ga4PropertyId ? obtenerConversionesPaidSocialDiarioGA4(ga4PropertyId, desde, hasta).catch(() => [] as PuntoDiarioPaidSocial[]) : Promise.resolve([] as PuntoDiarioPaidSocial[]),
     ]);
     const costoActual = actual.resultados > 0 ? actual.gasto / actual.resultados : 0;
     const costoAnterior = anterior.resultados > 0 ? anterior.gasto / anterior.resultados : 0;
+    // Match por nombre exacto (normalizado) contra `sessionCampaignName` de
+    // GA4 — depende de que el `utm_campaign` de los links de Meta sea igual
+    // al nombre real de la campaña, mismo supuesto ya aceptado para Google
+    // Ads. Una campaña sin match queda en 0, nunca rompe el render.
+    const normalizar = (s: string) => s.trim().toLowerCase();
+    const conversionesGa4PorCampana = new Map(campanasGa4.map((c) => [normalizar(c.nombre), c.conversiones]));
+    const conversionesPaidSocialPorDia = new Map(conversionesPaidSocialDiaria.map((p) => [p.fecha, p.conversiones]));
     return {
       disponible: true,
       deCache: deCache ? "Datos del último snapshot disponible (la API no respondió)." : null,
@@ -582,9 +603,36 @@ async function seccionMeta(
       // importa comparar es cuánto tráfico genera la campaña vs. cuánto de
       // ese tráfico realmente convierte, no solo cuánto se gastó.
       serie: rellenarDias(desde, hasta, serieDiaria.map((p) => ({ fecha: p.fecha, valor: p.clics }))),
-      serieConversiones: rellenarDias(desde, hasta, serieDiaria.map((p) => ({ fecha: p.fecha, valor: p.resultados }))),
+      // "Conversiones" = conversiones reales de GA4 (Paid Social) + mensajes
+      // de Messenger/WhatsApp iniciados ese día (Meta, nunca generan sesión
+      // en el sitio) — mismo criterio que la tabla de campañas de más abajo.
+      // Sin GA4 del sitio configurado, degrada al conteo de Meta de siempre
+      // (`contarResultados`, nunca rompe el gráfico).
+      serieConversiones: rellenarDias(
+        desde,
+        hasta,
+        serieDiaria.map((p) => ({
+          fecha: p.fecha,
+          valor: ga4PropertyId ? (conversionesPaidSocialPorDia.get(p.fecha) ?? 0) + p.mensajesIniciados : p.resultados,
+        })),
+      ),
       hitos,
-      campanas: armarCampanas(campanas.map((c) => ({ nombre: c.nombre || "(sin nombre)", interacciones: c.clics, conversiones: c.resultados, gastoOCosto: c.gasto }))),
+      campanas: armarCampanas(
+        campanas.map((c) => {
+          const nombre = c.nombre || "(sin nombre)";
+          // Las campañas de mensajería (Messenger/WhatsApp/Instagram Direct)
+          // nunca generan una sesión en el sitio — su "conversión" real es
+          // el propio conteo de Meta, nunca GA4. El resto cruza contra GA4
+          // (conversiones reales del sitio) y, sin GA4 configurado, degrada
+          // al conteo de Meta de siempre.
+          const conversiones = c.esMensajes
+            ? c.mensajesIniciados
+            : ga4PropertyId
+              ? (conversionesGa4PorCampana.get(normalizar(nombre)) ?? 0)
+              : c.resultados;
+          return { nombre, interacciones: c.clics, conversiones, gastoOCosto: c.gasto };
+        }),
+      ),
     };
   } catch {
     return { disponible: false, motivo: "No se pudo obtener datos de Meta para este período.", insight: null, kpis: [], serie: [], serieConversiones: [], hitos: [], campanas: [] };
@@ -696,7 +744,18 @@ export async function obtenerResultadosCliente(clientId: string, rango: RangoRes
       ? seccionAeo(clientId, servicioIdPorTipo.get("seo_aeo_geo")!, cliente.ga4_property_id, organicoPromise, actual.desde, actual.hasta, anterior.desde, anterior.hasta)
       : ({ disponible: false, motivo: "Este cliente no tiene SEO-AEO-GEO contratado.", insight: null, totalSesiones: 0, deltaSesiones: null, tasaConversion: null, tendenciaSemanal: [], paginasDestino: [] } as SeccionAeo),
     servicioIdPorTipo.has("meta_ads")
-      ? seccionMeta(clientId, servicioIdPorTipo.get("meta_ads")!, cliente.meta_ad_account_id, cliente.meta_token_key, actual.desde, actual.hasta, anterior.desde, anterior.hasta, hitosPorTipo.meta_ads)
+      ? seccionMeta(
+          clientId,
+          servicioIdPorTipo.get("meta_ads")!,
+          cliente.meta_ad_account_id,
+          cliente.meta_token_key,
+          cliente.ga4_property_id,
+          actual.desde,
+          actual.hasta,
+          anterior.desde,
+          anterior.hasta,
+          hitosPorTipo.meta_ads,
+        )
       : ({ disponible: false, motivo: "Este cliente no tiene Meta Ads contratado.", insight: null, kpis: [], serie: [], serieConversiones: [], hitos: [], campanas: [] } as SeccionMeta),
     servicioIdPorTipo.has("google_ads")
       ? seccionGoogleAds(clientId, servicioIdPorTipo.get("google_ads")!, cliente.google_ads_ga4_property_id, actual.desde, actual.hasta, anterior.desde, anterior.hasta, hitosPorTipo.google_ads)

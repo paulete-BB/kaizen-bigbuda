@@ -225,6 +225,72 @@ export async function obtenerPaginasDestinoIAGA4(propertyId: string, startDate: 
   }));
 }
 
+function filtroPaidSocial() {
+  return { filter: { fieldName: "sessionDefaultChannelGroup", stringFilter: { matchType: "EXACT" as const, value: "Paid Social" } } };
+}
+
+export interface CampanaMetaGA4 {
+  nombre: string;
+  sesiones: number;
+  conversiones: number;
+}
+
+/**
+ * Conversiones reales (sitio) del tráfico de Meta Ads por campaña, vía GA4
+ * (`sessionDefaultChannelGroup = "Paid Social"`, agrupado por
+ * `sessionCampaignName`) — la agencia prefiere este dato sobre el
+ * "resultado" propio de Meta (`contarResultados`, `lib/meta/client.ts`,
+ * basado en link_click/landing_page_view/compra de píxel) porque es lo que
+ * de verdad convierte en el negocio del cliente, no un proxy. Requiere que
+ * el `utm_campaign` de los links de Meta sea igual al nombre real de la
+ * campaña — mismo supuesto ya usado para Google Ads en
+ * `obtenerCampanasPagadoGA4`; una campaña sin ese match queda en 0, nunca
+ * rompe nada. No aplica a campañas de mensajes (Messenger/WhatsApp/
+ * Instagram Direct): esas no generan sesión en el sitio, así que su
+ * "conversión" sigue viniendo del propio Meta — ver `seccionMeta`.
+ */
+export async function obtenerCampanasMetaGA4(propertyId: string, startDate: string, endDate: string, limit = 20): Promise<CampanaMetaGA4[]> {
+  const data = await consultarGA4(propertyId, {
+    dateRanges: [{ startDate, endDate }],
+    dimensions: [{ name: "sessionCampaignName" }],
+    metrics: [{ name: "sessions" }, { name: "conversions" }],
+    dimensionFilter: filtroPaidSocial(),
+    orderBys: [{ metric: { metricName: "sessions" }, desc: true }],
+    limit,
+  });
+  return (data.rows ?? []).map((r) => ({
+    nombre: r.dimensionValues?.[0]?.value || "(sin nombre)",
+    sesiones: num(r.metricValues?.[0]?.value),
+    conversiones: num(r.metricValues?.[1]?.value),
+  }));
+}
+
+export interface PuntoDiarioPaidSocial {
+  fecha: string;
+  conversiones: number;
+}
+
+/**
+ * Serie diaria de conversiones de GA4 para tráfico "Paid Social" (Meta),
+ * a nivel cuenta — se suma a los mensajes iniciados del día (Meta) para
+ * armar la línea "Conversiones" del gráfico diario de Meta Ads, mismo
+ * criterio que la tabla de campañas (ver `seccionMeta`,
+ * `lib/data/resultados.ts`).
+ */
+export async function obtenerConversionesPaidSocialDiarioGA4(propertyId: string, startDate: string, endDate: string): Promise<PuntoDiarioPaidSocial[]> {
+  const data = await consultarGA4(propertyId, {
+    dateRanges: [{ startDate, endDate }],
+    dimensions: [{ name: "date" }],
+    metrics: [{ name: "conversions" }],
+    dimensionFilter: filtroPaidSocial(),
+    orderBys: [{ dimension: { dimensionName: "date" } }],
+  });
+  return (data.rows ?? []).map((r) => ({
+    fecha: fechaGa4AIso(r.dimensionValues?.[0]?.value ?? ""),
+    conversiones: num(r.metricValues?.[0]?.value),
+  }));
+}
+
 export interface PuntoDiarioPagado {
   fecha: string;
   sesiones: number;

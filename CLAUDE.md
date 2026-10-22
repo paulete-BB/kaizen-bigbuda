@@ -2646,6 +2646,81 @@ el real.
   prueba (clientes y prompts sintéticos de las pruebas) limpiados de la
   base local al terminar; procesos de `next build`/`next start` detenidos.
 
+**"Conversiones" de Meta Ads (tabla por campaña + gráfico diario) pasan a
+venir de GA4, no del conteo propio de Meta** — pedido explícito del
+usuario tras preguntar qué contaba la sección Meta Ads de Resultados como
+"resultado"/"conversión" (`contarResultados`, `lib/meta/client.ts`:
+prioriza `link_click`/`landing_page_view`/compra de píxel, o suma todas
+las acciones a ciegas si ninguna de esas existe). El usuario pidió algo
+más preciso: "Conversiones" debería ser la conversión real del sitio
+(GA4), salvo campañas de mensajes (Messenger/WhatsApp/Instagram Direct),
+donde la conversión real nunca pasa por el sitio y hay que seguir
+mostrando el dato que da Meta (mensajes iniciados). Confirmado con
+`AskUserQuestion` el alcance exacto: tabla de campañas **+** la línea
+"Conversiones" del gráfico diario (no el tile "Resultados" de cuenta, que
+sigue con el criterio de Meta de siempre — no se tocó).
+
+- **`lib/google/ga4.ts`**: `obtenerCampanasMetaGA4` (nuevo) — mismo patrón
+  que `obtenerCampanasPagadoGA4` (Google Ads), pero filtrando
+  `sessionDefaultChannelGroup = "Paid Social"` en vez de
+  `sessionMedium = cpc/paid` (es la clasificación que GA4 ya calcula sola
+  para tráfico de Facebook/Instagram, más robusta que adivinar
+  `sessionSource`/`sessionMedium` exactos cliente por cliente) agrupado
+  por `sessionCampaignName`. `obtenerConversionesPaidSocialDiarioGA4`
+  (nuevo) — mismo filtro, serie diaria de conversiones a nivel cuenta,
+  para la línea del gráfico.
+- **`lib/meta/client.ts`**: `contarMensajesIniciados` (nuevo) — busca
+  `onsite_conversion.messaging_conversation_started_7d` en las acciones de
+  Meta (el "Resultado" que reporta Ads Manager para campañas de mensajes).
+  Detección de "es campaña de mensajes" por presencia de esa acción
+  (`esMensajes: mensajesIniciados > 0`), no por el campo `objective` de la
+  campaña — Meta consolidó los objetivos clásicos en los "Outcome-Driven
+  Ad Experiences" (`OUTCOME_ENGAGEMENT` cubre mensajes y engagement de
+  post a la vez, distinguibles solo por `destination_type`, no siempre
+  presente en la respuesta de insights), así que confiar en qué acción
+  real ocurrió es más robusto que confiar en la taxonomía de objetivos.
+  **Sin verificar contra datos reales de Meta** (este entorno no tiene
+  `META_TOKEN`/`META_TOKEN_*` configurados) — si algún cliente real usa un
+  tipo de acción de mensajería distinto (ej. `onsite_conversion.
+  messaging_conversation_started_7d` variantes de ventana de atribución),
+  revisar contra una cuenta real con campañas de mensajes activas.
+  `PuntoDiarioMeta`/`CampanaMeta` ganan los campos nuevos de forma aditiva
+  (`mensajesIniciados`, `esMensajes`) — no se tocó ningún consumidor
+  existente de estos tipos fuera de `seccionMeta`.
+- **`lib/data/resultados.ts`**, `seccionMeta`: gana el parámetro
+  `ga4PropertyId` (se pasa `cliente.ga4_property_id`, el del sitio
+  principal — a diferencia de Google Ads, Meta no tiene una landing
+  dedicada con su propio GA4, así que reusa el mismo que SEO/AEO). Match
+  por nombre de campaña normalizado (trim + lowercase) entre Meta y
+  `sessionCampaignName` de GA4 — mismo supuesto ya aceptado para Google
+  Ads (`obtenerCampanasPagadoGA4`): depende de que `utm_campaign` en los
+  links de Meta sea igual al nombre real de la campaña; sin match, esa
+  fila queda en 0, nunca rompe el render. Para cada campaña: si
+  `esMensajes`, conversiones = `mensajesIniciados` (Meta); si no, y hay
+  `ga4_property_id` configurado, conversiones = lo que matchee en el mapa
+  de GA4 (o 0 sin match); sin `ga4_property_id` configurado, degrada al
+  criterio de siempre (`contarResultados` de Meta) — nunca dejó de
+  mostrar nada por no tener GA4 configurado. Mismo criterio para la serie
+  diaria: GA4 (Paid Social) del día + mensajes iniciados del día, sumados
+  (son campañas con objetivos mutuamente excluyentes en la práctica — una
+  campaña o maneja tráfico al sitio o conversaciones de mensaje, no
+  ambas a la vez), con el mismo fallback a `contarResultados` sin GA4
+  configurado. Las fetches nuevas a GA4 (campañas y serie diaria) no usan
+  `conCacheDeSnapshot` — mismo motivo ya documentado para el desglose de
+  campañas de Google Ads: tienen una forma distinta al resumen
+  actual/anterior que ya se cachea bajo `(cliente, servicio, fuente:'meta',
+  período)`, cachearlas ahí generaría la misma colisión ya evitada antes.
+- **Sin verificar de punta a punta con datos reales** (ni Meta ni GA4
+  reales en este entorno — mismo límite ya documentado varias veces para
+  todo lo que depende de credenciales OAuth de Google/token de Meta
+  reales): typecheck, lint y los 21 tests de vitest en verde (no se tocó
+  el motor de scheduling, no ameritó tests nuevos — es lógica de
+  transformación de datos externos, no lógica de negocio con reglas
+  propias). Si hace falta confirmar contra un cliente real con Meta +
+  GA4 configurados (ej. Comercial Loyola), repetir el patrón ya usado
+  varias veces: credenciales reales copiadas temporalmente a una base
+  local, nunca commiteadas.
+
 ---
 
 ## 1. Contexto

@@ -46,6 +46,21 @@ function contarResultados(actions: { action_type: string; value: string }[] | un
   return actions.reduce((suma, a) => suma + (parseFloat(a.value) || 0), 0);
 }
 
+/**
+ * Conversaciones de mensajería iniciadas (Messenger/WhatsApp/Instagram
+ * Direct) — el "Resultado" que reporta Meta Ads Manager para campañas con
+ * objetivo de mensajes. A diferencia de link_click/landing_page_view/
+ * compra de píxel, esto ocurre dentro de la propia Meta y nunca genera una
+ * sesión en el sitio del cliente, así que nunca puede cruzarse contra GA4
+ * — ver `seccionMeta` en `lib/data/resultados.ts`, que usa este conteo tal
+ * cual para las campañas de mensajes en vez de las conversiones de GA4.
+ */
+function contarMensajesIniciados(actions: { action_type: string; value: string }[] | undefined): number {
+  if (!actions) return 0;
+  const accion = actions.find((a) => a.action_type === "onsite_conversion.messaging_conversation_started_7d");
+  return accion ? parseFloat(accion.value) || 0 : 0;
+}
+
 function parseResumen(row: Record<string, unknown> | undefined): ResumenInsightsMeta {
   const num = (v: unknown) => (typeof v === "string" ? parseFloat(v) || 0 : 0);
   return {
@@ -83,6 +98,9 @@ export interface CampanaMeta {
   ctr: number;
   cpc: number;
   resultados: number;
+  /** true si la campaña tiene conversaciones de mensajería iniciadas — su "conversión" real nunca llega al sitio (Messenger/WhatsApp/Instagram Direct), así que no se puede cruzar contra GA4. */
+  esMensajes: boolean;
+  mensajesIniciados: number;
 }
 
 export interface PuntoDiarioMeta {
@@ -91,6 +109,8 @@ export interface PuntoDiarioMeta {
   impresiones: number;
   clics: number;
   resultados: number;
+  /** Conversaciones de mensajería iniciadas ese día, a nivel cuenta (suma de todas las campañas de mensajes) — ver `contarMensajesIniciados`. */
+  mensajesIniciados: number;
 }
 
 /** Serie diaria de gasto/clics/resultados (time_increment=1, mismo query shape que el dashboard de referencia) — pestaña Resultados (§3.15), overlay de optimizaciones sobre la serie. */
@@ -107,6 +127,7 @@ export async function obtenerSerieDiariaMeta(config: ConfigMeta, since: string, 
     impresiones: num(row.impressions),
     clics: num(row.clicks),
     resultados: contarResultados(row.actions as { action_type: string; value: string }[] | undefined),
+    mensajesIniciados: contarMensajesIniciados(row.actions as { action_type: string; value: string }[] | undefined),
   }));
 }
 
@@ -121,13 +142,19 @@ export async function obtenerCampanasMeta(config: ConfigMeta, since: string, unt
     token,
   );
   const num = (v: unknown) => (typeof v === "string" ? parseFloat(v) || 0 : 0);
-  return (data.data ?? []).map((row: Record<string, unknown>) => ({
-    nombre: String(row.campaign_name ?? ""),
-    gasto: num(row.spend),
-    impresiones: num(row.impressions),
-    clics: num(row.clicks),
-    ctr: num(row.ctr),
-    cpc: num(row.cpc),
-    resultados: contarResultados(row.actions as { action_type: string; value: string }[] | undefined),
-  }));
+  return (data.data ?? []).map((row: Record<string, unknown>) => {
+    const actions = row.actions as { action_type: string; value: string }[] | undefined;
+    const mensajesIniciados = contarMensajesIniciados(actions);
+    return {
+      nombre: String(row.campaign_name ?? ""),
+      gasto: num(row.spend),
+      impresiones: num(row.impressions),
+      clics: num(row.clicks),
+      ctr: num(row.ctr),
+      cpc: num(row.cpc),
+      resultados: contarResultados(actions),
+      esMensajes: mensajesIniciados > 0,
+      mensajesIniciados,
+    };
+  });
 }
