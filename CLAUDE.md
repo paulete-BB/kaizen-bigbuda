@@ -2646,6 +2646,290 @@ el real.
   prueba (clientes y prompts sintéticos de las pruebas) limpiados de la
   base local al terminar; procesos de `next build`/`next start` detenidos.
 
+**"Conversiones" de Meta Ads (tabla por campaña + gráfico diario) pasan a
+venir de GA4, no del conteo propio de Meta** — pedido explícito del
+usuario tras preguntar qué contaba la sección Meta Ads de Resultados como
+"resultado"/"conversión" (`contarResultados`, `lib/meta/client.ts`:
+prioriza `link_click`/`landing_page_view`/compra de píxel, o suma todas
+las acciones a ciegas si ninguna de esas existe). El usuario pidió algo
+más preciso: "Conversiones" debería ser la conversión real del sitio
+(GA4), salvo campañas de mensajes (Messenger/WhatsApp/Instagram Direct),
+donde la conversión real nunca pasa por el sitio y hay que seguir
+mostrando el dato que da Meta (mensajes iniciados). Confirmado con
+`AskUserQuestion` el alcance exacto: tabla de campañas **+** la línea
+"Conversiones" del gráfico diario (no el tile "Resultados" de cuenta, que
+sigue con el criterio de Meta de siempre — no se tocó).
+
+- **`lib/google/ga4.ts`**: `obtenerCampanasMetaGA4` (nuevo) — mismo patrón
+  que `obtenerCampanasPagadoGA4` (Google Ads), pero filtrando
+  `sessionDefaultChannelGroup = "Paid Social"` en vez de
+  `sessionMedium = cpc/paid` (es la clasificación que GA4 ya calcula sola
+  para tráfico de Facebook/Instagram, más robusta que adivinar
+  `sessionSource`/`sessionMedium` exactos cliente por cliente) agrupado
+  por `sessionCampaignName`. `obtenerConversionesPaidSocialDiarioGA4`
+  (nuevo) — mismo filtro, serie diaria de conversiones a nivel cuenta,
+  para la línea del gráfico.
+- **`lib/meta/client.ts`**: `contarMensajesIniciados` (nuevo) — busca
+  `onsite_conversion.messaging_conversation_started_7d` en las acciones de
+  Meta (el "Resultado" que reporta Ads Manager para campañas de mensajes).
+  Detección de "es campaña de mensajes" por presencia de esa acción
+  (`esMensajes: mensajesIniciados > 0`), no por el campo `objective` de la
+  campaña — Meta consolidó los objetivos clásicos en los "Outcome-Driven
+  Ad Experiences" (`OUTCOME_ENGAGEMENT` cubre mensajes y engagement de
+  post a la vez, distinguibles solo por `destination_type`, no siempre
+  presente en la respuesta de insights), así que confiar en qué acción
+  real ocurrió es más robusto que confiar en la taxonomía de objetivos.
+  **Sin verificar contra datos reales de Meta** (este entorno no tiene
+  `META_TOKEN`/`META_TOKEN_*` configurados) — si algún cliente real usa un
+  tipo de acción de mensajería distinto (ej. `onsite_conversion.
+  messaging_conversation_started_7d` variantes de ventana de atribución),
+  revisar contra una cuenta real con campañas de mensajes activas.
+  `PuntoDiarioMeta`/`CampanaMeta` ganan los campos nuevos de forma aditiva
+  (`mensajesIniciados`, `esMensajes`) — no se tocó ningún consumidor
+  existente de estos tipos fuera de `seccionMeta`.
+- **`lib/data/resultados.ts`**, `seccionMeta`: gana el parámetro
+  `ga4PropertyId` (se pasa `cliente.ga4_property_id`, el del sitio
+  principal — a diferencia de Google Ads, Meta no tiene una landing
+  dedicada con su propio GA4, así que reusa el mismo que SEO/AEO). Match
+  por nombre de campaña normalizado (trim + lowercase) entre Meta y
+  `sessionCampaignName` de GA4 — mismo supuesto ya aceptado para Google
+  Ads (`obtenerCampanasPagadoGA4`): depende de que `utm_campaign` en los
+  links de Meta sea igual al nombre real de la campaña; sin match, esa
+  fila queda en 0, nunca rompe el render. Para cada campaña: si
+  `esMensajes`, conversiones = `mensajesIniciados` (Meta); si no, y hay
+  `ga4_property_id` configurado, conversiones = lo que matchee en el mapa
+  de GA4 (o 0 sin match); sin `ga4_property_id` configurado, degrada al
+  criterio de siempre (`contarResultados` de Meta) — nunca dejó de
+  mostrar nada por no tener GA4 configurado. Mismo criterio para la serie
+  diaria: GA4 (Paid Social) del día + mensajes iniciados del día, sumados
+  (son campañas con objetivos mutuamente excluyentes en la práctica — una
+  campaña o maneja tráfico al sitio o conversaciones de mensaje, no
+  ambas a la vez), con el mismo fallback a `contarResultados` sin GA4
+  configurado. Las fetches nuevas a GA4 (campañas y serie diaria) no usan
+  `conCacheDeSnapshot` — mismo motivo ya documentado para el desglose de
+  campañas de Google Ads: tienen una forma distinta al resumen
+  actual/anterior que ya se cachea bajo `(cliente, servicio, fuente:'meta',
+  período)`, cachearlas ahí generaría la misma colisión ya evitada antes.
+- **Sin verificar de punta a punta con datos reales** (ni Meta ni GA4
+  reales en este entorno — mismo límite ya documentado varias veces para
+  todo lo que depende de credenciales OAuth de Google/token de Meta
+  reales): typecheck, lint y los 21 tests de vitest en verde (no se tocó
+  el motor de scheduling, no ameritó tests nuevos — es lógica de
+  transformación de datos externos, no lógica de negocio con reglas
+  propias). Si hace falta confirmar contra un cliente real con Meta +
+  GA4 configurados (ej. Comercial Loyola), repetir el patrón ya usado
+  varias veces: credenciales reales copiadas temporalmente a una base
+  local, nunca commiteadas.
+
+**"Resultados" de Meta Ads prioriza las conversiones personalizadas
+marcadas en la cuenta, no el heurístico de clics/vistas** — pedido
+explícito del usuario en la misma conversación, justo después de
+preguntar qué contaba `contarResultados`: "ahora me estoy preocupando de
+que todos los clientes tengan las conversiones bien marcadas", es decir,
+el equipo está revisando cuenta por cuenta que las conversiones
+personalizadas de Meta estén bien configuradas y quiere que el sistema
+las use como la fuente real del "Resultado", no una señal genérica de
+clics/vistas de landing.
+
+- **`contarResultados`** (`lib/meta/client.ts`) ahora busca primero
+  cualquier `action_type` con el prefijo `offsite_conversion.custom.` (el
+  evento que Ads Manager reporta como "Resultados" cuando una campaña
+  está optimizada hacia una conversión personalizada — confirmado contra
+  la documentación de Meta Insights API, no asumido). Si hay más de una
+  conversión personalizada con actividad en el período, toma la de
+  **mayor valor** en vez de sumarlas — sumar arriesgaría contar dos veces
+  al mismo usuario si una conversión personalizada es un evento de
+  embudo más temprano que otra (ej. "Agregar al carrito" + "Compra" para
+  la misma persona); tomar el máximo es la aproximación más razonable al
+  evento de fondo de embudo real sin consultar el `optimization_goal`
+  exacto de cada ad set (que requeriría llamadas adicionales a la API y
+  no siempre hay un solo ad set por campaña). **Solo si la cuenta no
+  tiene ninguna conversión personalizada configurada** (o ninguna se
+  disparó en el período) cae al criterio anterior
+  (landing_page_view/link_click/compra de píxel, o la suma de todas las
+  acciones) — mismo comportamiento que antes para las cuentas que
+  todavía no tienen conversiones personalizadas marcadas.
+- **Afecta las tres vistas que ya usaban `contarResultados`**, a
+  diferencia de la ronda anterior (que dejó el tile "Resultados" de
+  cuenta explícitamente sin tocar): el tile "Resultados" (nivel cuenta),
+  el fallback de la línea "Conversiones" del gráfico diario (cuando el
+  cliente no tiene `ga4_property_id` configurado), y el fallback de la
+  columna "Conversiones" de la tabla de campañas (mismo caso, sin GA4
+  configurado) — los tres pasan por la misma función, así que el cambio
+  es automático en los tres sin tocar `seccionMeta`.
+- **Sin verificar contra datos reales** (mismo límite de siempre: este
+  entorno no tiene `META_TOKEN`/`META_TOKEN_*`) — en particular, la regla
+  de "tomar el máximo entre varias conversiones personalizadas" es una
+  heurística razonable pero no verificada contra una cuenta real con más
+  de una conversión personalizada activa a la vez; si el equipo encuentra
+  un cliente donde esto da un número que no coincide con lo que ve en
+  Ads Manager, lo más probable es que ese cliente tenga configuradas
+  varias conversiones personalizadas simultáneas y haga falta en cambio
+  resolver el `optimization_goal` real del ad set (llamada adicional a la
+  API, no implementada esta ronda). Typecheck, lint y los 21 tests de
+  vitest en verde.
+
+**Lista de `/clientes` con información real sin entrar a la ficha** —
+pedido explícito de Marcel (vía Paulete), con dos capturas de un dashboard
+de referencia (sitios con salud/tráfico/autoridad por tarjeta) como
+inspiración. Antes de construir se acordó el alcance con el usuario: (1)
+nada de llamadas en vivo a GSC/GA4/Meta por cliente en esta pantalla —
+mismo criterio ya establecido tras el bug de fan-out de
+Resultados/Gonfernic, multiplicado acá por *todos* los clientes de la
+cartera en cada carga; (2) en vez de comparar dos ventanas (hoy vs. hace 7
+días) para detectar si "bajó" una métrica, se simplificó a imprimir solo
+el número del día más reciente disponible, en las cuatro secciones (SEO,
+AEO, Meta Ads, Google Ads) — mucho menos trabajo y menos ruido visual; (3)
+para Meta Ads, el número que importa es la conversión real del sitio
+(GA4, Paid Social) de ayer, no el conteo propio de Meta — mismo criterio
+ya usado en "Resultados por campaña"; (4) tabla densa, no tarjetas grandes
+como las capturas de referencia — la cartera va a seguir creciendo (~20
+clientes reales hoy) y esto se usa a diario para operar, no para
+impresionar.
+
+- **`lib/metricas/resumen-lista-clientes.ts`** (nuevo) + cron
+  `snapshot-resumen-clientes` (`vercel.json`, 10:00 UTC, antes que los
+  otros tres): guarda, para cada servicio activo con la integración
+  configurada, un snapshot de **un solo día** — SEO vía GSC (día más
+  reciente sin el retraso de procesamiento, `hoy - 3`, mismo criterio que
+  `desplazarParaGsc` en Resultados), AEO vía GA4 (sesiones desde IA de
+  ayer, sin ese retraso), Meta Ads vía GA4 (conversiones Paid Social de
+  ayer — en 0 para campañas de mensajería, que nunca generan sesión en el
+  sitio, mismo límite ya documentado en Resultados). **Google Ads no
+  necesitó nada nuevo**: el cron `snapshot-conversiones-ayer` ya guardaba
+  exactamente este mismo shape (GA4, un día) para ese servicio — la lista
+  solo lee ese snapshot existente. El fetch real va siempre *dentro* de
+  `fetchLive` (no envuelto en un `.catch` afuera) para que una falla real
+  propague y `conCacheDeSnapshot` caiga al último snapshot cacheado en vez
+  de guardar un falso "0 en vivo" — verificado que importa de verdad (ver
+  abajo).
+- **`lib/data/clients.ts`**, `listClientesResumen` reescrita: dos
+  consultas **secuenciales**, no `Promise.all` — mismo fix ya aplicado al
+  Dashboard tras el 504 de producción por agotar el pool del pooler de
+  Supabase. La primera trae, por servicio: vigencia (`services_view.estado`),
+  si está atrasada (`optimizations.estado='programada' and
+  fecha_programada < hoy`, mismo criterio que ya usa el Dashboard) y la
+  fecha del último informe enviado (`reports.enviado_en`, contando también
+  los informes `ads_combinado` para Meta Ads y Google Ads a la vez — sin
+  esto, un cliente con informe combinado habría mostrado "sin informes
+  enviados" en ambas columnas). La segunda trae los cuatro números del día
+  vía `lateral join` contra `metric_snapshots` (mismo patrón ya usado en
+  la alerta "sin conversiones ayer" del Dashboard) — nunca una llamada en
+  vivo.
+- **`components/clientes/ClientesListView.tsx`**: tabla densa en vez de
+  la lista de filas simple anterior — columnas Cliente / Posicionamiento
+  (SEO+AEO) / Meta Ads / Google Ads / Estado. Badges de vigencia
+  (`por_vencer`/`vencido`) y "Atrasada" solo se pintan cuando hay algo que
+  avisar — un servicio `activo` sin atraso no lleva ninguna insignia,
+  mismo criterio de "nunca pintar todo, solo las excepciones" que ya usa
+  `AlertasPanel`. Un servicio no contratado se pinta como un guion apagado
+  (`—`), sin badges.
+- **Bug real propio evitado durante la escritura, no en la verificación**:
+  el primer intento de la rama de Meta Ads envolvía la llamada a GA4 en un
+  `.catch(() => [])` *fuera* de `fetchLive`, antes de pasarle el resultado
+  a `conCacheDeSnapshot` — eso hace que la llamada "nunca falle" desde el
+  punto de vista de `conCacheDeSnapshot`, así que ante una caída real de
+  la API habría guardado `{conversiones: 0}` como si fuera un dato en vivo
+  genuino, pisando silenciosamente el fallback al último snapshot
+  cacheado. Corregido moviendo el fetch real adentro de `fetchLive` antes
+  de escribir una sola línea de prueba — confirmado después contra
+  Postgres local que el comportamiento correcto (caer al snapshot
+  cacheado sin pisarlo con un 0 falso) sí ocurre.
+- Verificado de punta a punta contra Postgres local + `next dev` real +
+  Playwright, logueado como Marcel: con los tres clientes del seed
+  (Filtrocentro solo SEO, Provetec Mining SEO+Google Ads, Tecny Stand
+  Meta Ads+Google Ads sin SEO) y snapshots/informes de prueba insertados a
+  mano (clics GSC, sesiones IA, conversiones Meta/Google, un informe
+  normal y uno `ads_combinado`): la tabla mostró exactamente las columnas
+  esperadas por cliente (guion en las secciones sin servicio, badges
+  "Atrasada"/"Por vencer" donde correspondía, los números de cada
+  snapshot, y el informe `ads_combinado` de Tecny Stand reflejado en
+  **ambas** columnas Meta Ads y Google Ads). El cron nuevo se probó contra
+  el endpoint HTTP real (no invocando la función directo): sin auth y con
+  secret incorrecto devuelve 401; con el secret correcto corrió limpio
+  (`evaluados:3, guardados:5`) y — punto clave — **no insertó ninguna fila
+  nueva** en `metric_snapshots` (seguían siendo las 7 insertadas a mano),
+  confirmando que la llamada en vivo falló (sin credenciales OAuth de
+  Google reales en este entorno, como siempre) y cayó correctamente al
+  snapshot cacheado en vez de pisarlo. Cero errores de consola. Typecheck,
+  lint y los 21 tests de vitest en verde. Datos de prueba revertidos con
+  `npm run db:seed` al terminar; `.env.local` de prueba y proceso de
+  `next dev` eliminados/detenidos.
+- **Falta, pendiente de que el usuario confirme si lo quiere**: los otros
+  cuatro KPIs propuestos (pacing de Ads, aprobaciones sin respuesta,
+  % de onboarding estancado, próxima optimización) — todos ya calculados
+  en la base para otras pantallas, quedarían como un agregado barato a
+  esta misma tabla si se piden.
+
+**Los otros 4 KPIs de la lista de `/clientes`** — pedido explícito del
+usuario ("dale, agrega los otros 4 KPIs también") tras la ronda anterior.
+Los cuatro ya estaban calculados en la base para otras pantallas
+(Dashboard, ficha de cliente) — ninguno necesitó una tabla ni un cron
+nuevo, solo sumarlos a las mismas dos consultas ya existentes de
+`listClientesResumen` (siguen siendo secuenciales, no `Promise.all`).
+
+- **Pacing de Ads** (`ServicioResumenLista.pacing`, solo Meta Ads/Google
+  Ads): `budgets.pacing_pct` del mes en curso, vía `left join` en la
+  misma consulta de snapshots. **No se confía en `budgets.alerta_disparada`**
+  — mismo motivo ya documentado en §3.9 → automático: ese booleano queda
+  desactualizado cuando el gasto real viene de una API en vez de cargarse
+  a mano. En cambio, se recalcula `desviacion = pacing_pct - 100` contra
+  `settings.umbralPacingPct` en el momento, mismo criterio exacto que ya
+  usa `cliente-detalle.ts` para la ficha — así que un valor guardado hace
+  tiempo con un umbral distinto al configurado hoy no muestra un estado
+  incorrecto. Badge "Sobregasto"/"Subgasto" + el % real, solo si está
+  fuera de rango (dentro de rango no pinta nada).
+- **Aprobaciones sin respuesta** (columna "Alertas", nivel cliente, no
+  por servicio — `approvals.service_id` es nullable): `count(*)` contra
+  `approvals_view.estado_efectivo = 'sin_respuesta'`, mismo criterio ya
+  usado en el Dashboard (la vista calcula el estado efectivo sola, sin
+  que nadie lo marque a mano — §4.2).
+- **% de onboarding** (columna "Alertas", nivel cliente): mismo query
+  shape que `getOnboardingCliente` (`lib/data/onboarding.ts`) — items de
+  `checklist_items` de instancias `tipo='onboarding'` del cliente,
+  `completados/total`. **Alcance deliberado, más chico que lo que
+  propuse originalmente**: la idea inicial decía "% de onboarding
+  **estancado**", pero esa detección (un ítem en `solicitado` por más de
+  `settings.diasAlertaOnboarding` días) nunca se construyó en ningún
+  lado del proyecto — ni el Dashboard la tiene pese a que el brief la
+  pide (§3.7/§3.8). Construirla de cero para esta lista habría sido
+  agregar una alerta nueva del sistema sin que el usuario la haya
+  pedido explícitamente. Lo que sí se construyó es el % de avance
+  simple, visible solo mientras el onboarding **no** está 100%
+  completo — ya es información real y útil sin inventar un umbral de
+  "estancamiento" nuevo.
+- **Próxima optimización** (columna propia, nivel cliente — no por
+  servicio, para no repetir la fecha en cada columna de servicio si el
+  cliente tiene varios): `min(fecha_programada)` entre todas las
+  optimizaciones `programada` del cliente con fecha futura, cualquier
+  servicio.
+- **Layout**: dos columnas nuevas ("Próx. optimización", "Alertas") más
+  un badge de pacing dentro de las celdas de Meta Ads/Google Ads
+  (`CeldaServicio` ya tenía espacio para badges de vigencia/atrasada, el
+  de pacing se agregó al mismo lugar). La tabla creció de 6 a 8 columnas
+  — `min-w` de la tabla subido de 920px a 1180px, sigue con scroll
+  horizontal (`overflow-x-auto`, mismo patrón que `TablaCampanas.tsx`).
+- Verificado de punta a punta contra Postgres local + `next dev` real +
+  Playwright, logueado como Marcel, con datos de prueba insertados a
+  mano para los cuatro casos reales: `budgets` con `pacing_pct=140` para
+  Provetec Mining · Google Ads → badge "Sobregasto 140%" (rojo, 140-100=40
+  > umbral 15); `budgets` con `pacing_pct=50` para Tecny Stand · Meta Ads
+  → badge "Subgasto 50%" (ámbar, 50-100=-50 < -15); una aprobación nueva
+  `enviado` hace 6 días para Tecny Stand → "2 aprob. sin respuesta" (1
+  nueva + 1 que ya traía el seed, confirmando que la vista las suma
+  todas, no solo la más reciente); un checklist de onboarding común
+  parcial (3/5 completados) para Filtrocentro → "Onboarding 60%"; una
+  optimización SEO futura (`hoy + 10 días`) para Provetec Mining → "2 nov
+  2026" en la columna de próxima optimización, mientras los otros dos
+  clientes (sin ninguna optimización futura en el seed, todas en el
+  pasado respecto a la fecha real de hoy) mostraron correctamente "—".
+  Confirmado visualmente con dos capturas (una del inicio de la tabla,
+  otra desplazada hasta el final) que los ocho badges se ven correctos,
+  sin solaparse ni romper el layout. Cero errores de consola. Typecheck,
+  lint y los 21 tests de vitest en verde. Datos de prueba revertidos con
+  `npm run db:seed` al terminar; `.env.local` de prueba y procesos de
+  `next dev` eliminados/detenidos.
+
 ---
 
 ## 1. Contexto
