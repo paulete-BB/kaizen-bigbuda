@@ -121,6 +121,8 @@ export async function obtenerResumenMeta(config: ConfigMeta, since: string, unti
 
 export interface CampanaMeta {
   nombre: string;
+  /** ID real de la campaña en Meta — algunas cuentas arman el `utm_campaign` de sus links con este ID en vez del nombre legible, así que GA4 guarda el ID como "Campaña de la sesión" (bug real encontrado con CICCOF: GA4 mostraba "52589306742168" en vez de "CICCOF | Landing → WhatsApp", el cruce por nombre nunca encontraba coincidencia). Se usa como fallback de matching en `seccionMeta`. */
+  id: string;
   gasto: number;
   impresiones: number;
   clics: number;
@@ -164,7 +166,7 @@ export async function obtenerCampanasMeta(config: ConfigMeta, since: string, unt
   const token = resolverTokenMeta(config.metaTokenKey);
   if (!token) throw new Error(config.metaTokenKey ? `META_TOKEN_${config.metaTokenKey} no configurado` : "META_TOKEN no configurado");
 
-  const fields = "campaign_name,spend,impressions,clicks,ctr,cpc,actions";
+  const fields = "campaign_id,campaign_name,spend,impressions,clicks,ctr,cpc,actions";
   const data = await metaFetch(
     `/act_${config.adAccountId}/insights`,
     { fields, time_range: timeRange(since, until), level: "campaign", sort: "spend_descending", limit: String(limite) },
@@ -176,6 +178,7 @@ export async function obtenerCampanasMeta(config: ConfigMeta, since: string, unt
     const mensajesIniciados = contarMensajesIniciados(actions);
     return {
       nombre: String(row.campaign_name ?? ""),
+      id: String(row.campaign_id ?? ""),
       gasto: num(row.spend),
       impresiones: num(row.impressions),
       clics: num(row.clicks),

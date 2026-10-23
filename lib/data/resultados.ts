@@ -593,7 +593,15 @@ async function seccionMeta(
     // Match por nombre exacto (normalizado) contra `sessionCampaignName` de
     // GA4 — depende de que el `utm_campaign` de los links de Meta sea igual
     // al nombre real de la campaña, mismo supuesto ya aceptado para Google
-    // Ads. Una campaña sin match queda en 0, nunca rompe el render.
+    // Ads. **Bug real encontrado con CICCOF**: esa cuenta arma el
+    // `utm_campaign` con el ID de la campaña, no el nombre — GA4 guardaba
+    // literalmente "52589306742168" como "Campaña de la sesión", así que el
+    // match por nombre nunca encontraba nada y la columna quedaba en 0 pese
+    // a haber conversiones reales. El mismo mapa sirve para ambos casos (la
+    // clave es "lo que sea que GA4 haya guardado, normalizado"); al buscar,
+    // se intenta primero por nombre y, si no hay match, por el ID real de la
+    // campaña en Meta. Una campaña sin match en ninguno de los dos queda en
+    // 0, nunca rompe el render.
     const normalizar = (s: string) => s.trim().toLowerCase();
     const conversionesGa4PorCampana = new Map(campanasGa4.map((c) => [normalizar(c.nombre), c.conversiones]));
     const conversionesPaidSocialPorDia = new Map(conversionesPaidSocialDiaria.map((p) => [p.fecha, p.conversiones]));
@@ -639,7 +647,7 @@ async function seccionMeta(
           const conversiones = c.esMensajes
             ? c.mensajesIniciados
             : ga4PropertyId
-              ? (conversionesGa4PorCampana.get(normalizar(nombre)) ?? 0)
+              ? (conversionesGa4PorCampana.get(normalizar(nombre)) ?? conversionesGa4PorCampana.get(normalizar(c.id)) ?? 0)
               : c.resultados;
           return { nombre, interacciones: c.clics, conversiones, gastoOCosto: c.gasto };
         }),

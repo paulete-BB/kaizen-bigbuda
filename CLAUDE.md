@@ -3004,6 +3004,76 @@ etc.) — de ahí el 714 sin relación real con conversiones.
   en producción una vez desplegado. Typecheck, lint y los 21 tests de
   vitest en verde.
 
+**Migración 0018 aplicada contra producción — faltaba, rompía todas las
+fichas de cliente.** El usuario reportó "no puedo entrar a las fichas de
+los clientes" justo después del merge de la ronda anterior: la migración
+`0018_meta_ads_ga4_property.sql` (columna `clients.meta_ads_ga4_property_id`)
+solo se había aplicado contra el Postgres local de esta sandbox, nunca
+contra producción — mismo patrón de bug ya documentado varias veces en
+este archivo (código desplegado que asume un esquema que la base real
+todavía no tiene). `getClienteDetalle` consulta esa columna sin excepción
+al abrir cualquier ficha, así que la consulta fallaba con
+`column does not exist` para **todo** cliente, no solo Fiavelle. Confirmado
+contra `_migrations` real (`select nombre from _migrations order by nombre
+desc limit 5` mostraba hasta `0017`) antes de aplicar nada. Aplicada vía
+`POST /database/query` de la Management API de Supabase (mismo mecanismo
+de siempre) con un token nuevo que compartió el usuario, registrada en
+`_migrations` (18 filas) y verificada con una consulta real idéntica a la
+de `getClienteDetalle` contra tres clientes reales (DNL, Comercial Loyola,
+Filtrocentro) — corrió limpio, confirmando que las fichas volvían a
+funcionar.
+
+**Bug real encontrado con CICCOF, investigado en vivo con el usuario
+(capturas reales de GA4 Explorar) — el cruce de conversiones de Meta Ads
+por campaña compara por nombre contra algo que a veces no es un nombre:**
+tras corregir el GA4 de la landing de Fiavelle, el usuario reportó una
+discrepancia nueva en CICCOF: la campaña "CICCOF | Landing → WhatsApp"
+(790 clics, tráfico real al sitio) mostraba 0 conversiones en Kaizen
+mientras GA4 reportaba 18 eventos clave reales de tráfico Paid Social —
+y la otra campaña del cliente ("WhatsApp directo", sin landing, conteo
+propio de Meta) sí mostraba un número creíble (7, cerca de los ~5
+WhatsApp reales que confirmó la clienta), descartando que el problema
+fuera de ese lado. Se armó junto con el usuario (guiándolo paso a paso
+por la UI de GA4 Explorar, que no conocía) una exploración con la
+dimensión "Campaña de la sesión" filtrada a canal "Paid Social" — la
+tabla resultante mostró **IDs numéricos** ("52589306742168") en vez de
+nombres legibles. Causa real: esta cuenta arma el `utm_campaign` de sus
+links con el ID de la campaña de Meta, no con su nombre — el match por
+nombre normalizado (`normalizar(c.nombre)`, ya usado para Google Ads y
+aceptado como supuesto conocido) nunca iba a encontrar coincidencia
+contra un ID, así que la columna quedaba en 0 aunque hubiera conversiones
+reales — no era un problema de GA4 ni de configuración del cliente, sino
+del supuesto de que `utm_campaign` siempre es el nombre.
+
+- **`lib/meta/client.ts`**: `obtenerCampanasMeta` ahora pide también
+  `campaign_id` en el mismo insights call — `CampanaMeta` gana el campo
+  `id` (el ID real de la campaña en Meta).
+- **`lib/data/resultados.ts`**, `seccionMeta`: el mapa
+  `conversionesGa4PorCampana` (construido desde `sessionCampaignName` de
+  GA4, sea lo que sea que contenga — nombre o ID) ahora se consulta dos
+  veces por campaña: primero por nombre normalizado, y si no hay match,
+  por el ID real de la campaña — cualquiera de los dos formatos que use
+  la cuenta de Meta real encuentra su conversión correspondiente. Sin
+  match en ninguno de los dos, sigue cayendo en 0 (nunca rompe el
+  render), igual que antes.
+- **Alcance deliberado**: no se tocó el matching por nombre de Google Ads
+  (`obtenerCampanasPagadoGA4`/`seccionGoogleAds`) — mismo tipo de riesgo
+  en teoría, pero Google Ads normalmente auto-etiqueta sus URLs
+  (`gclid`) en vez de depender de un `utm_campaign` manual como Meta, así
+  que el perfil de riesgo es distinto y no hay ningún reporte real que lo
+  confirme todavía; se deja documentado acá como sospecha, no como bug
+  confirmado.
+- Verificado por cálculo directo contra los números reales de la captura
+  de GA4 que compartió el usuario (la campaña con más tráfico, id
+  "52589306742168", tenía 24 sesiones/22,14 eventos clave en GA4 — el
+  mismo orden de magnitud que las 790 sesiones reales de "CICCOF |
+  Landing → WhatsApp" en un rango de fechas más amplio) — no se repitió
+  el ritual de Postgres local + Playwright porque es un cambio puro de
+  lógica de matching sin esquema nuevo de por medio, y este entorno sigue
+  sin credenciales reales de Meta/Google para probar la llamada en vivo
+  de todas formas (mismo límite de siempre). Typecheck, lint y los 21
+  tests de vitest en verde.
+
 ---
 
 ## 1. Contexto
