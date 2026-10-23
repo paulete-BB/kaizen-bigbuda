@@ -1,4 +1,10 @@
 import { sql } from "@/lib/db";
+import { getSettings } from "./settings";
+
+export interface PacingResumen {
+  estado: "sobregasto" | "subgasto";
+  pct: number;
+}
 
 export interface ServicioResumenLista {
   tipo: string;
@@ -7,6 +13,8 @@ export interface ServicioResumenLista {
   atrasada: boolean;
   /** Último informe `enviado` de este servicio (cuenta también los informes `ads_combinado`, que cubren Meta + Google a la vez). */
   ultimoInformeEnviado: string | null;
+  /** Solo para Ads: desviación de pacing del mes en curso contra `settings.umbralPacingPct` — `null` si no hay `budgets` para este mes o está dentro de rango (sin nada que avisar). */
+  pacing: PacingResumen | null;
 }
 
 /** Métrica de un solo día — pedido explícito del usuario: nada de comparar ventanas, solo el número del día más reciente disponible. */
@@ -30,6 +38,12 @@ export interface ClienteResumen {
   metaConversionesDia: KpiDiaCliente | null;
   /** Conversiones reales del sitio (GA4, `sessionMedium=cpc/paid` contra la landing de Google Ads) de ayer. */
   googleConversionesDia: KpiDiaCliente | null;
+  /** Fecha de la próxima optimización `programada` (cualquier servicio) — `null` si no hay ninguna futura. */
+  proximaOptimizacion: string | null;
+  /** Cantidad de aprobaciones (`approvals_view.estado_efectivo = 'sin_respuesta'`) de este cliente. */
+  aprobacionesSinRespuesta: number;
+  /** % de onboarding completado — `null` si el cliente no tiene ningún checklist de onboarding instanciado, o si ya está 100% (nada que avisar). */
+  onboardingPct: number | null;
 }
 
 const SERVICE_LABEL: Record<string, string> = {
@@ -43,15 +57,18 @@ export { SERVICE_LABEL };
 /**
  * Lista de clientes con lo necesario para verse sin entrar a la ficha
  * (pedido explícito de Marcel): vigencia por servicio, si la optimización
- * está atrasada, fecha del último informe enviado, y un número de "hoy" por
+ * está atrasada, fecha del último informe enviado, un número de "hoy" por
  * sección (SEO/AEO/Meta Ads/Google Ads) leído de los snapshots que guarda
- * el cron `snapshot-resumen-clientes` — nunca una llamada en vivo a GSC/GA4
- * acá (mismo criterio ya establecido tras el bug de fan-out de
- * Resultados/Gonfernic). Dos consultas separadas y SECUENCIALES, no
- * `Promise.all` — mismo fix ya aplicado al Dashboard tras el 504 de
- * producción por agotar el pool del pooler de Supabase.
+ * el cron `snapshot-resumen-clientes`, pacing de Ads, aprobaciones sin
+ * respuesta, % de onboarding y próxima optimización — todos ya calculados
+ * en la base para otras pantallas (Dashboard, ficha de cliente), ninguno
+ * requiere una llamada en vivo acá. Tres consultas separadas y
+ * SECUENCIALES, no `Promise.all` — mismo fix ya aplicado al Dashboard tras
+ * el 504 de producción por agotar el pool del pooler de Supabase.
  */
 export async function listClientesResumen(): Promise<ClienteResumen[]> {
+  const settings = await getSettings();
+
   const rows = await sql<
     {
       id: string;
@@ -63,6 +80,9 @@ export async function listClientesResumen(): Promise<ClienteResumen[]> {
       responsable_nombre: string | null;
       atrasada: boolean | null;
       ultimo_informe_enviado: string | null;
+      proxima_optimizacion: string | null;
+      aprobaciones_sin_respuesta: string;
+      onboarding_pct: string | null;
     }[]
   >`
     select
@@ -76,7 +96,20 @@ export async function listClientesResumen(): Promise<ClienteResumen[]> {
         select max(r.enviado_en)::date::text from reports r
         where r.client_id = c.id and r.estado = 'enviado' and sv.id is not null
           and (r.tipo::text = sv.tipo::text or (r.tipo::text = 'ads_combinado' and sv.tipo::text in ('meta_ads', 'google_ads')))
-      ) as ultimo_informe_enviado
+      ) as ultimo_informe_enviado,
+      (
+        select min(o.fecha_programada)::text from optimizations o
+        where o.client_id = c.id and o.estado = 'programada' and o.fecha_programada >= current_date
+      ) as proxima_optimizacion,
+      (
+        select count(*) from approvals_view av where av.client_id = c.id and av.estado_efectivo = 'sin_respuesta'
+      ) as aprobaciones_sin_respuesta,
+      (
+        select round(100.0 * count(*) filter (where ci.estado in ('recibido', 'completado')) / nullif(count(*), 0))
+        from checklist_items ci
+        join checklist_instances inst on inst.id = ci.instance_id
+        where inst.client_id = c.id and inst.template_id in (select id from checklist_templates where tipo = 'onboarding')
+      ) as onboarding_pct
     from clients c
     left join services_view sv on sv.client_id = c.id
     left join users u on u.id = sv.responsable_id
@@ -92,13 +125,15 @@ export async function listClientesResumen(): Promise<ClienteResumen[]> {
       ga4_sesiones: number | null;
       ga4_conversiones: number | null;
       ga4_fecha: string | null;
+      pacing_pct: string | null;
     }[]
   >`
     select s.id as service_id, s.tipo,
       (ms_gsc.datos_json->>'clics')::numeric as gsc_valor, ms_gsc.periodo_inicio::text as gsc_fecha,
       (ms_ga4.datos_json->>'totalSesiones')::numeric as ga4_sesiones,
       (ms_ga4.datos_json->>'conversiones')::numeric as ga4_conversiones,
-      ms_ga4.periodo_inicio::text as ga4_fecha
+      ms_ga4.periodo_inicio::text as ga4_fecha,
+      b.pacing_pct
     from services s
     left join lateral (
       select datos_json, periodo_inicio from metric_snapshots ms
@@ -110,15 +145,28 @@ export async function listClientesResumen(): Promise<ClienteResumen[]> {
       where ms.service_id = s.id and ms.fuente = 'ga4' and ms.periodo_inicio = ms.periodo_fin
       order by ms.obtenido_en desc limit 1
     ) ms_ga4 on true
+    left join budgets b on b.service_id = s.id and b.mes = extract(month from current_date) and b.anio = extract(year from current_date)
     where s.tipo in ('seo_aeo_geo', 'meta_ads', 'google_ads') and not s.pausado
   `;
 
-  const kpiPorServicio = new Map<string, { seo?: KpiDiaCliente; aeo?: KpiDiaCliente; metaGoogle?: KpiDiaCliente }>();
+  const kpiPorServicio = new Map<
+    string,
+    { seo?: KpiDiaCliente; aeo?: KpiDiaCliente; metaGoogle?: KpiDiaCliente; pacing?: PacingResumen }
+  >();
   for (const s of snapshots) {
-    const entry: { seo?: KpiDiaCliente; aeo?: KpiDiaCliente; metaGoogle?: KpiDiaCliente } = {};
+    const entry: { seo?: KpiDiaCliente; aeo?: KpiDiaCliente; metaGoogle?: KpiDiaCliente; pacing?: PacingResumen } = {};
     if (s.gsc_valor !== null && s.gsc_fecha) entry.seo = { valor: s.gsc_valor, fecha: s.gsc_fecha };
     if (s.tipo === "seo_aeo_geo" && s.ga4_sesiones !== null && s.ga4_fecha) entry.aeo = { valor: s.ga4_sesiones, fecha: s.ga4_fecha };
     if (s.tipo !== "seo_aeo_geo" && s.ga4_conversiones !== null && s.ga4_fecha) entry.metaGoogle = { valor: s.ga4_conversiones, fecha: s.ga4_fecha };
+    // Mismo criterio que la ficha de cliente (`cliente-detalle.ts`): desviación =
+    // pacing_pct - 100, comparada contra el umbral configurado — no se confía en
+    // `budgets.alerta_disparada` porque queda desactualizado cuando el gasto real
+    // viene de una API en vez de cargarse a mano (ver §3.9 → automático).
+    if (s.pacing_pct !== null) {
+      const desviacion = Number(s.pacing_pct) - 100;
+      if (desviacion > settings.umbralPacingPct) entry.pacing = { estado: "sobregasto", pct: Number(s.pacing_pct) };
+      else if (desviacion < -settings.umbralPacingPct) entry.pacing = { estado: "subgasto", pct: Number(s.pacing_pct) };
+    }
     kpiPorServicio.set(s.service_id, entry);
   }
 
@@ -135,17 +183,21 @@ export async function listClientesResumen(): Promise<ClienteResumen[]> {
         aeoSesionesIADia: null,
         metaConversionesDia: null,
         googleConversionesDia: null,
+        proximaOptimizacion: r.proxima_optimizacion,
+        aprobacionesSinRespuesta: Number(r.aprobaciones_sin_respuesta),
+        onboardingPct: r.onboarding_pct !== null && Number(r.onboarding_pct) < 100 ? Number(r.onboarding_pct) : null,
       });
     }
     const cliente = porCliente.get(r.id)!;
     if (r.tipo && r.service_id) {
+      const kpi = kpiPorServicio.get(r.service_id);
       cliente.servicios.push({
         tipo: r.tipo,
         estado: r.servicio_estado ?? "activo",
         atrasada: !!r.atrasada,
         ultimoInformeEnviado: r.ultimo_informe_enviado,
+        pacing: kpi?.pacing ?? null,
       });
-      const kpi = kpiPorServicio.get(r.service_id);
       if (kpi?.seo) cliente.seoClicksDia = kpi.seo;
       if (kpi?.aeo) cliente.aeoSesionesIADia = kpi.aeo;
       if (kpi?.metaGoogle && r.tipo === "meta_ads") cliente.metaConversionesDia = kpi.metaGoogle;

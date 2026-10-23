@@ -2861,6 +2861,75 @@ impresionar.
   en la base para otras pantallas, quedarían como un agregado barato a
   esta misma tabla si se piden.
 
+**Los otros 4 KPIs de la lista de `/clientes`** — pedido explícito del
+usuario ("dale, agrega los otros 4 KPIs también") tras la ronda anterior.
+Los cuatro ya estaban calculados en la base para otras pantallas
+(Dashboard, ficha de cliente) — ninguno necesitó una tabla ni un cron
+nuevo, solo sumarlos a las mismas dos consultas ya existentes de
+`listClientesResumen` (siguen siendo secuenciales, no `Promise.all`).
+
+- **Pacing de Ads** (`ServicioResumenLista.pacing`, solo Meta Ads/Google
+  Ads): `budgets.pacing_pct` del mes en curso, vía `left join` en la
+  misma consulta de snapshots. **No se confía en `budgets.alerta_disparada`**
+  — mismo motivo ya documentado en §3.9 → automático: ese booleano queda
+  desactualizado cuando el gasto real viene de una API en vez de cargarse
+  a mano. En cambio, se recalcula `desviacion = pacing_pct - 100` contra
+  `settings.umbralPacingPct` en el momento, mismo criterio exacto que ya
+  usa `cliente-detalle.ts` para la ficha — así que un valor guardado hace
+  tiempo con un umbral distinto al configurado hoy no muestra un estado
+  incorrecto. Badge "Sobregasto"/"Subgasto" + el % real, solo si está
+  fuera de rango (dentro de rango no pinta nada).
+- **Aprobaciones sin respuesta** (columna "Alertas", nivel cliente, no
+  por servicio — `approvals.service_id` es nullable): `count(*)` contra
+  `approvals_view.estado_efectivo = 'sin_respuesta'`, mismo criterio ya
+  usado en el Dashboard (la vista calcula el estado efectivo sola, sin
+  que nadie lo marque a mano — §4.2).
+- **% de onboarding** (columna "Alertas", nivel cliente): mismo query
+  shape que `getOnboardingCliente` (`lib/data/onboarding.ts`) — items de
+  `checklist_items` de instancias `tipo='onboarding'` del cliente,
+  `completados/total`. **Alcance deliberado, más chico que lo que
+  propuse originalmente**: la idea inicial decía "% de onboarding
+  **estancado**", pero esa detección (un ítem en `solicitado` por más de
+  `settings.diasAlertaOnboarding` días) nunca se construyó en ningún
+  lado del proyecto — ni el Dashboard la tiene pese a que el brief la
+  pide (§3.7/§3.8). Construirla de cero para esta lista habría sido
+  agregar una alerta nueva del sistema sin que el usuario la haya
+  pedido explícitamente. Lo que sí se construyó es el % de avance
+  simple, visible solo mientras el onboarding **no** está 100%
+  completo — ya es información real y útil sin inventar un umbral de
+  "estancamiento" nuevo.
+- **Próxima optimización** (columna propia, nivel cliente — no por
+  servicio, para no repetir la fecha en cada columna de servicio si el
+  cliente tiene varios): `min(fecha_programada)` entre todas las
+  optimizaciones `programada` del cliente con fecha futura, cualquier
+  servicio.
+- **Layout**: dos columnas nuevas ("Próx. optimización", "Alertas") más
+  un badge de pacing dentro de las celdas de Meta Ads/Google Ads
+  (`CeldaServicio` ya tenía espacio para badges de vigencia/atrasada, el
+  de pacing se agregó al mismo lugar). La tabla creció de 6 a 8 columnas
+  — `min-w` de la tabla subido de 920px a 1180px, sigue con scroll
+  horizontal (`overflow-x-auto`, mismo patrón que `TablaCampanas.tsx`).
+- Verificado de punta a punta contra Postgres local + `next dev` real +
+  Playwright, logueado como Marcel, con datos de prueba insertados a
+  mano para los cuatro casos reales: `budgets` con `pacing_pct=140` para
+  Provetec Mining · Google Ads → badge "Sobregasto 140%" (rojo, 140-100=40
+  > umbral 15); `budgets` con `pacing_pct=50` para Tecny Stand · Meta Ads
+  → badge "Subgasto 50%" (ámbar, 50-100=-50 < -15); una aprobación nueva
+  `enviado` hace 6 días para Tecny Stand → "2 aprob. sin respuesta" (1
+  nueva + 1 que ya traía el seed, confirmando que la vista las suma
+  todas, no solo la más reciente); un checklist de onboarding común
+  parcial (3/5 completados) para Filtrocentro → "Onboarding 60%"; una
+  optimización SEO futura (`hoy + 10 días`) para Provetec Mining → "2 nov
+  2026" en la columna de próxima optimización, mientras los otros dos
+  clientes (sin ninguna optimización futura en el seed, todas en el
+  pasado respecto a la fecha real de hoy) mostraron correctamente "—".
+  Confirmado visualmente con dos capturas (una del inicio de la tabla,
+  otra desplazada hasta el final) que los ocho badges se ven correctos,
+  sin solaparse ni romper el layout. Cero errores de consola. Typecheck,
+  lint y los 21 tests de vitest en verde. Datos de prueba revertidos con
+  `npm run db:seed` al terminar; `.env.local` de prueba y procesos de
+  `next dev` eliminados/detenidos.
+
 ---
 
 ## 1. Contexto

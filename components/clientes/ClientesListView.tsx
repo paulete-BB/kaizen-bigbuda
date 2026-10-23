@@ -65,6 +65,17 @@ function CeldaServicio({
             Atrasada
           </span>
         )}
+        {servicio.pacing && (
+          <span
+            className="rounded-full px-1.5 py-px text-[10px] font-semibold"
+            style={{
+              color: servicio.pacing.estado === "sobregasto" ? "var(--color-danger)" : "var(--color-warning)",
+              background: servicio.pacing.estado === "sobregasto" ? "var(--color-danger-bg)" : "var(--color-warning-bg)",
+            }}
+          >
+            {servicio.pacing.estado === "sobregasto" ? "Sobregasto" : "Subgasto"} {Math.round(servicio.pacing.pct)}%
+          </span>
+        )}
       </div>
       <div className="flex flex-wrap gap-x-3 gap-y-0.5 text-[11.5px] text-muted [font-variant-numeric:tabular-nums]">
         {kpis.map((k) =>
@@ -117,13 +128,15 @@ export function ClientesListView({
         <div className="grid gap-5 px-[26px] pb-10 pt-[22px]" style={{ gridTemplateColumns: "minmax(0,2.3fr) minmax(0,1fr)" }}>
           <div className="overflow-hidden rounded-[14px] border border-border bg-surface">
             <div className="overflow-x-auto">
-              <table className="w-full min-w-[920px] border-collapse text-[12.5px]">
+              <table className="w-full min-w-[1180px] border-collapse text-[12.5px]">
                 <thead>
                   <tr className="border-b border-border text-left text-[10.5px] font-semibold uppercase tracking-[0.06em] text-muted-2">
                     <th className="px-5 py-2.5 font-semibold">Cliente</th>
                     <th className="px-3 py-2.5 font-semibold">Posicionamiento (SEO · AEO)</th>
                     <th className="px-3 py-2.5 font-semibold">Meta Ads</th>
                     <th className="px-3 py-2.5 font-semibold">Google Ads</th>
+                    <th className="px-3 py-2.5 font-semibold">Próx. optimización</th>
+                    <th className="px-3 py-2.5 font-semibold">Alertas</th>
                     <th className="px-3 py-2.5 font-semibold">Estado</th>
                     <th className="w-8 px-3 py-2.5" />
                   </tr>
@@ -161,6 +174,32 @@ export function ClientesListView({
                         </td>
                         <td className="px-3 py-3.5">
                           <CeldaServicio servicio={google} kpis={[{ etiqueta: "Conv.", dato: c.googleConversionesDia }]} />
+                        </td>
+                        <td className="px-3 py-3.5 text-[12px] text-muted">
+                          {c.proximaOptimizacion ? fmtFecha(c.proximaOptimizacion) : <span className="text-faint">—</span>}
+                        </td>
+                        <td className="px-3 py-3.5">
+                          <div className="flex flex-col gap-1">
+                            {c.onboardingPct !== null && (
+                              <span
+                                className="w-fit rounded-full px-1.5 py-px text-[10px] font-semibold"
+                                style={{ color: "var(--color-warning)", background: "var(--color-warning-bg)" }}
+                              >
+                                Onboarding {c.onboardingPct}%
+                              </span>
+                            )}
+                            {c.aprobacionesSinRespuesta > 0 && (
+                              <span
+                                className="w-fit rounded-full px-1.5 py-px text-[10px] font-semibold"
+                                style={{ color: "var(--color-danger)", background: "var(--color-danger-bg)" }}
+                              >
+                                {c.aprobacionesSinRespuesta} aprob. sin respuesta
+                              </span>
+                            )}
+                            {c.onboardingPct === null && c.aprobacionesSinRespuesta === 0 && (
+                              <span className="text-[12px] text-faint">—</span>
+                            )}
+                          </div>
                         </td>
                         <td className="px-3 py-3.5">
                           <span
