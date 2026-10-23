@@ -1,11 +1,35 @@
 import { sql } from "@/lib/db";
 
+export interface ServicioResumenLista {
+  tipo: string;
+  estado: string;
+  /** Hay una optimización `programada` con `fecha_programada` ya pasada — mismo criterio que usa el Dashboard. */
+  atrasada: boolean;
+  /** Último informe `enviado` de este servicio (cuenta también los informes `ads_combinado`, que cubren Meta + Google a la vez). */
+  ultimoInformeEnviado: string | null;
+}
+
+/** Métrica de un solo día — pedido explícito del usuario: nada de comparar ventanas, solo el número del día más reciente disponible. */
+export interface KpiDiaCliente {
+  valor: number;
+  /** Fecha real del dato (no necesariamente "ayer": GSC tiene 2-3 días de retraso de procesamiento). */
+  fecha: string;
+}
+
 export interface ClienteResumen {
   id: string;
   nombre: string;
   estado: "activo" | "pausado" | "finalizado";
-  servicios: { tipo: string; estado: string }[];
+  servicios: ServicioResumenLista[];
   responsables: string[];
+  /** Clics de Search Console del día más reciente disponible — null si el cliente no tiene SEO-AEO-GEO contratado, no tiene GSC configurado, o el cron todavía no guardó ningún snapshot. */
+  seoClicksDia: KpiDiaCliente | null;
+  /** Sesiones desde fuentes de IA (GA4) de ayer — mismos requisitos que `seoClicksDia`. */
+  aeoSesionesIADia: KpiDiaCliente | null;
+  /** Conversiones reales del sitio (GA4, Paid Social) de ayer — en 0 para clientes con campañas de mensajería (Messenger/WhatsApp), que no generan sesión en el sitio. */
+  metaConversionesDia: KpiDiaCliente | null;
+  /** Conversiones reales del sitio (GA4, `sessionMedium=cpc/paid` contra la landing de Google Ads) de ayer. */
+  googleConversionesDia: KpiDiaCliente | null;
 }
 
 const SERVICE_LABEL: Record<string, string> = {
@@ -16,31 +40,117 @@ const SERVICE_LABEL: Record<string, string> = {
 
 export { SERVICE_LABEL };
 
+/**
+ * Lista de clientes con lo necesario para verse sin entrar a la ficha
+ * (pedido explícito de Marcel): vigencia por servicio, si la optimización
+ * está atrasada, fecha del último informe enviado, y un número de "hoy" por
+ * sección (SEO/AEO/Meta Ads/Google Ads) leído de los snapshots que guarda
+ * el cron `snapshot-resumen-clientes` — nunca una llamada en vivo a GSC/GA4
+ * acá (mismo criterio ya establecido tras el bug de fan-out de
+ * Resultados/Gonfernic). Dos consultas separadas y SECUENCIALES, no
+ * `Promise.all` — mismo fix ya aplicado al Dashboard tras el 504 de
+ * producción por agotar el pool del pooler de Supabase.
+ */
 export async function listClientesResumen(): Promise<ClienteResumen[]> {
   const rows = await sql<
     {
       id: string;
       nombre: string;
       estado: "activo" | "pausado" | "finalizado";
+      service_id: string | null;
       tipo: string | null;
       servicio_estado: string | null;
       responsable_nombre: string | null;
+      atrasada: boolean | null;
+      ultimo_informe_enviado: string | null;
     }[]
   >`
-    select c.id, c.nombre, c.estado, sv.tipo, sv.estado as servicio_estado, u.nombre as responsable_nombre
+    select
+      c.id, c.nombre, c.estado,
+      sv.id as service_id, sv.tipo, sv.estado as servicio_estado, u.nombre as responsable_nombre,
+      (sv.id is not null and exists(
+        select 1 from optimizations o
+        where o.service_id = sv.id and o.estado = 'programada' and o.fecha_programada < current_date
+      )) as atrasada,
+      (
+        select max(r.enviado_en)::date::text from reports r
+        where r.client_id = c.id and r.estado = 'enviado' and sv.id is not null
+          and (r.tipo::text = sv.tipo::text or (r.tipo::text = 'ads_combinado' and sv.tipo::text in ('meta_ads', 'google_ads')))
+      ) as ultimo_informe_enviado
     from clients c
     left join services_view sv on sv.client_id = c.id
     left join users u on u.id = sv.responsable_id
     order by c.nombre
   `;
 
+  const snapshots = await sql<
+    {
+      service_id: string;
+      tipo: string;
+      gsc_valor: number | null;
+      gsc_fecha: string | null;
+      ga4_sesiones: number | null;
+      ga4_conversiones: number | null;
+      ga4_fecha: string | null;
+    }[]
+  >`
+    select s.id as service_id, s.tipo,
+      (ms_gsc.datos_json->>'clics')::numeric as gsc_valor, ms_gsc.periodo_inicio::text as gsc_fecha,
+      (ms_ga4.datos_json->>'totalSesiones')::numeric as ga4_sesiones,
+      (ms_ga4.datos_json->>'conversiones')::numeric as ga4_conversiones,
+      ms_ga4.periodo_inicio::text as ga4_fecha
+    from services s
+    left join lateral (
+      select datos_json, periodo_inicio from metric_snapshots ms
+      where ms.service_id = s.id and ms.fuente = 'gsc' and ms.periodo_inicio = ms.periodo_fin
+      order by ms.obtenido_en desc limit 1
+    ) ms_gsc on true
+    left join lateral (
+      select datos_json, periodo_inicio from metric_snapshots ms
+      where ms.service_id = s.id and ms.fuente = 'ga4' and ms.periodo_inicio = ms.periodo_fin
+      order by ms.obtenido_en desc limit 1
+    ) ms_ga4 on true
+    where s.tipo in ('seo_aeo_geo', 'meta_ads', 'google_ads') and not s.pausado
+  `;
+
+  const kpiPorServicio = new Map<string, { seo?: KpiDiaCliente; aeo?: KpiDiaCliente; metaGoogle?: KpiDiaCliente }>();
+  for (const s of snapshots) {
+    const entry: { seo?: KpiDiaCliente; aeo?: KpiDiaCliente; metaGoogle?: KpiDiaCliente } = {};
+    if (s.gsc_valor !== null && s.gsc_fecha) entry.seo = { valor: s.gsc_valor, fecha: s.gsc_fecha };
+    if (s.tipo === "seo_aeo_geo" && s.ga4_sesiones !== null && s.ga4_fecha) entry.aeo = { valor: s.ga4_sesiones, fecha: s.ga4_fecha };
+    if (s.tipo !== "seo_aeo_geo" && s.ga4_conversiones !== null && s.ga4_fecha) entry.metaGoogle = { valor: s.ga4_conversiones, fecha: s.ga4_fecha };
+    kpiPorServicio.set(s.service_id, entry);
+  }
+
   const porCliente = new Map<string, ClienteResumen>();
   for (const r of rows) {
     if (!porCliente.has(r.id)) {
-      porCliente.set(r.id, { id: r.id, nombre: r.nombre, estado: r.estado, servicios: [], responsables: [] });
+      porCliente.set(r.id, {
+        id: r.id,
+        nombre: r.nombre,
+        estado: r.estado,
+        servicios: [],
+        responsables: [],
+        seoClicksDia: null,
+        aeoSesionesIADia: null,
+        metaConversionesDia: null,
+        googleConversionesDia: null,
+      });
     }
     const cliente = porCliente.get(r.id)!;
-    if (r.tipo) cliente.servicios.push({ tipo: r.tipo, estado: r.servicio_estado ?? "activo" });
+    if (r.tipo && r.service_id) {
+      cliente.servicios.push({
+        tipo: r.tipo,
+        estado: r.servicio_estado ?? "activo",
+        atrasada: !!r.atrasada,
+        ultimoInformeEnviado: r.ultimo_informe_enviado,
+      });
+      const kpi = kpiPorServicio.get(r.service_id);
+      if (kpi?.seo) cliente.seoClicksDia = kpi.seo;
+      if (kpi?.aeo) cliente.aeoSesionesIADia = kpi.aeo;
+      if (kpi?.metaGoogle && r.tipo === "meta_ads") cliente.metaConversionesDia = kpi.metaGoogle;
+      if (kpi?.metaGoogle && r.tipo === "google_ads") cliente.googleConversionesDia = kpi.metaGoogle;
+    }
     if (r.responsable_nombre && !cliente.responsables.includes(r.responsable_nombre)) {
       cliente.responsables.push(r.responsable_nombre);
     }

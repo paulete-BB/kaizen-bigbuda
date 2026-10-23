@@ -2769,6 +2769,98 @@ clics/vistas de landing.
   API, no implementada esta ronda). Typecheck, lint y los 21 tests de
   vitest en verde.
 
+**Lista de `/clientes` con información real sin entrar a la ficha** —
+pedido explícito de Marcel (vía Paulete), con dos capturas de un dashboard
+de referencia (sitios con salud/tráfico/autoridad por tarjeta) como
+inspiración. Antes de construir se acordó el alcance con el usuario: (1)
+nada de llamadas en vivo a GSC/GA4/Meta por cliente en esta pantalla —
+mismo criterio ya establecido tras el bug de fan-out de
+Resultados/Gonfernic, multiplicado acá por *todos* los clientes de la
+cartera en cada carga; (2) en vez de comparar dos ventanas (hoy vs. hace 7
+días) para detectar si "bajó" una métrica, se simplificó a imprimir solo
+el número del día más reciente disponible, en las cuatro secciones (SEO,
+AEO, Meta Ads, Google Ads) — mucho menos trabajo y menos ruido visual; (3)
+para Meta Ads, el número que importa es la conversión real del sitio
+(GA4, Paid Social) de ayer, no el conteo propio de Meta — mismo criterio
+ya usado en "Resultados por campaña"; (4) tabla densa, no tarjetas grandes
+como las capturas de referencia — la cartera va a seguir creciendo (~20
+clientes reales hoy) y esto se usa a diario para operar, no para
+impresionar.
+
+- **`lib/metricas/resumen-lista-clientes.ts`** (nuevo) + cron
+  `snapshot-resumen-clientes` (`vercel.json`, 10:00 UTC, antes que los
+  otros tres): guarda, para cada servicio activo con la integración
+  configurada, un snapshot de **un solo día** — SEO vía GSC (día más
+  reciente sin el retraso de procesamiento, `hoy - 3`, mismo criterio que
+  `desplazarParaGsc` en Resultados), AEO vía GA4 (sesiones desde IA de
+  ayer, sin ese retraso), Meta Ads vía GA4 (conversiones Paid Social de
+  ayer — en 0 para campañas de mensajería, que nunca generan sesión en el
+  sitio, mismo límite ya documentado en Resultados). **Google Ads no
+  necesitó nada nuevo**: el cron `snapshot-conversiones-ayer` ya guardaba
+  exactamente este mismo shape (GA4, un día) para ese servicio — la lista
+  solo lee ese snapshot existente. El fetch real va siempre *dentro* de
+  `fetchLive` (no envuelto en un `.catch` afuera) para que una falla real
+  propague y `conCacheDeSnapshot` caiga al último snapshot cacheado en vez
+  de guardar un falso "0 en vivo" — verificado que importa de verdad (ver
+  abajo).
+- **`lib/data/clients.ts`**, `listClientesResumen` reescrita: dos
+  consultas **secuenciales**, no `Promise.all` — mismo fix ya aplicado al
+  Dashboard tras el 504 de producción por agotar el pool del pooler de
+  Supabase. La primera trae, por servicio: vigencia (`services_view.estado`),
+  si está atrasada (`optimizations.estado='programada' and
+  fecha_programada < hoy`, mismo criterio que ya usa el Dashboard) y la
+  fecha del último informe enviado (`reports.enviado_en`, contando también
+  los informes `ads_combinado` para Meta Ads y Google Ads a la vez — sin
+  esto, un cliente con informe combinado habría mostrado "sin informes
+  enviados" en ambas columnas). La segunda trae los cuatro números del día
+  vía `lateral join` contra `metric_snapshots` (mismo patrón ya usado en
+  la alerta "sin conversiones ayer" del Dashboard) — nunca una llamada en
+  vivo.
+- **`components/clientes/ClientesListView.tsx`**: tabla densa en vez de
+  la lista de filas simple anterior — columnas Cliente / Posicionamiento
+  (SEO+AEO) / Meta Ads / Google Ads / Estado. Badges de vigencia
+  (`por_vencer`/`vencido`) y "Atrasada" solo se pintan cuando hay algo que
+  avisar — un servicio `activo` sin atraso no lleva ninguna insignia,
+  mismo criterio de "nunca pintar todo, solo las excepciones" que ya usa
+  `AlertasPanel`. Un servicio no contratado se pinta como un guion apagado
+  (`—`), sin badges.
+- **Bug real propio evitado durante la escritura, no en la verificación**:
+  el primer intento de la rama de Meta Ads envolvía la llamada a GA4 en un
+  `.catch(() => [])` *fuera* de `fetchLive`, antes de pasarle el resultado
+  a `conCacheDeSnapshot` — eso hace que la llamada "nunca falle" desde el
+  punto de vista de `conCacheDeSnapshot`, así que ante una caída real de
+  la API habría guardado `{conversiones: 0}` como si fuera un dato en vivo
+  genuino, pisando silenciosamente el fallback al último snapshot
+  cacheado. Corregido moviendo el fetch real adentro de `fetchLive` antes
+  de escribir una sola línea de prueba — confirmado después contra
+  Postgres local que el comportamiento correcto (caer al snapshot
+  cacheado sin pisarlo con un 0 falso) sí ocurre.
+- Verificado de punta a punta contra Postgres local + `next dev` real +
+  Playwright, logueado como Marcel: con los tres clientes del seed
+  (Filtrocentro solo SEO, Provetec Mining SEO+Google Ads, Tecny Stand
+  Meta Ads+Google Ads sin SEO) y snapshots/informes de prueba insertados a
+  mano (clics GSC, sesiones IA, conversiones Meta/Google, un informe
+  normal y uno `ads_combinado`): la tabla mostró exactamente las columnas
+  esperadas por cliente (guion en las secciones sin servicio, badges
+  "Atrasada"/"Por vencer" donde correspondía, los números de cada
+  snapshot, y el informe `ads_combinado` de Tecny Stand reflejado en
+  **ambas** columnas Meta Ads y Google Ads). El cron nuevo se probó contra
+  el endpoint HTTP real (no invocando la función directo): sin auth y con
+  secret incorrecto devuelve 401; con el secret correcto corrió limpio
+  (`evaluados:3, guardados:5`) y — punto clave — **no insertó ninguna fila
+  nueva** en `metric_snapshots` (seguían siendo las 7 insertadas a mano),
+  confirmando que la llamada en vivo falló (sin credenciales OAuth de
+  Google reales en este entorno, como siempre) y cayó correctamente al
+  snapshot cacheado en vez de pisarlo. Cero errores de consola. Typecheck,
+  lint y los 21 tests de vitest en verde. Datos de prueba revertidos con
+  `npm run db:seed` al terminar; `.env.local` de prueba y proceso de
+  `next dev` eliminados/detenidos.
+- **Falta, pendiente de que el usuario confirme si lo quiere**: los otros
+  cuatro KPIs propuestos (pacing de Ads, aprobaciones sin respuesta,
+  % de onboarding estancado, próxima optimización) — todos ya calculados
+  en la base para otras pantallas, quedarían como un agregado barato a
+  esta misma tabla si se piden.
+
 ---
 
 ## 1. Contexto
