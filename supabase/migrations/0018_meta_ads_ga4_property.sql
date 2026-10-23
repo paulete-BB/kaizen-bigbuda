@@ -1,0 +1,21 @@
+-- Bug real reportado por el usuario (Fiavelle): "Conversiones" de Meta Ads
+-- en la sección Resultados mostraba 714 cuando GA4 reportaba solo 27 para
+-- el mismo tráfico Paid Social. Causa encontrada: `seccionMeta` asumía
+-- (comentario de la migración 0013) que "Meta Ads no tiene este problema
+-- porque se conecta por token" — cierto para las cifras de cuenta/campaña
+-- que vienen de Meta Insights, pero el cruce de "conversiones reales" con
+-- GA4 (agregado después, "Meta Ads: Conversiones viene de GA4") sí
+-- necesita una propiedad GA4 — y Fiavelle, como Google Ads en la migración
+-- 0013, tiene sus campañas de Meta apuntando a una landing propia, no al
+-- sitio principal (`ga4_property_id`). Sin esa propiedad configurada, el
+-- cruce con GA4 nunca se ejecutaba y la columna caía al conteo propio de
+-- Meta (`contarResultados`), que sin una conversión personalizada ni
+-- link_click/landing_page_view reconocible suma TODAS las acciones de la
+-- campaña (vistas de video, engagement, etc.) — de ahí el 714 sin sentido.
+--
+-- A diferencia de Google Ads (sin fallback al GA4 del sitio, porque ahí
+-- el supuesto "apunta al sitio principal" resultó ser casi siempre falso),
+-- para Meta Ads la mayoría de los clientes SÍ mandan tráfico al sitio
+-- principal — este campo es la excepción, opcional, con fallback a
+-- `ga4_property_id` cuando no está configurado (ver `lib/data/resultados.ts`).
+alter table clients add column if not exists meta_ads_ga4_property_id text;

@@ -339,6 +339,7 @@ export async function guardarConfigApis(formData: FormData): Promise<AccionConfi
   const gscProperty = String(formData.get("gscProperty") ?? "").trim();
   const ga4PropertyId = String(formData.get("ga4PropertyId") ?? "").trim();
   const googleAdsGa4PropertyId = String(formData.get("googleAdsGa4PropertyId") ?? "").trim();
+  const metaAdsGa4PropertyId = String(formData.get("metaAdsGa4PropertyId") ?? "").trim();
   const metaAdAccountId = String(formData.get("metaAdAccountId") ?? "").trim().replace(/^act_/, "");
   const fbPageId = String(formData.get("fbPageId") ?? "").trim();
   const igAccountId = String(formData.get("igAccountId") ?? "").trim();
@@ -352,6 +353,7 @@ export async function guardarConfigApis(formData: FormData): Promise<AccionConfi
       gsc_property = ${gscProperty || null},
       ga4_property_id = ${ga4PropertyId || null},
       google_ads_ga4_property_id = ${googleAdsGa4PropertyId || null},
+      meta_ads_ga4_property_id = ${metaAdsGa4PropertyId || null},
       meta_ad_account_id = ${metaAdAccountId || null},
       fb_page_id = ${fbPageId || null},
       ig_account_id = ${igAccountId || null},

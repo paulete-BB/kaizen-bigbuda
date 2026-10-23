@@ -250,6 +250,8 @@ export interface SeccionMeta {
   serieConversiones: PuntoSerie[];
   hitos: Hito[];
   campanas: FilaCampana[];
+  /** Moneda real de la cuenta de Meta (`account_currency`) — cada cuenta se configura en la que el cliente haya elegido, nunca asumible como USD. "USD" acá (sin `disponible`) es solo un placeholder sin dato real detrás. */
+  moneda: string;
 }
 
 export interface SeccionGoogleAds {
@@ -551,6 +553,14 @@ async function seccionMeta(
   serviceId: string | null,
   metaAdAccountId: string | null,
   metaTokenKey: string | null,
+  // El caller ya resuelve `meta_ads_ga4_property_id ?? ga4_property_id` —
+  // a diferencia de Google Ads (sin fallback, porque ahí el supuesto
+  // "apunta al sitio principal" resultó casi siempre falso), la mayoría de
+  // los clientes de Meta Ads sí manda tráfico al sitio, así que el campo
+  // dedicado es la excepción (bug real: Fiavelle manda Meta a una landing
+  // propia sin `ga4_property_id` configurado, y sin este fallback el cruce
+  // de conversiones nunca corría — caía al conteo de Meta, que sin una
+  // conversión reconocible suma todas las acciones de la campaña).
   ga4PropertyId: string | null,
   desde: string,
   hasta: string,
@@ -559,7 +569,7 @@ async function seccionMeta(
   hitos: Hito[],
 ): Promise<SeccionMeta> {
   if (!metaAdAccountId) {
-    return { disponible: false, motivo: "Configura el Ad Account ID de Meta en la ficha del cliente.", insight: null, kpis: [], serie: [], serieConversiones: [], hitos: [], campanas: [] };
+    return { disponible: false, motivo: "Configura el Ad Account ID de Meta en la ficha del cliente.", insight: null, kpis: [], serie: [], serieConversiones: [], hitos: [], campanas: [], moneda: "USD" };
   }
   const config = { adAccountId: metaAdAccountId, metaTokenKey };
   try {
@@ -591,10 +601,11 @@ async function seccionMeta(
       disponible: true,
       deCache: deCache ? "Datos del último snapshot disponible (la API no respondió)." : null,
       insight: insightAds(delta(costoActual, costoAnterior, true), delta(actual.resultados, anterior.resultados)),
+      moneda: actual.moneda,
       kpis: [
-        { etiqueta: "Inversión", valor: fmtMoneda(actual.gasto), delta: delta(actual.gasto, anterior.gasto) },
+        { etiqueta: "Inversión", valor: fmtMoneda(actual.gasto, actual.moneda), delta: delta(actual.gasto, anterior.gasto) },
         { etiqueta: "Resultados", valor: fmtNumero(actual.resultados), delta: delta(actual.resultados, anterior.resultados) },
-        { etiqueta: "Costo por resultado", valor: fmtMoneda(costoActual), delta: delta(costoActual, costoAnterior, true) },
+        { etiqueta: "Costo por resultado", valor: fmtMoneda(costoActual, actual.moneda), delta: delta(costoActual, costoAnterior, true) },
         { etiqueta: "CTR", valor: `${actual.ctr.toFixed(2)}%`, delta: delta(actual.ctr, anterior.ctr) },
         { etiqueta: "Alcance", valor: fmtNumero(actual.alcance), delta: delta(actual.alcance, anterior.alcance) },
       ],
@@ -635,7 +646,7 @@ async function seccionMeta(
       ),
     };
   } catch {
-    return { disponible: false, motivo: "No se pudo obtener datos de Meta para este período.", insight: null, kpis: [], serie: [], serieConversiones: [], hitos: [], campanas: [] };
+    return { disponible: false, motivo: "No se pudo obtener datos de Meta para este período.", insight: null, kpis: [], serie: [], serieConversiones: [], hitos: [], campanas: [], moneda: "USD" };
   }
 }
 
@@ -709,10 +720,11 @@ export async function obtenerResultadosCliente(clientId: string, rango: RangoRes
         gsc_property: string | null;
         ga4_property_id: string | null;
         google_ads_ga4_property_id: string | null;
+        meta_ads_ga4_property_id: string | null;
         meta_ad_account_id: string | null;
         meta_token_key: string | null;
       }[]
-    >`select nombre, gsc_property, ga4_property_id, google_ads_ga4_property_id, meta_ad_account_id, meta_token_key from clients where id = ${clientId}`,
+    >`select nombre, gsc_property, ga4_property_id, google_ads_ga4_property_id, meta_ads_ga4_property_id, meta_ad_account_id, meta_token_key from clients where id = ${clientId}`,
     sql<{ id: string; tipo: ServicioTipo }[]>`select id, tipo from services where client_id = ${clientId} and not pausado`,
     obtenerTodosLosHitos(clientId, actual.desde, actual.hasta),
   ]);
@@ -749,14 +761,14 @@ export async function obtenerResultadosCliente(clientId: string, rango: RangoRes
           servicioIdPorTipo.get("meta_ads")!,
           cliente.meta_ad_account_id,
           cliente.meta_token_key,
-          cliente.ga4_property_id,
+          cliente.meta_ads_ga4_property_id ?? cliente.ga4_property_id,
           actual.desde,
           actual.hasta,
           anterior.desde,
           anterior.hasta,
           hitosPorTipo.meta_ads,
         )
-      : ({ disponible: false, motivo: "Este cliente no tiene Meta Ads contratado.", insight: null, kpis: [], serie: [], serieConversiones: [], hitos: [], campanas: [] } as SeccionMeta),
+      : ({ disponible: false, motivo: "Este cliente no tiene Meta Ads contratado.", insight: null, kpis: [], serie: [], serieConversiones: [], hitos: [], campanas: [], moneda: "USD" } as SeccionMeta),
     servicioIdPorTipo.has("google_ads")
       ? seccionGoogleAds(clientId, servicioIdPorTipo.get("google_ads")!, cliente.google_ads_ga4_property_id, actual.desde, actual.hasta, anterior.desde, anterior.hasta, hitosPorTipo.google_ads)
       : ({ disponible: false, motivo: "Este cliente no tiene Google Ads contratado.", insight: null, kpis: [], serie: [], hitos: [], campanas: [] } as SeccionGoogleAds),

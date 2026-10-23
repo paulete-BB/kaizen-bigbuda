@@ -11,6 +11,7 @@ export function IntegracionesPanel({ clientId, configApis }: { clientId: string;
     gscProperty: configApis.gscProperty ?? "",
     ga4PropertyId: configApis.ga4PropertyId ?? "",
     googleAdsGa4PropertyId: configApis.googleAdsGa4PropertyId ?? "",
+    metaAdsGa4PropertyId: configApis.metaAdsGa4PropertyId ?? "",
     metaAdAccountId: configApis.metaAdAccountId ?? "",
     fbPageId: configApis.fbPageId ?? "",
     igAccountId: configApis.igAccountId ?? "",
@@ -66,6 +67,12 @@ export function IntegracionesPanel({ clientId, configApis }: { clientId: string;
             onChange={(v) => set("googleAdsGa4PropertyId", v)}
             placeholder="Solo si las campañas apuntan a una landing con GA4 propio"
           />
+          <Campo
+            label="GA4 Property ID (landing de Meta Ads)"
+            value={draft.metaAdsGa4PropertyId}
+            onChange={(v) => set("metaAdsGa4PropertyId", v)}
+            placeholder="Solo si Meta Ads no apunta al sitio principal — si no, se usa el de arriba"
+          />
           <Campo label="Meta Ad Account ID" value={draft.metaAdAccountId} onChange={(v) => set("metaAdAccountId", v)} placeholder="act_123456789 o 123456789" />
           <Campo label="Facebook Page ID" value={draft.fbPageId} onChange={(v) => set("fbPageId", v)} placeholder="" />
           <Campo label="Instagram Account ID" value={draft.igAccountId} onChange={(v) => set("igAccountId", v)} placeholder="" />
@@ -79,7 +86,10 @@ export function IntegracionesPanel({ clientId, configApis }: { clientId: string;
         <p className="text-[11px] text-muted-2">
           La sección Google Ads (informes y Resultados) usa la propiedad de la landing si está configurada; si no, no
           muestra datos de Google Ads — las campañas de Google Ads no apuntan al sitio principal, así que reusar esa
-          propiedad daba números que no coincidían con Google Ads directo.
+          propiedad daba números que no coincidían con Google Ads directo. Meta Ads es al revés: casi siempre apunta al
+          sitio principal (arriba), así que el campo de su landing es opcional — complétalo solo si este cliente en
+          particular manda las campañas de Meta a una landing propia (sin ese dato, el cruce de conversiones reales con
+          GA4 cae al conteo de Meta, que puede no ser preciso).
         </p>
         <div className="flex items-center gap-3">
           <button onClick={guardar} disabled={pending} className="btn-primary self-start rounded-lg border-none bg-accent px-4 py-2 text-[12.5px] font-semibold text-white disabled:opacity-60">

@@ -44,9 +44,10 @@ export async function snapshotResumenListaClientes(): Promise<ResultadoSnapshotR
       tipo: "seo_aeo_geo" | "meta_ads" | "google_ads";
       gsc_property: string | null;
       ga4_property_id: string | null;
+      meta_ads_ga4_property_id: string | null;
     }[]
   >`
-    select s.id as service_id, s.client_id, s.tipo, c.gsc_property, c.ga4_property_id
+    select s.id as service_id, s.client_id, s.tipo, c.gsc_property, c.ga4_property_id, c.meta_ads_ga4_property_id
     from services s join clients c on c.id = s.client_id
     where s.tipo in ('seo_aeo_geo', 'meta_ads') and not s.pausado
     limit ${LOTE}
@@ -86,7 +87,12 @@ export async function snapshotResumenListaClientes(): Promise<ResultadoSnapshotR
         // Campañas de mensajería (Messenger/WhatsApp) no generan sesión en
         // el sitio, así que quedan en 0 acá — mismo límite ya documentado en
         // Resultados, aceptado a propósito para mantener esto simple.
-        if (s.ga4_property_id) {
+        // `meta_ads_ga4_property_id` con fallback a `ga4_property_id`,
+        // mismo criterio que `seccionMeta` en lib/data/resultados.ts (bug
+        // real: Fiavelle manda Meta Ads a una landing propia, sin este
+        // fallback nunca se intentaba la llamada para ese caso).
+        const ga4ParaMeta = s.meta_ads_ga4_property_id ?? s.ga4_property_id;
+        if (ga4ParaMeta) {
           // El fetch real va DENTRO de `fetchLive`: si la llamada a GA4 falla,
           // tiene que propagar la excepción para que `conCacheDeSnapshot`
           // caiga al último snapshot cacheado — envolverlo en un .catch acá
@@ -99,7 +105,7 @@ export async function snapshotResumenListaClientes(): Promise<ResultadoSnapshotR
             periodoInicio: ayer,
             periodoFin: ayer,
             fetchLive: async () => {
-              const [punto] = await obtenerConversionesPaidSocialDiarioGA4(s.ga4_property_id!, ayer, ayer);
+              const [punto] = await obtenerConversionesPaidSocialDiarioGA4(ga4ParaMeta, ayer, ayer);
               return { conversiones: punto?.conversiones ?? 0 };
             },
           });

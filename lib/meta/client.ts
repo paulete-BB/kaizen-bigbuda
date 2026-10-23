@@ -34,6 +34,8 @@ export interface ResumenInsightsMeta {
   cpm: number;
   alcance: number;
   resultados: number;
+  /** Moneda real de la cuenta de ads (`account_currency`, pedido en el mismo insights call) — no hay un default razonable entre clientes: cada cuenta de Meta se configura en la moneda que el cliente eligió al crearla (USD, CLP, u otra), nunca asumible. */
+  moneda: string;
 }
 
 /**
@@ -98,6 +100,7 @@ function parseResumen(row: Record<string, unknown> | undefined): ResumenInsights
     cpm: num(row?.cpm),
     alcance: num(row?.reach),
     resultados: contarResultados(row?.actions as { action_type: string; value: string }[] | undefined),
+    moneda: typeof row?.account_currency === "string" ? row.account_currency : "USD",
   };
 }
 
@@ -111,7 +114,7 @@ export async function obtenerResumenMeta(config: ConfigMeta, since: string, unti
   const token = resolverTokenMeta(config.metaTokenKey);
   if (!token) throw new Error(config.metaTokenKey ? `META_TOKEN_${config.metaTokenKey} no configurado` : "META_TOKEN no configurado");
 
-  const fields = "spend,impressions,clicks,ctr,cpc,cpm,reach,actions";
+  const fields = "spend,impressions,clicks,ctr,cpc,cpm,reach,actions,account_currency";
   const data = await metaFetch(`/act_${config.adAccountId}/insights`, { fields, time_range: timeRange(since, until), level: "account" }, token);
   return parseResumen(data.data?.[0]);
 }

@@ -188,7 +188,7 @@ export function ResultadosView({
             {data.meta.campanas.length > 0 && (
               <div>
                 <div className="mb-2 text-[11.5px] font-semibold text-muted">Resultados por campaña</div>
-                <TablaCampanas filas={data.meta.campanas} etiquetaInteracciones="Clics" moneda="USD" />
+                <TablaCampanas filas={data.meta.campanas} etiquetaInteracciones="Clics" moneda={data.meta.moneda} />
               </div>
             )}
           </Panel>
