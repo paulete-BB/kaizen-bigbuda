@@ -19,6 +19,8 @@ export interface ItemBloque {
   gastoAcumulado: number | null;
   pacingPct: number | null;
   alertaDisparada: boolean;
+  /** Estado de la sesión con el agente de optimización, si ya se inició una. */
+  agenteEstado: "en_curso" | "cerrada" | null;
   checklist: ChecklistItemBloque[];
 }
 
@@ -70,16 +72,18 @@ export async function getBloqueDelDia(fecha: string): Promise<ItemBloque[]> {
       gasto_acumulado: number | null;
       pacing_pct: number | null;
       alerta_disparada: boolean | null;
+      agente_estado: "en_curso" | "cerrada" | null;
     }[]
   >`
     select o.id as optimization_id, c.id as client_id, c.nombre as cliente_nombre, o.service_id, o.tipo,
            o.estado, o.resumen, u.nombre as responsable_nombre,
-           b.presupuesto, b.gasto_acumulado, b.pacing_pct, b.alerta_disparada
+           b.presupuesto, b.gasto_acumulado, b.pacing_pct, b.alerta_disparada, ag.estado as agente_estado
     from optimizations o
     join clients c on c.id = o.client_id
     left join users u on u.id = o.responsable_id
     left join budgets b on b.service_id = o.service_id
       and b.mes = extract(month from o.fecha_programada) and b.anio = extract(year from o.fecha_programada)
+    left join agent_sessions ag on ag.optimization_id = o.id
     where o.fecha_programada = ${fecha} and o.tipo != 'seo_aeo_geo'
     order by c.nombre, o.tipo
   `;
@@ -100,6 +104,7 @@ export async function getBloqueDelDia(fecha: string): Promise<ItemBloque[]> {
       gastoAcumulado: r.gasto_acumulado,
       pacingPct: r.pacing_pct,
       alertaDisparada: r.alerta_disparada ?? false,
+      agenteEstado: r.agente_estado,
       checklist,
     });
   }

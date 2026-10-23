@@ -3074,6 +3074,65 @@ del supuesto de que `utm_campaign` siempre es el nombre.
   de todas formas (mismo límite de siempre). Typecheck, lint y los 21
   tests de vitest en verde.
 
+**Agente de optimización de Ads — Fase 1 (lectura + plan + chat)**, pedido
+explícito del usuario: un botón "Iniciar optimización" en cada servicio del
+bloque de Ads que abre una sesión con un agente de Claude que revisa el
+historial, audita la cuenta, arma un plan priorizado de la semana y sigue
+conversando para dejar todo listo; el resumen que se confirma es lo que va a
+la bitácora. Plan completo y fases en `docs/plan-agente-optimizacion.md`
+(decisiones del usuario: Meta + API real de Google Ads a futuro, el agente
+propone y ejecuta con aprobación por acción en una fase posterior, Ads
+primero, SEO después, chat dentro de la optimización).
+
+- **Migración `0019_agente_optimizacion.sql`** (`agent_sessions` — plan en
+  `jsonb`, borradores de resumen/hallazgos, `procesando_desde` como
+  bloqueo contra dos turnos simultáneos — y `agent_messages`, con el
+  contenido en el formato de bloques de la API). **NO aplicada contra
+  producción**: sin token de Management API en esta ronda. Sin ella el
+  botón rompe (misma trampa de siempre) — aplicarla antes de dar por
+  desplegado el feature.
+- **Memoria de las últimas optimizaciones**: `construirMensajeInicial`
+  (`lib/agente/contexto.ts`) mete en el primer mensaje, por código y no
+  por buena voluntad del modelo, las últimas 5 optimizaciones realizadas
+  del servicio (resumen, hallazgos, próximos pasos, y el plan estructurado
+  de cada sesión con el estado de cada ítem) más los pendientes heredados;
+  si hay menos de 3, avisa. Lo que queda abierto en el plan al cerrar
+  (`pendiente`: acciones, "esperar_datos" con fecha de revisión) se guarda
+  en `optimizations.proximos_pasos`, así la próxima sesión lo encuentra.
+- **Agente** (`lib/agente/loop.ts`): loop manual con `@anthropic-ai/sdk`
+  (`claude-opus-5-5`, override con `AGENTE_MODEL`, esfuerzo `high`), cada
+  mensaje se guarda apenas termina; un turno cortado a medias se repara
+  al reanudar (tool_use huérfanos). Herramientas de **solo lectura**
+  (`lib/agente/herramientas.ts`): historial, bitácora/reuniones, pacing,
+  aprobaciones abiertas, Meta (cuenta/campañas/serie diaria), GA4
+  Paid Social por campaña, y para Google Ads el proxy de GA4 — con la
+  limitación declarada en el prompt. Más `guardar_plan` y
+  `guardar_resumen` internas. Ninguna escribe en Meta/Google.
+- **Ruta de streaming** `app/api/agente/[sessionId]/mensaje` (NDJSON,
+  `maxDuration = 300`): requiere que el plan de Vercel permita 300 s.
+- **UI**: `/optimizaciones/[id]/agente` (chat + plan lateral con
+  marcar hecha/descartar + resumen editable + cierre). El botón sale en
+  `BloqueCard` ("Iniciar optimización con el agente" / "Continuar").
+- **Cierre compartido**: la lógica de "Completar servicio" se extrajo a
+  `lib/data/optimizacion-ads-completar.ts` y la usan el bloque y el cierre
+  con el agente (bitácora interna + ClickUp con `after()`, cierre de la
+  tarea, próxima semana, que nunca cae en el pasado si se cerró tarde).
+  Efecto colateral deliberado: "Completar servicio" ahora también
+  sincroniza la bitácora a ClickUp en el momento (antes quedaba
+  `pendiente_sync` hasta el cron diario).
+- **Verificado** contra Postgres local + `next dev` + Playwright con un
+  mock de la API de Anthropic (`ANTHROPIC_BASE_URL`; este entorno tiene la
+  variable apuntando a la API real, hay que pasarla por el shell al
+  levantar Next, `.env.local` no la pisa): iniciar → el agente responde y
+  usa herramientas → plan en el panel → pedir resumen → marcar hecha →
+  cerrar; la base queda con la optimización `realizada`, hallazgos y
+  próximos pasos guardados, bitácora creada y sesión `cerrada`. **No
+  probado contra la API real de Anthropic, Meta ni GA4** (sin
+  credenciales en este entorno) — falta que el usuario lo pruebe en
+  producción. Typecheck, lint y 21 tests en verde.
+- **Falta (Fases 2-3)**: API real de Google Ads (requiere developer token
+  de Google), ejecución de cambios con aprobación por acción, SEO.
+
 ---
 
 ## 1. Contexto
