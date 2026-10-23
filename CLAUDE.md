@@ -2930,6 +2930,80 @@ nuevo, solo sumarlos a las mismas dos consultas ya existentes de
   `npm run db:seed` al terminar; `.env.local` de prueba y procesos de
   `next dev` eliminados/detenidos.
 
+**Bug real reportado por el usuario — Meta Ads mostraba montos en USD
+aunque la cuenta real está en pesos chilenos:** `fmtMoneda` (pestaña
+Resultados, tabla de campañas, pre-llenado de informes de Ads) tenía
+`"USD"` fijo como default para Meta en los tres lugares — nunca se leía
+la moneda real de la cuenta de ads. Corregido pidiendo `account_currency`
+en el mismo insights call de Meta (`obtenerResumenMeta`,
+`lib/meta/client.ts`) y propagándolo como `ResumenInsightsMeta.moneda` —
+usado ahora en los KPIs de "¿Cómo vamos?", la tabla de campañas (antes
+`moneda="USD"` fijo en `ResultadosView.tsx`) y el pre-llenado de
+"Inversión"/"Costo por resultado" del informe de Ads (individual y
+combinado, `lib/informes/prellenado-apis.ts`). Google Ads no se tocó
+(sigue en CLP vía GA4, sin cambios). Typecheck, lint y los 21 tests de
+vitest en verde.
+
+**Bug real reportado por el usuario — "Conversiones" de Meta Ads en
+Resultados mostraba números sin sentido (714 para una campaña con 740
+clics, cuando GA4 real reportaba solo 27 eventos clave para todo el
+tráfico Paid Social del cliente):** investigación en varias rondas con
+el usuario (vía `AskUserQuestion`) descartando hipótesis una por una —
+no era un evento ruidoso mal marcado en GA4 (el usuario confirmó que 27
+es el total real agregado, no una suma manual parcial), no era un nombre
+de campaña reusado en el tiempo (la campaña de prueba tenía 2 días),
+no era otra plataforma social contaminando "Paid Social" por coincidencia
+de nombre — hasta llegar a la causa real: el cliente en cuestión
+(Fiavelle) tiene sus campañas de Meta Ads apuntando a una **landing
+propia**, no al sitio principal, y tenía el ID de esa landing cargado en
+el campo "GA4 Property ID (landing de Google Ads)" por ser el único
+campo de "landing" disponible en la ficha — pero Fiavelle no tiene Google
+Ads contratado, solo Meta. `seccionMeta` (`lib/data/resultados.ts`) solo
+leía `ga4_property_id` (el del sitio principal) para el cruce de
+conversiones de Meta, asumiendo (como documentaba la migración 0013) que
+"Meta Ads no tiene este problema porque se conecta por token" — cierto
+para las cifras de cuenta/campaña de Meta Insights, pero no para el
+cruce de conversiones reales con GA4 agregado en una ronda posterior. Sin
+una propiedad GA4 configurada para Meta, el cruce nunca se ejecutaba y la
+columna caía al conteo propio de Meta (`contarResultados`), que sin una
+conversión personalizada ni link_click/landing_page_view reconocible
+suma TODAS las acciones de la campaña (vistas de video, engagement,
+etc.) — de ahí el 714 sin relación real con conversiones.
+
+- **Migración `0018_meta_ads_ga4_property.sql`**: nueva columna
+  `clients.meta_ads_ga4_property_id`, aditiva. A diferencia de Google Ads
+  (migración 0013, sin fallback al GA4 del sitio porque ahí el supuesto
+  "apunta al sitio principal" resultó casi siempre falso), para Meta Ads
+  la mayoría de los clientes sí manda tráfico al sitio principal — Fiavelle
+  es la excepción, no la regla — así que este campo es opcional **con
+  fallback** a `ga4_property_id` cuando no está configurado (`seccionMeta`
+  recibe `cliente.meta_ads_ga4_property_id ?? cliente.ga4_property_id` ya
+  resuelto desde `obtenerResultadosCliente`), preservando el comportamiento
+  actual para todos los clientes que sí comparten GA4 del sitio con Meta.
+- **`IntegracionesPanel.tsx`**: nuevo campo "GA4 Property ID (landing de
+  Meta Ads)", con nota explicando que es la excepción (opcional) frente al
+  de Google Ads (la norma para ese canal). `guardarConfigApis`
+  (`lib/data/cliente-actions.ts`) y `getClienteDetalle`
+  (`lib/data/cliente-detalle.ts`) lo persisten/leen igual que el resto de
+  campos de integraciones.
+- **Mismo fallback aplicado al cron `snapshot-resumen-clientes`** (lista de
+  `/clientes`, §KPIs del día): `snapshotResumenListaClientes`
+  (`lib/metricas/resumen-lista-clientes.ts`) tenía el mismo gap (usaba
+  `ga4_property_id` sin considerar una landing dedicada de Meta) — corregido
+  con el mismo criterio `meta_ads_ga4_property_id ?? ga4_property_id`, para
+  que la lista de clientes tampoco se quede sin datos (o, peor, sin
+  detectarlo, ya que acá el campo vacío solo hacía que el cron se saltara
+  el servicio en silencio, no que mostrara un número inflado).
+- Verificado de punta a punta contra Postgres local (migración 0018
+  aplicada limpia, columna confirmada) + `next dev` real + Playwright,
+  logueado como Marcel: guardar el campo nuevo en la ficha de Tecny Stand
+  persiste correctamente (confirmado tanto en la UI tras recargar como
+  directo en la base). No se pudo repetir la verificación contra la
+  cuenta real de Fiavelle (sin credenciales OAuth de Google en este
+  entorno, mismo límite de siempre) — el usuario completa el campo real
+  en producción una vez desplegado. Typecheck, lint y los 21 tests de
+  vitest en verde.
+
 ---
 
 ## 1. Contexto

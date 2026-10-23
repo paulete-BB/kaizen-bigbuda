@@ -55,6 +55,8 @@ export interface ConfigApis {
   ga4PropertyId: string | null;
   /** Propiedad GA4 de la landing de Google Ads — distinta de `ga4PropertyId` (sitio principal, usado por SEO/AEO) porque las campañas de Google Ads no apuntan al sitio del cliente sino a una landing con su propio GA4. */
   googleAdsGa4PropertyId: string | null;
+  /** Propiedad GA4 de la landing de Meta Ads, cuando el cliente no manda tráfico de Meta al sitio principal (caso excepcional — a diferencia de Google Ads, la mayoría de los clientes sí apuntan Meta al sitio, por eso este campo tiene fallback a `ga4PropertyId` en vez de ser obligatorio). */
+  metaAdsGa4PropertyId: string | null;
   metaAdAccountId: string | null;
   fbPageId: string | null;
   igAccountId: string | null;
@@ -103,6 +105,7 @@ export async function getClienteDetalle(id: string): Promise<ClienteDetalleCompl
       gsc_property: string | null;
       ga4_property_id: string | null;
       google_ads_ga4_property_id: string | null;
+      meta_ads_ga4_property_id: string | null;
       meta_ad_account_id: string | null;
       fb_page_id: string | null;
       ig_account_id: string | null;
@@ -111,7 +114,7 @@ export async function getClienteDetalle(id: string): Promise<ClienteDetalleCompl
       contacto_anonimizado_en: string | null;
     }[]
   >`select id, nombre, empresa, industria, sitio_web, estado, contacto_nombre, contacto_email, contacto_telefono,
-       gsc_property, ga4_property_id, google_ads_ga4_property_id, meta_ad_account_id, fb_page_id, ig_account_id, meta_token_key,
+       gsc_property, ga4_property_id, google_ads_ga4_property_id, meta_ads_ga4_property_id, meta_ad_account_id, fb_page_id, ig_account_id, meta_token_key,
        datos_retenidos_nota,
        to_char(contacto_anonimizado_en at time zone 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS"Z"') as contacto_anonimizado_en
      from clients where id = ${id}`;
@@ -196,6 +199,7 @@ export async function getClienteDetalle(id: string): Promise<ClienteDetalleCompl
       gscProperty: cliente.gsc_property,
       ga4PropertyId: cliente.ga4_property_id,
       googleAdsGa4PropertyId: cliente.google_ads_ga4_property_id,
+      metaAdsGa4PropertyId: cliente.meta_ads_ga4_property_id,
       metaAdAccountId: cliente.meta_ad_account_id,
       fbPageId: cliente.fb_page_id,
       igAccountId: cliente.ig_account_id,

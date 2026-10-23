@@ -553,6 +553,14 @@ async function seccionMeta(
   serviceId: string | null,
   metaAdAccountId: string | null,
   metaTokenKey: string | null,
+  // El caller ya resuelve `meta_ads_ga4_property_id ?? ga4_property_id` —
+  // a diferencia de Google Ads (sin fallback, porque ahí el supuesto
+  // "apunta al sitio principal" resultó casi siempre falso), la mayoría de
+  // los clientes de Meta Ads sí manda tráfico al sitio, así que el campo
+  // dedicado es la excepción (bug real: Fiavelle manda Meta a una landing
+  // propia sin `ga4_property_id` configurado, y sin este fallback el cruce
+  // de conversiones nunca corría — caía al conteo de Meta, que sin una
+  // conversión reconocible suma todas las acciones de la campaña).
   ga4PropertyId: string | null,
   desde: string,
   hasta: string,
@@ -712,10 +720,11 @@ export async function obtenerResultadosCliente(clientId: string, rango: RangoRes
         gsc_property: string | null;
         ga4_property_id: string | null;
         google_ads_ga4_property_id: string | null;
+        meta_ads_ga4_property_id: string | null;
         meta_ad_account_id: string | null;
         meta_token_key: string | null;
       }[]
-    >`select nombre, gsc_property, ga4_property_id, google_ads_ga4_property_id, meta_ad_account_id, meta_token_key from clients where id = ${clientId}`,
+    >`select nombre, gsc_property, ga4_property_id, google_ads_ga4_property_id, meta_ads_ga4_property_id, meta_ad_account_id, meta_token_key from clients where id = ${clientId}`,
     sql<{ id: string; tipo: ServicioTipo }[]>`select id, tipo from services where client_id = ${clientId} and not pausado`,
     obtenerTodosLosHitos(clientId, actual.desde, actual.hasta),
   ]);
@@ -752,7 +761,7 @@ export async function obtenerResultadosCliente(clientId: string, rango: RangoRes
           servicioIdPorTipo.get("meta_ads")!,
           cliente.meta_ad_account_id,
           cliente.meta_token_key,
-          cliente.ga4_property_id,
+          cliente.meta_ads_ga4_property_id ?? cliente.ga4_property_id,
           actual.desde,
           actual.hasta,
           anterior.desde,
