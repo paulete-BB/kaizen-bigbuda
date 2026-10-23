@@ -152,9 +152,9 @@ function metricasDesdeMeta(actual: ResumenInsightsMeta, anterior: ResumenInsight
     return { deltaTexto: texto, deltaDireccion: direccion, favorable };
   };
   return [
-    { etiqueta: "Inversión", valor: fmtMoneda(actual.gasto, "USD"), ...d("Inversión", actual.gasto, anterior.gasto) },
+    { etiqueta: "Inversión", valor: fmtMoneda(actual.gasto, actual.moneda), ...d("Inversión", actual.gasto, anterior.gasto) },
     { etiqueta: "Resultados", valor: fmtNumero(actual.resultados), ...d("Resultados", actual.resultados, anterior.resultados) },
-    { etiqueta: "Costo por resultado", valor: fmtMoneda(costoActual, "USD"), ...d("Costo por resultado", costoActual, costoAnterior) },
+    { etiqueta: "Costo por resultado", valor: fmtMoneda(costoActual, actual.moneda), ...d("Costo por resultado", costoActual, costoAnterior) },
     { etiqueta: "CTR", valor: `${actual.ctr.toFixed(2)}%`, ...d("CTR", actual.ctr, anterior.ctr) },
     { etiqueta: "Alcance", valor: fmtNumero(actual.alcance), ...d("Alcance", actual.alcance, anterior.alcance) },
   ];
@@ -217,7 +217,7 @@ export async function prellenarAdsDesdeApis(
         conCacheDeSnapshot({ clientId, serviceId, fuente: "meta", periodoInicio: inicio, periodoFin: fin, fetchLive: () => obtenerResumenMeta(metaConfig, inicio, fin) }),
         conCacheDeSnapshot({ clientId, serviceId, fuente: "meta", periodoInicio: inicioAnt, periodoFin: finAnt, fetchLive: () => obtenerResumenMeta(metaConfig, inicioAnt, finAnt) }),
       ]);
-      return { metricas: metricasDesdeMeta(actual, anterior), gastoReal: { valor: actual.gasto, moneda: "USD" } };
+      return { metricas: metricasDesdeMeta(actual, anterior), gastoReal: { valor: actual.gasto, moneda: actual.moneda } };
     } catch {
       return { metricas: [], gastoReal: null };
     }
@@ -248,11 +248,14 @@ interface ResultadoPrellenadoAdsCombinado {
  * Compara los dos canales por lo único que es seguro comparar sin
  * fabricar una equivalencia: el volumen de resultados/conversiones (un
  * conteo, no depende de moneda) y, por separado, cuánto invirtió cada uno
- * en su propia moneda. Nunca declara "más barato" cruzando monedas
- * (Meta en USD, Google en CLP en esta plataforma) sin una tasa de cambio
- * real — mismo criterio del proyecto de no inventar comparaciones que no
- * se pueden sostener con el dato real (mismo espíritu que la nota de
- * "Google Ads vía GA4" ya documentada en CLAUDE.md).
+ * en su propia moneda — Meta en la moneda real de su cuenta de ads
+ * (`account_currency`, nunca asumida), Google Ads siempre en CLP (vía
+ * GA4, que no tiene moneda propia configurable por cliente en esta
+ * plataforma). Nunca declara "más barato" cruzando monedas sin una tasa
+ * de cambio real cuando difieren — mismo criterio del proyecto de no
+ * inventar comparaciones que no se pueden sostener con el dato real
+ * (mismo espíritu que la nota de "Google Ads vía GA4" ya documentada en
+ * CLAUDE.md).
  */
 function compararCanalesAds(
   meta: { resultados: number; gasto: { valor: number; moneda: string } } | null,
@@ -306,7 +309,7 @@ export async function prellenarAdsCombinadoDesdeApis(
         conCacheDeSnapshot({ clientId, serviceId: metaServiceId, fuente: "meta", periodoInicio: inicio, periodoFin: fin, fetchLive: () => obtenerResumenMeta(metaConfig, inicio, fin) }),
         conCacheDeSnapshot({ clientId, serviceId: metaServiceId, fuente: "meta", periodoInicio: inicioAnt, periodoFin: finAnt, fetchLive: () => obtenerResumenMeta(metaConfig, inicioAnt, finAnt) }),
       ]);
-      meta = { metricas: metricasDesdeMeta(actual, anterior), gastoReal: { valor: actual.gasto, moneda: "USD" }, resultados: actual.resultados };
+      meta = { metricas: metricasDesdeMeta(actual, anterior), gastoReal: { valor: actual.gasto, moneda: actual.moneda }, resultados: actual.resultados };
     } catch {
       // sin Meta configurado, API caída y sin snapshot previo — esa mitad queda sin pre-llenar
     }

@@ -250,6 +250,8 @@ export interface SeccionMeta {
   serieConversiones: PuntoSerie[];
   hitos: Hito[];
   campanas: FilaCampana[];
+  /** Moneda real de la cuenta de Meta (`account_currency`) — cada cuenta se configura en la que el cliente haya elegido, nunca asumible como USD. "USD" acá (sin `disponible`) es solo un placeholder sin dato real detrás. */
+  moneda: string;
 }
 
 export interface SeccionGoogleAds {
@@ -559,7 +561,7 @@ async function seccionMeta(
   hitos: Hito[],
 ): Promise<SeccionMeta> {
   if (!metaAdAccountId) {
-    return { disponible: false, motivo: "Configura el Ad Account ID de Meta en la ficha del cliente.", insight: null, kpis: [], serie: [], serieConversiones: [], hitos: [], campanas: [] };
+    return { disponible: false, motivo: "Configura el Ad Account ID de Meta en la ficha del cliente.", insight: null, kpis: [], serie: [], serieConversiones: [], hitos: [], campanas: [], moneda: "USD" };
   }
   const config = { adAccountId: metaAdAccountId, metaTokenKey };
   try {
@@ -591,10 +593,11 @@ async function seccionMeta(
       disponible: true,
       deCache: deCache ? "Datos del último snapshot disponible (la API no respondió)." : null,
       insight: insightAds(delta(costoActual, costoAnterior, true), delta(actual.resultados, anterior.resultados)),
+      moneda: actual.moneda,
       kpis: [
-        { etiqueta: "Inversión", valor: fmtMoneda(actual.gasto), delta: delta(actual.gasto, anterior.gasto) },
+        { etiqueta: "Inversión", valor: fmtMoneda(actual.gasto, actual.moneda), delta: delta(actual.gasto, anterior.gasto) },
         { etiqueta: "Resultados", valor: fmtNumero(actual.resultados), delta: delta(actual.resultados, anterior.resultados) },
-        { etiqueta: "Costo por resultado", valor: fmtMoneda(costoActual), delta: delta(costoActual, costoAnterior, true) },
+        { etiqueta: "Costo por resultado", valor: fmtMoneda(costoActual, actual.moneda), delta: delta(costoActual, costoAnterior, true) },
         { etiqueta: "CTR", valor: `${actual.ctr.toFixed(2)}%`, delta: delta(actual.ctr, anterior.ctr) },
         { etiqueta: "Alcance", valor: fmtNumero(actual.alcance), delta: delta(actual.alcance, anterior.alcance) },
       ],
@@ -635,7 +638,7 @@ async function seccionMeta(
       ),
     };
   } catch {
-    return { disponible: false, motivo: "No se pudo obtener datos de Meta para este período.", insight: null, kpis: [], serie: [], serieConversiones: [], hitos: [], campanas: [] };
+    return { disponible: false, motivo: "No se pudo obtener datos de Meta para este período.", insight: null, kpis: [], serie: [], serieConversiones: [], hitos: [], campanas: [], moneda: "USD" };
   }
 }
 
@@ -756,7 +759,7 @@ export async function obtenerResultadosCliente(clientId: string, rango: RangoRes
           anterior.hasta,
           hitosPorTipo.meta_ads,
         )
-      : ({ disponible: false, motivo: "Este cliente no tiene Meta Ads contratado.", insight: null, kpis: [], serie: [], serieConversiones: [], hitos: [], campanas: [] } as SeccionMeta),
+      : ({ disponible: false, motivo: "Este cliente no tiene Meta Ads contratado.", insight: null, kpis: [], serie: [], serieConversiones: [], hitos: [], campanas: [], moneda: "USD" } as SeccionMeta),
     servicioIdPorTipo.has("google_ads")
       ? seccionGoogleAds(clientId, servicioIdPorTipo.get("google_ads")!, cliente.google_ads_ga4_property_id, actual.desde, actual.hasta, anterior.desde, anterior.hasta, hitosPorTipo.google_ads)
       : ({ disponible: false, motivo: "Este cliente no tiene Google Ads contratado.", insight: null, kpis: [], serie: [], hitos: [], campanas: [] } as SeccionGoogleAds),
