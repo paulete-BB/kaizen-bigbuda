@@ -12,3 +12,12 @@
  * migración 0020 dejó canceladas no se reactivan solas.
  */
 export const OPTIMIZACIONES_SEO_EN_KAIZEN = false;
+
+/**
+ * El agente de optimización integrado (chat dentro de Kaizen) consume la API
+ * de Anthropic, que se paga aparte de la suscripción de Claude. Mientras no
+ * haya una key con saldo, la optimización se trabaja en modo manual: Kaizen
+ * arma el briefing, la persona lo usa en Claude (claude.ai o la extensión) y
+ * pega de vuelta el resultado. Se activa con `AGENTE_INTEGRADO=1`.
+ */
+export const agenteIntegradoActivo = () => process.env.AGENTE_INTEGRADO === "1";

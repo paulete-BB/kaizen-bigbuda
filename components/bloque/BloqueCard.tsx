@@ -155,13 +155,13 @@ export function BloqueCard({ item, fecha, mes, anio, defaultOpen = false }: { it
               <form action={iniciarOptimizacion} className="mt-1">
                 <input type="hidden" name="optimizationId" value={item.optimizationId} />
                 <button type="submit" className="w-full rounded-lg border border-accent bg-accent-soft px-3 py-2 font-sans text-[12.5px] font-semibold text-accent-soft-ink">
-                  {item.agenteEstado === "en_curso" ? "Continuar con el agente" : "Iniciar optimización con el agente"}
+                  {item.agenteEstado === "en_curso" ? "Continuar optimización" : "Iniciar optimización"}
                 </button>
               </form>
             )}
             {completado && item.agenteEstado && (
               <Link href={`/optimizaciones/${item.optimizationId}/agente`} className="mt-1 text-[12px] font-semibold text-accent">
-                Ver la sesión con el agente
+                Ver la optimización registrada
               </Link>
             )}
             <div className="mt-2 flex gap-2">

@@ -7,6 +7,8 @@ import { requireUser } from "@/lib/auth/server";
 import { construirMensajeInicial, cargarDatosSesion } from "@/lib/agente/contexto";
 import { completarOptimizacionAds } from "@/lib/data/optimizacion-ads-completar";
 import { hoySantiago, toIso } from "@/lib/dates";
+import { agenteIntegradoActivo } from "@/lib/config";
+import { parsearRespuestaClaude } from "@/lib/agente/respuesta";
 import type { EstadoItemPlan, ItemPlan } from "@/lib/agente/tipos";
 
 const TIPO_LABEL = { meta_ads: "Meta Ads", google_ads: "Google Ads" } as const;
@@ -30,7 +32,8 @@ export async function iniciarOptimizacion(formData: FormData) {
       on conflict (optimization_id) do nothing
       returning id
     `;
-    if (nueva) {
+    // En modo manual no hay chat: el briefing se arma al abrir la pantalla, con datos al día.
+    if (nueva && agenteIntegradoActivo()) {
       const datos = await cargarDatosSesion(nueva.id);
       if (datos) {
         const inicial = await construirMensajeInicial(datos);
@@ -108,4 +111,32 @@ export async function cerrarOptimizacionConAgente(input: { sessionId: string; re
   revalidatePath("/dashboard");
   revalidatePath("/calendario");
   return { ok: true };
+}
+
+/** Modo manual: lee la respuesta final pegada desde Claude y carga plan, resumen y hallazgos como borrador (editables antes de cerrar). */
+export async function cargarRespuestaManual(
+  sessionId: string,
+  texto: string,
+): Promise<{ ok: true; plan: ItemPlan[]; resumen: string; hallazgos: string; avisos: string[] } | { ok: false; error: string }> {
+  await requireUser();
+  if (texto.length > 60000) return { ok: false, error: "El texto es demasiado largo." };
+  const [s] = await sql<{ plan: ItemPlan[]; estado: string; resumen_borrador: string | null; hallazgos_borrador: string | null }[]>`
+    select plan, estado, resumen_borrador, hallazgos_borrador from agent_sessions where id = ${sessionId}
+  `;
+  if (!s) return { ok: false, error: "Sesión no encontrada." };
+  if (s.estado === "cerrada") return { ok: false, error: "Esta optimización ya estaba cerrada." };
+
+  const r = parsearRespuestaClaude(texto);
+  if ("error" in r) return { ok: false, error: r.error };
+
+  // Si ya había un plan cargado, los ítems con el mismo id conservan su estado (hecha/descartada).
+  const previo = new Map((s.plan ?? []).map((it) => [it.id, it.estado]));
+  const plan: ItemPlan[] = r.plan.length > 0 ? r.plan.map((it) => ({ ...it, estado: previo.get(it.id) ?? "pendiente" })) : s.plan ?? [];
+  const resumen = r.resumen || s.resumen_borrador || "";
+  const hallazgos = r.hallazgos || s.hallazgos_borrador || "";
+  await sql`
+    update agent_sessions set plan = ${sql.json(plan as never)}, resumen_borrador = ${resumen || null}, hallazgos_borrador = ${hallazgos || null}, actualizado_en = now()
+    where id = ${sessionId}
+  `;
+  return { ok: true, plan, resumen, hallazgos, avisos: r.avisos };
 }

@@ -1,4 +1,5 @@
 import { getSession } from "@/lib/auth/server";
+import { agenteIntegradoActivo } from "@/lib/config";
 import { agregarMensajeUsuario, correrTurno } from "@/lib/agente/loop";
 import type { EventoAgente } from "@/lib/agente/tipos";
 
@@ -15,6 +16,7 @@ export const dynamic = "force-dynamic";
 export async function POST(request: Request, { params }: { params: Promise<{ sessionId: string }> }) {
   const session = await getSession();
   if (!session) return new Response("No autenticado", { status: 401 });
+  if (!agenteIntegradoActivo()) return new Response("El agente integrado está desactivado (modo manual)", { status: 403 });
 
   const { sessionId } = await params;
   const body = (await request.json().catch(() => ({}))) as { texto?: unknown };

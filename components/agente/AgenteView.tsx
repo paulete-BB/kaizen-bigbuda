@@ -4,7 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Sidebar, type SidebarUsuario } from "@/components/layout/Sidebar";
-import { actualizarEstadoItemPlan, cerrarOptimizacionConAgente } from "@/lib/data/agente-actions";
+import { actualizarEstadoItemPlan, cargarRespuestaManual, cerrarOptimizacionConAgente } from "@/lib/data/agente-actions";
 import { TIPO_ITEM_LABEL, type EstadoItemPlan, type EventoAgente, type ItemPlan } from "@/lib/agente/tipos";
 import type { AgenteVista, MensajeVista } from "@/lib/data/agente";
 import { fmtFecha } from "@/lib/dates";
@@ -50,6 +50,11 @@ export function AgenteView({ usuario, vista }: { usuario: SidebarUsuario; vista:
   const [cerrando, setCerrando] = useState(false);
   const [errorCierre, setErrorCierre] = useState("");
   const [verContexto, setVerContexto] = useState(false);
+  const [copiado, setCopiado] = useState(false);
+  const [verBriefing, setVerBriefing] = useState(false);
+  const [pegado, setPegado] = useState("");
+  const [cargando, setCargando] = useState(false);
+  const [mensajeCarga, setMensajeCarga] = useState<{ ok: boolean; texto: string } | null>(null);
   const finRef = useRef<HTMLDivElement>(null);
   const iniciadoRef = useRef(false);
   const ocupadoRef = useRef(false);
@@ -118,10 +123,36 @@ export function AgenteView({ usuario, vista }: { usuario: SidebarUsuario; vista:
 
   // Primera vez: el único mensaje es el contexto armado por la plataforma, el agente aún no respondió.
   useEffect(() => {
-    if (iniciadoRef.current || cerrada) return;
+    if (iniciadoRef.current || cerrada || vista.modoManual) return;
     iniciadoRef.current = true;
     if (sesion.mensajes.length === 0) queueMicrotask(() => void correr());
-  }, [cerrada, correr, sesion.mensajes.length]);
+  }, [cerrada, correr, sesion.mensajes.length, vista.modoManual]);
+
+  async function copiarBriefing() {
+    try {
+      await navigator.clipboard.writeText(sesion.briefing);
+      setCopiado(true);
+      setTimeout(() => setCopiado(false), 2500);
+    } catch {
+      setVerBriefing(true);
+    }
+  }
+
+  async function cargarRespuesta() {
+    setCargando(true);
+    setMensajeCarga(null);
+    const r = await cargarRespuestaManual(sesion.id, pegado);
+    setCargando(false);
+    if (!r.ok) {
+      setMensajeCarga({ ok: false, texto: r.error });
+      return;
+    }
+    setPlan(r.plan);
+    setResumen(r.resumen);
+    setHallazgos(r.hallazgos);
+    setPegado("");
+    setMensajeCarga({ ok: true, texto: `Cargado: ${r.plan.length} ítem(s) de plan${r.resumen ? " y el resumen" : ""}. Revísalos a la derecha antes de cerrar.${r.avisos.length ? " " + r.avisos.join(" ") : ""}` });
+  }
 
   async function enviar() {
     const texto = entrada.trim();
@@ -174,7 +205,45 @@ export function AgenteView({ usuario, vista }: { usuario: SidebarUsuario; vista:
         </header>
 
         <div className="grid min-h-0 flex-1" style={{ gridTemplateColumns: "minmax(0,1.25fr) minmax(320px,1fr)" }}>
-          {/* Chat */}
+          {vista.modoManual ? (
+            <section className="flex min-h-0 flex-col gap-4 overflow-y-auto border-r border-border px-[26px] py-5">
+              <div className="rounded-[12px] border border-border-soft bg-surface px-4 py-3 text-[12.5px] text-muted">
+                <span className="font-semibold text-ink">Modo manual.</span> Kaizen arma el briefing con el historial de {sesion.historialPrevio} optimización(es) anterior(es), los pendientes en espera y las cifras de la cuenta. Tú haces la optimización en Claude (claude.ai o la extensión del navegador) y pegas aquí el resultado.
+                {sesion.historialPrevio < sesion.minHistorial && <span className="ml-1 font-semibold text-warning">Hay menos de {sesion.minHistorial} en el historial.</span>}
+              </div>
+
+              {!cerrada && (
+                <>
+                  <div className="rounded-[14px] border border-border bg-surface p-4">
+                    <div className="text-[11px] font-bold uppercase text-faint [letter-spacing:.03em]">Paso 1 · Copiar el briefing</div>
+                    <p className="mt-1 text-[12px] text-muted-2">Abre una conversación nueva en Claude, pega el briefing y trabaja la optimización con él: revisa la cuenta, ajusta el plan y, cuando esté listo, pídele la respuesta final.</p>
+                    <div className="mt-2 flex items-center gap-3">
+                      <button onClick={() => void copiarBriefing()} className="btn-primary rounded-lg border-none bg-accent px-4 py-2.5 font-sans text-[12.5px] font-semibold text-white">
+                        {copiado ? "✓ Copiado" : "Copiar briefing"}
+                      </button>
+                      <button onClick={() => setVerBriefing((v) => !v)} className="text-[12px] font-semibold text-muted-2">
+                        {verBriefing ? "Ocultar" : "Ver"} briefing
+                      </button>
+                    </div>
+                    {verBriefing && <pre className="mt-2 max-h-80 overflow-auto whitespace-pre-wrap rounded-lg bg-canvas p-3 font-sans text-[11.5px] leading-relaxed">{sesion.briefing}</pre>}
+                  </div>
+
+                  <div className="rounded-[14px] border border-border bg-surface p-4">
+                    <div className="text-[11px] font-bold uppercase text-faint [letter-spacing:.03em]">Paso 2 · Pegar la respuesta final de Claude</div>
+                    <p className="mt-1 text-[12px] text-muted-2">El briefing le pide un formato (RESUMEN, HALLAZGOS y PLAN). Al cargarla, el plan y el resumen aparecen a la derecha y puedes editarlos. Puedes repetir este paso si Claude ajusta algo.</p>
+                    <textarea value={pegado} onChange={(e) => setPegado(e.target.value)} rows={10} placeholder="Pega aquí la respuesta de Claude…" className="mt-2 w-full rounded-lg border border-border bg-surface px-3 py-2 text-[12.5px] text-ink" />
+                    {mensajeCarga && (
+                      <div className={`mt-2 rounded-lg px-3 py-2 text-[12px] ${mensajeCarga.ok ? "bg-success-bg text-success" : "bg-danger-bg text-danger"}`}>{mensajeCarga.texto}</div>
+                    )}
+                    <button onClick={() => void cargarRespuesta()} disabled={cargando || pegado.trim().length < 10} className="btn-primary mt-2 rounded-lg border-none bg-accent px-4 py-2.5 font-sans text-[12.5px] font-semibold text-white disabled:opacity-60">
+                      {cargando ? "Cargando…" : "Cargar respuesta"}
+                    </button>
+                  </div>
+                </>
+              )}
+              {cerrada && <p className="text-[12.5px] font-semibold text-success">Optimización cerrada y registrada en la bitácora.</p>}
+            </section>
+          ) : (
           <section className="flex min-h-0 flex-col border-r border-border">
             <div className="flex-1 overflow-y-auto px-[26px] py-5">
               <div className="mb-4 rounded-[10px] border border-border-soft bg-surface px-3.5 py-2.5 text-[12px] text-muted">
@@ -223,6 +292,8 @@ export function AgenteView({ usuario, vista }: { usuario: SidebarUsuario; vista:
             </div>
           </section>
 
+          )}
+
           {/* Plan + cierre */}
           <aside className="flex min-h-0 flex-col gap-4 overflow-y-auto bg-canvas px-[22px] py-5">
             <div>
@@ -232,7 +303,7 @@ export function AgenteView({ usuario, vista }: { usuario: SidebarUsuario; vista:
               </div>
               {plan.length === 0 ? (
                 <p className="rounded-[12px] border border-dashed border-border px-4 py-6 text-center text-[12.5px] text-muted-2">
-                  Cuando el agente termine la auditoría, el plan priorizado aparece aquí.
+                  Cuando cargues la respuesta de Claude, el plan priorizado aparece aquí.
                 </p>
               ) : (
                 <div className="flex flex-col gap-2">
@@ -266,12 +337,12 @@ export function AgenteView({ usuario, vista }: { usuario: SidebarUsuario; vista:
                   ))}
                 </div>
               )}
-              <p className="mt-2 text-[11px] text-muted-2">El agente solo propone: los cambios en la cuenta los haces tú y los marcas aquí. Lo que quede abierto pasa como pendiente a la próxima optimización.</p>
+              <p className="mt-2 text-[11px] text-muted-2">Claude solo propone: los cambios en la cuenta los haces tú y los marcas aquí. Lo que quede abierto pasa como pendiente a la próxima optimización.</p>
             </div>
 
             <div className="rounded-[14px] border border-border bg-surface p-4">
               <div className="text-[11px] font-bold uppercase text-faint [letter-spacing:.03em]">Resumen para la bitácora</div>
-              <p className="mt-1 text-[11.5px] text-muted-2">Pídele al agente que lo redacte o escríbelo tú. Esto es lo que se guarda en la bitácora del cliente.</p>
+              <p className="mt-1 text-[11.5px] text-muted-2">Se carga desde la respuesta de Claude o lo escribes tú. Esto es lo que se guarda en la bitácora del cliente.</p>
               <textarea value={resumen} onChange={(e) => setResumen(e.target.value)} disabled={cerrada} rows={6} placeholder="Qué se hizo, qué se decidió y qué queda en espera…" className="mt-2 w-full rounded-lg border border-border bg-surface px-2.5 py-2 text-[12.5px] text-ink disabled:opacity-60" />
               <label className="mt-2 flex flex-col gap-1">
                 <span className="text-[11px] font-semibold text-muted-2">Hallazgos (opcional)</span>

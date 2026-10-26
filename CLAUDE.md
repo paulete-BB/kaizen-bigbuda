@@ -3223,6 +3223,43 @@ calendario semanal. Gonfernic · Google Ads no tenía ninguna.
   ClickUp real ni el cierre de una optimización (`after()` no corre fuera de
   una petición real).
 
+**Agente de optimización: modo manual (sin API de Anthropic)** — la
+`ANTHROPIC_API_KEY` de producción se quedó sin saldo ("credit balance is too
+low") y la agencia no va a cargar la API: Paulete solo tiene la suscripción de
+Claude, que es un producto de facturación aparte y no sirve desde un servidor.
+Se resolvió con un flujo donde Kaizen arma el contexto y la persona trabaja en
+Claude (claude.ai o la extensión del navegador, con la skill de paid media).
+
+- **`lib/config.ts` → `agenteIntegradoActivo()`** (`AGENTE_INTEGRADO=1`): el
+  chat integrado queda apagado por defecto aunque exista la key; la ruta
+  `/api/agente/[sessionId]/mensaje` responde 403 si no está activo. El código
+  del agente integrado no se tocó: con una key con saldo basta poner la
+  variable en Vercel y redeploy.
+- **Briefing** (`lib/agente/briefing.ts`, se arma al abrir la pantalla con
+  datos al día, no se guarda): instrucciones de trabajo para Claude, historial
+  de las últimas 5 optimizaciones, pendientes/en espera heredados (los mismos
+  helpers de `contexto.ts`), presupuesto del mes, aprobaciones abiertas,
+  bitácora y reuniones de 30 días, y cifras de la cuenta de los últimos 14 días
+  (Meta + GA4 Paid Social, o GA4 de la landing para Google Ads) en mejor
+  esfuerzo: si una API falla, ese bloque dice "no disponible" y el resto sigue.
+  Termina pidiendo un formato fijo: `## RESUMEN`, `## HALLAZGOS`, `## PLAN` con
+  un bloque json de ítems.
+- **Pegar la respuesta** (`lib/agente/respuesta.ts` + `cargarRespuestaManual`
+  en `agente-actions.ts`): parser tolerante (tests en `respuesta.test.ts`) que
+  carga plan, resumen y hallazgos como borrador editable; los ítems con el mismo
+  id conservan su estado si se vuelve a pegar. El cierre es el mismo de siempre
+  (`cerrarOptimizacionConAgente`), así que lo que quede `pendiente` en el plan
+  pasa a `proximos_pasos` y el briefing de la próxima semana lo encuentra.
+- **UI**: misma pantalla `/optimizaciones/[id]/agente`; en modo manual la
+  columna izquierda son dos pasos (copiar briefing, pegar respuesta) en vez del
+  chat. El botón del bloque pasó a "Iniciar optimización".
+- Verificado contra Postgres local + `next dev` + Playwright: iniciar, copiar el
+  briefing (portapapeles), pegar una respuesta de ejemplo, marcar un ítem, cerrar
+  → optimización `realizada` con resumen, hallazgos y "en espera" guardados.
+  Sin migración nueva. **No probado** con cifras reales de Meta/GA4 en el briefing
+  (sin credenciales aquí). Los informes con IA siguen necesitando la API; sin
+  saldo quedan con las secciones narrativas vacías (degradan solos).
+
 ---
 
 ## 1. Contexto

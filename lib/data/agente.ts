@@ -1,5 +1,7 @@
 import { sql } from "@/lib/db";
-import { cargarHistorial, MIN_HISTORIAL } from "@/lib/agente/contexto";
+import { cargarDatosSesion, cargarHistorial, MIN_HISTORIAL } from "@/lib/agente/contexto";
+import { construirBriefingManual } from "@/lib/agente/briefing";
+import { agenteIntegradoActivo } from "@/lib/config";
 import type { ItemPlan } from "@/lib/agente/tipos";
 
 export interface MensajeVista {
@@ -14,6 +16,8 @@ export interface AgenteVista {
   tipo: "meta_ads" | "google_ads";
   fechaProgramada: string;
   estadoOptimizacion: string;
+  /** Sin API de Anthropic: la persona trabaja en Claude con el briefing y pega la respuesta. */
+  modoManual: boolean;
   sesion: {
     id: string;
     estado: "en_curso" | "cerrada";
@@ -22,6 +26,8 @@ export interface AgenteVista {
     hallazgosBorrador: string;
     /** El primer mensaje (contexto armado por la plataforma) va aparte, no como burbuja de chat. */
     contexto: string;
+    /** Solo modo manual: texto para pegar en Claude. */
+    briefing: string;
     mensajes: MensajeVista[];
     historialPrevio: number;
     minHistorial: number;
@@ -72,10 +78,17 @@ export async function getAgenteVista(optimizationId: string): Promise<AgenteVist
       resumenBorrador: s.resumen_borrador ?? "",
       hallazgosBorrador: s.hallazgos_borrador ?? "",
       contexto,
+      briefing: "",
       mensajes,
       historialPrevio: historial.length,
       minHistorial: MIN_HISTORIAL,
     };
+  }
+
+  const modoManual = !agenteIntegradoActivo();
+  if (sesion && s && modoManual && s.estado === "en_curso") {
+    const datos = await cargarDatosSesion(s.id);
+    if (datos) sesion.briefing = await construirBriefingManual(datos);
   }
 
   return {
@@ -85,6 +98,7 @@ export async function getAgenteVista(optimizationId: string): Promise<AgenteVist
     tipo: o.tipo as "meta_ads" | "google_ads",
     fechaProgramada: o.fecha_programada,
     estadoOptimizacion: o.estado,
+    modoManual: !agenteIntegradoActivo(),
     sesion,
   };
 }
