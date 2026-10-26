@@ -3154,6 +3154,39 @@ Postgres local: el `PUT` sale con `assignees: {add:[111], rem:[99]}`; no se
 probó contra la API real de ClickUp (sin token en este entorno). Typecheck,
 lint y 25 tests en verde.
 
+**Kaizen deja de gestionar las optimizaciones SEO (por ahora)** — pedido
+explícito del usuario: Marcel lleva las optimizaciones de posicionamiento en
+su propio sistema, no las anota en Kaizen y envía los informes él mismo los
+28 de cada mes; Kaizen es hoy solo para el trabajo de Paulete (Ads), y si se
+suma alguien al equipo se le incluyen sus tareas. Sí se necesitan los
+resultados de posicionamiento (GSC/GA4) para las reuniones con clientes.
+
+- **`lib/config.ts` → `OPTIMIZACIONES_SEO_EN_KAIZEN = false`** (constante en
+  código, no columna en `settings`, a propósito: una columna nueva leída por
+  `getSettings()` habría roto toda la app si la migración no llegaba a
+  producción, la trampa de siempre). Con `false`, completar el onboarding de
+  un cliente SEO ya no le asigna viernes ni crea su primera optimización ni
+  su tarea de ClickUp; la alerta "informes SEO pendientes" del dashboard
+  se apaga. Poner `true` si alguien del equipo pasa a llevar SEO en Kaizen.
+- **Migración `0020_cancelar_optimizaciones_seo.sql`** (solo datos): las
+  optimizaciones SEO pendientes (`programada`/`atrasada`/`bloqueada`) pasan
+  a `cancelada` (no se borran; el historial de las realizadas queda
+  intacto). El calendario y "Hoy / Esta semana" ahora excluyen `cancelada`
+  (antes la mostraban), y el job `reintentar-sync` y el botón
+  "Resincronizar tareas de ClickUp" no las vuelven a empujar a ClickUp.
+  **Aplicada solo en la base local; falta aplicarla contra producción** (sin
+  token de Management API en esta ronda). Hasta entonces las 6 optimizaciones
+  SEO pendientes siguen programadas en producción.
+- **Sin tocar, a propósito**: el servicio SEO sigue existiendo en la ficha
+  (vigencia, integraciones GSC/GA4, checklist de onboarding) y la pestaña
+  Resultados sigue mostrando SEO/AEO. Las tareas SEO que Kaizen ya creó en
+  ClickUp (asignadas a Marcel) siguen ahí: borrarlas o cerrarlas queda a
+  decisión del usuario.
+- Verificado contra Postgres local + `next dev` + Playwright: la migración
+  cancela las 6 SEO y no toca las 41 de Ads; el dashboard y el calendario
+  (ago-nov) cargan sin errores y sin optimizaciones SEO. Typecheck, lint y 25
+  tests en verde.
+
 ---
 
 ## 1. Contexto

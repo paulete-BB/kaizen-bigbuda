@@ -58,7 +58,7 @@ export async function reintentarSyncPendiente(): Promise<ResultadoReintento> {
   >`
     select id, client_id, service_id, tipo, fecha_programada, hora_programada, responsable_id
     from optimizations
-    where sync_status != 'ok'
+    where sync_status != 'ok' and estado != 'cancelada'
     order by fecha_programada
     limit ${LOTE}
   `;

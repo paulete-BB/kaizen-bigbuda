@@ -1,5 +1,6 @@
 "use server";
 
+import { OPTIMIZACIONES_SEO_EN_KAIZEN } from "@/lib/config";
 import { revalidatePath } from "next/cache";
 import { after } from "next/server";
 import { sql } from "@/lib/db";
@@ -84,7 +85,8 @@ async function activarPrimeraOptimizacionSiCorresponde(clientId: string, actorId
 
   const generadas: { fecha: string; tipoLabel: string }[] = [];
 
-  const seoNuevos = servicios.filter((s) => s.tipo === "seo_aeo_geo");
+  // SEO lo lleva Marcel en su propio sistema (ver lib/config.ts): no se programa ni se manda a ClickUp.
+  const seoNuevos = OPTIMIZACIONES_SEO_EN_KAIZEN ? servicios.filter((s) => s.tipo === "seo_aeo_geo") : [];
   if (seoNuevos.length) {
     const seoExistentes = await sql<{ id: string; client_id: string; viernes_ordinal_asignado: number }[]>`
       select id, client_id, viernes_ordinal_asignado from services

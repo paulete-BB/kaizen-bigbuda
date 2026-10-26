@@ -1,3 +1,4 @@
+import { OPTIMIZACIONES_SEO_EN_KAIZEN } from "@/lib/config";
 import { sql } from "@/lib/db";
 import { fmtFecha, hoySantiago, toIso } from "@/lib/dates";
 import { listResponsables, type UsuarioResumen } from "@/lib/data/users";
@@ -120,7 +121,7 @@ export async function getDashboardData(): Promise<DashboardData> {
     from optimizations o
     join clients c on c.id = o.client_id
     left join users u on u.id = o.responsable_id
-    where o.fecha_programada between ${hoyIso} and ${semanaHastaIso}
+    where o.fecha_programada between ${hoyIso} and ${semanaHastaIso} and o.estado != 'cancelada'
     order by o.fecha_programada, o.hora_programada nulls first
   `;
   const responsables = await listResponsables();
@@ -193,6 +194,7 @@ export async function getDashboardData(): Promise<DashboardData> {
     from optimizations o join clients c on c.id = o.client_id
     where o.tipo = 'seo_aeo_geo' and o.fecha_programada <= current_date
       and o.informe_enviado_en is null and o.estado != 'cancelada'
+      and ${OPTIMIZACIONES_SEO_EN_KAIZEN}
   `;
   const descuentosRows = await sql<{ cliente_id: string; cliente_nombre: string; descripcion: string; valor: number; fecha_termino: string }[]>`
     select c.id as cliente_id, c.nombre as cliente_nombre, dv.descripcion, dv.valor, dv.fecha_termino

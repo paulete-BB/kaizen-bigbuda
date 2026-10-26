@@ -46,7 +46,7 @@ export async function getMesCalendario(year: number, month: number) {
       join clients c on c.id = o.client_id
       join services s on s.id = o.service_id
       left join users u on u.id = o.responsable_id
-      where o.fecha_programada between ${desde} and ${hasta}
+      where o.fecha_programada between ${desde} and ${hasta} and o.estado != 'cancelada'
       order by o.fecha_programada, o.hora_programada nulls first
     `,
     sql<HolidayMes[]>`select fecha, nombre from holidays where fecha between ${desde} and ${hasta} order by fecha`,
