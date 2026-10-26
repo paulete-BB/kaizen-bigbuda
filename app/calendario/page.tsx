@@ -2,6 +2,7 @@ import { CalendarioView } from "@/components/calendario/CalendarioView";
 import { getMesCalendario } from "@/lib/data/calendario";
 import { requireUser } from "@/lib/auth/server";
 import { hoySantiago } from "@/lib/dates";
+import { asegurarOptimizacionesAds } from "@/lib/data/ads-calendario";
 
 export default async function CalendarioPage({
   searchParams,
@@ -14,6 +15,7 @@ export default async function CalendarioPage({
   const year = params.year ? Number(params.year) : hoy.getFullYear();
   const month = params.month ? Number(params.month) : hoy.getMonth() + 1;
 
+  await asegurarOptimizacionesAds();
   const { eventos, holidays, reuniones } = await getMesCalendario(year, month);
 
   return (

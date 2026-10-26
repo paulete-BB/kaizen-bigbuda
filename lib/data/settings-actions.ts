@@ -4,6 +4,8 @@ import { revalidatePath } from "next/cache";
 import { sql } from "@/lib/db";
 import { requireUser } from "@/lib/auth/server";
 import { syncOptimizationTaskToClickUp, type ServicioTipoClickUp } from "@/lib/clickup/client";
+import { hoySantiago, toIso } from "@/lib/dates";
+import { limitesSemana } from "@/lib/scheduling/ads-semanal";
 
 export interface GuardarAjustesResultado {
   ok: boolean;
@@ -75,16 +77,20 @@ export async function resincronizarTareasClickUp(desde: number): Promise<Resincr
     return { ok: false, error: "Solo un administrador puede resincronizar las tareas.", revisadas: 0, actualizadas: 0, fallidas: 0, restantes: 0 };
   }
 
+  // Las que ya tienen tarea, más las de esta semana que todavía no la tienen (las de semanas futuras esperan a su semana).
+  const { lunes, domingo } = limitesSemana(toIso(hoySantiago()));
   const [{ total }] = await sql<{ total: number }[]>`
     select count(*)::int as total from optimizations
-    where clickup_task_id is not null and estado in ('programada', 'bloqueada', 'atrasada')
+    where estado in ('programada', 'bloqueada', 'atrasada') and tipo != 'seo_aeo_geo'
+      and (clickup_task_id is not null or fecha_programada between ${lunes} and ${domingo})
   `;
   const filas = await sql<
     { id: string; client_id: string; service_id: string; tipo: ServicioTipoClickUp; fecha_programada: string; hora_programada: string | null; responsable_id: string | null }[]
   >`
     select id, client_id, service_id, tipo, fecha_programada, hora_programada, responsable_id
     from optimizations
-    where clickup_task_id is not null and estado in ('programada', 'bloqueada', 'atrasada')
+    where estado in ('programada', 'bloqueada', 'atrasada') and tipo != 'seo_aeo_geo'
+      and (clickup_task_id is not null or fecha_programada between ${lunes} and ${domingo})
     order by fecha_programada, id
     limit ${LOTE_RESYNC} offset ${Math.max(0, desde)}
   `;

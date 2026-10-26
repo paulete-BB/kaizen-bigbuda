@@ -95,8 +95,7 @@ export async function cerrarOptimizacionConAgente(input: { sessionId: string; re
       tipoLabel: TIPO_LABEL[s.tipo],
       userId: user.userId,
       fechaRealizada: toIso(hoySantiago()),
-      fechaBase: s.fecha_programada,
-      contenidoBitacora: partes.join("\n\n"),
+        contenidoBitacora: partes.join("\n\n"),
       hallazgos: hallazgos || null,
       proximosPasos: proximos || null,
     });

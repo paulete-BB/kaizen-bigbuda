@@ -1,3 +1,4 @@
+import { OPTIMIZACIONES_SEO_EN_KAIZEN } from "@/lib/config";
 import Link from "next/link";
 import { Sidebar, type SidebarUsuario } from "@/components/layout/Sidebar";
 import { MonthGrid } from "./MonthGrid";
@@ -58,10 +59,12 @@ export function CalendarioView({
           </div>
 
           <div className="flex flex-wrap items-center gap-4 rounded-[12px] border border-border bg-surface px-4 py-2.5 text-[11.5px] text-muted">
-            <span className="flex items-center gap-1.5">
+            {OPTIMIZACIONES_SEO_EN_KAIZEN && (
+              <span className="flex items-center gap-1.5">
               <span className="h-2.5 w-2.5 rounded-sm" style={{ background: "#6d5bd6" }} />
               SEO · AEO · GEO — viernes, 2 slots/día
             </span>
+            )}
             <span className="flex items-center gap-1.5">
               <span className="h-2.5 w-2.5 rounded-sm" style={{ background: "#0d9488" }} />
               Ads (Meta + Google) — 1 día/semana por cliente, sin hora fija
@@ -70,7 +73,7 @@ export function CalendarioView({
               <span className="h-2.5 w-2.5 rounded-sm" style={{ background: "var(--color-faint)" }} />
               Reuniones agendadas
             </span>
-            <span className="text-muted-2">Arrastra un cliente SEO a otro viernes para reasignarlo de forma estable.</span>
+            {OPTIMIZACIONES_SEO_EN_KAIZEN && <span className="text-muted-2">Arrastra un cliente SEO a otro viernes para reasignarlo de forma estable.</span>}
           </div>
 
           <MonthGrid year={year} month={month} eventos={eventos} holidays={holidays} reuniones={reuniones} />

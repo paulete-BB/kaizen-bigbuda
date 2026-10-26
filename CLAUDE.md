@@ -3187,6 +3187,42 @@ resultados de posicionamiento (GSC/GA4) para las reuniones con clientes.
   (ago-nov) cargan sin errores y sin optimizaciones SEO. Typecheck, lint y 25
   tests en verde.
 
+**Calendario semanal de Ads: ahora todos los servicios aparecen en su día
+cada semana** — reportado por el usuario viendo octubre: "solo algunos días
+con bloque de ads, no me cuadra con la cantidad de clientes". Diagnóstico
+contra producción: los 11 servicios de Ads activos sí tenían su día asignado
+(`dia_semana_ads_asignado`), pero cada uno tenía **una sola** optimización
+creada (la "próxima", que nacía recién al completar la anterior), no un
+calendario semanal. Gonfernic · Google Ads no tenía ninguna.
+
+- **`lib/data/ads-calendario.ts`** — `generarOptimizacionesAds`: para cada
+  servicio de Ads activo (cliente activo, no pausado, con día asignado)
+  crea su optimización de cada semana hasta 4 semanas hacia adelante
+  (`lib/scheduling/ads-semanal.ts`, con tests; feriado → `diaHabilSiguiente`).
+  Idempotente: no inserta si el servicio ya tiene una no cancelada esa
+  semana ni esa fecha; lock `pg_advisory_xact_lock` contra cargas
+  simultáneas. Se corre al cargar `/calendario` y `/dashboard`
+  (`asegurarOptimizacionesAds`, nunca rompe la página), al completar una
+  optimización (reemplaza el "insertar la de la semana siguiente", que ahora
+  habría duplicado) y en un cron diario nuevo
+  `app/api/cron/generar-optimizaciones-ads` (`vercel.json`, 09:00 UTC).
+- **Tareas de ClickUp solo de la semana en curso** (decisión del usuario):
+  las filas futuras nacen con `sync_status = 'ok'` y sin tarea (así el job de
+  reintento no las toma); `sincronizarTareasSemanaEnCurso` (mismo cron)
+  crea las de lunes a domingo de esta semana. El botón "Resincronizar tareas
+  de ClickUp" de `/ajustes` también incluye las de esta semana sin tarea.
+- **Calendario sin cupos SEO** mientras `OPTIMIZACIONES_SEO_EN_KAIZEN` sea
+  `false`: se ocultan los "0/2" de los viernes y la leyenda/ayuda de arrastre.
+- **No migra nada** (sin migración nueva). Las optimizaciones pendientes y
+  vencidas que ya existían (septiembre y principios de octubre) se dejan
+  como están: siguen apareciendo como atrasadas hasta completarlas.
+- Verificado contra Postgres local + `next dev` + Playwright: con 3
+  servicios de Ads el calendario pasó de 1 a 13 optimizaciones pendientes,
+  una segunda carga no creó ninguna y no hay duplicados servicio+fecha.
+  Typecheck, lint y 31 tests en verde. **No probado** el cron contra
+  ClickUp real ni el cierre de una optimización (`after()` no corre fuera de
+  una petición real).
+
 ---
 
 ## 1. Contexto

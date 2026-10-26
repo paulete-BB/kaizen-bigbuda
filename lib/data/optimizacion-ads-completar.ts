@@ -1,9 +1,7 @@
 import { after } from "next/server";
 import { sql } from "@/lib/db";
-import { cerrarTareaOptimizacionEnClickUp, syncLogEntryToClickUp, syncOptimizationTaskToClickUp } from "@/lib/clickup/client";
-import { addDaysIso } from "@/lib/dates";
-import { esFeriado, diaHabilSiguiente } from "@/lib/scheduling/holidays";
-import type { Holiday } from "@/lib/scheduling/types";
+import { cerrarTareaOptimizacionEnClickUp, syncLogEntryToClickUp } from "@/lib/clickup/client";
+import { generarOptimizacionesAds } from "@/lib/data/ads-calendario";
 
 export interface CompletarOptimizacionAdsInput {
   optimizationId: string;
@@ -12,8 +10,6 @@ export interface CompletarOptimizacionAdsInput {
   userId: string;
   /** Fecha en que se registra como realizada. */
   fechaRealizada: string;
-  /** Fecha desde la que se calcula la próxima (semana siguiente, mismo día). Para el bloque del día es la misma fechaRealizada. */
-  fechaBase: string;
   /** Texto para la bitácora; sin él queda la nota genérica del bloque. */
   contenidoBitacora?: string;
   /** Solo se actualizan si vienen (el cierre con el agente los deja registrados para la próxima optimización). */
@@ -29,7 +25,7 @@ export interface CompletarOptimizacionAdsInput {
  * bloque y por el cierre con el agente — mismo comportamiento en ambos.
  */
 export async function completarOptimizacionAds(input: CompletarOptimizacionAdsInput): Promise<void> {
-  const { optimizationId, clientId, tipoLabel, userId, fechaRealizada, fechaBase } = input;
+  const { optimizationId, clientId, tipoLabel, userId, fechaRealizada } = input;
 
   const [actual] = await sql<
     { service_id: string; tipo: "meta_ads" | "google_ads"; clickup_task_id: string | null; responsable_id: string | null; pausado: boolean }[]
@@ -60,28 +56,7 @@ export async function completarOptimizacionAds(input: CompletarOptimizacionAdsIn
     after(() => cerrarTareaOptimizacionEnClickUp(actual.clickup_task_id!));
   }
 
-  if (actual && !actual.pausado) {
-    const anio = Number(fechaBase.slice(0, 4));
-    const holidays = await sql<Holiday[]>`select fecha, nombre from holidays where anio in (${anio}, ${anio + 1})`;
-    let candidata = addDaysIso(fechaBase, 7);
-    // Si se completó con atraso, la próxima sigue siendo el mismo día de la semana, pero nunca en el pasado.
-    while (candidata <= fechaRealizada) candidata = addDaysIso(candidata, 7);
-    const proximaFecha = esFeriado(candidata, holidays) ? diaHabilSiguiente(candidata, holidays) : candidata;
-
-    const [{ id: proximaOptimizationId }] = await sql<{ id: string }[]>`
-      insert into optimizations (client_id, service_id, tipo, fecha_programada, responsable_id, estado, sync_status)
-      values (${clientId}, ${actual.service_id}, ${actual.tipo}, ${proximaFecha}, ${actual.responsable_id}, 'programada', 'pendiente_sync')
-      returning id
-    `;
-    after(() =>
-      syncOptimizationTaskToClickUp({
-        optimizationId: proximaOptimizationId,
-        clientId,
-        serviceId: actual.service_id,
-        servicioTipo: actual.tipo,
-        fechaProgramada: proximaFecha,
-        responsableId: actual.responsable_id,
-      }),
-    );
-  }
+  // La próxima semana ya no se inserta aquí: el calendario semanal (4 semanas) se mantiene solo y es
+  // idempotente, así que completar una optimización nunca duplica la siguiente.
+  if (actual && !actual.pausado) await generarOptimizacionesAds({ serviceId: actual.service_id });
 }

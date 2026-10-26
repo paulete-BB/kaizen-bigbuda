@@ -1,5 +1,6 @@
 "use client";
 
+import { OPTIMIZACIONES_SEO_EN_KAIZEN } from "@/lib/config";
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
@@ -138,7 +139,7 @@ export function MonthGrid({
                 </Link>
               ))}
 
-              {esViernes && enMes && seoDia.length < 2 && (
+              {OPTIMIZACIONES_SEO_EN_KAIZEN && esViernes && enMes && seoDia.length < 2 && (
                 <div className="mt-auto rounded-md border border-dashed border-border px-1.5 py-1 text-center text-[10px] text-faint">
                   {seoDia.length}/2
                 </div>

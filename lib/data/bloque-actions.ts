@@ -80,7 +80,7 @@ export async function completarServicioBloque(formData: FormData) {
   const tipoLabel = String(formData.get("tipoLabel") ?? "");
   if (!optimizationId) return;
 
-  await completarOptimizacionAds({ optimizationId, clientId, tipoLabel, userId: session.userId, fechaRealizada: fecha, fechaBase: fecha });
+  await completarOptimizacionAds({ optimizationId, clientId, tipoLabel, userId: session.userId, fechaRealizada: fecha });
 
   revalidatePath(`/optimizaciones/bloque/${fecha}`);
 }
