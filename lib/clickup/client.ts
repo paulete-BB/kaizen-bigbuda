@@ -1,5 +1,6 @@
 import { sql } from "@/lib/db";
 import { getSettings } from "@/lib/data/settings";
+import { calcularCambioAsignados } from "@/lib/clickup/asignados";
 
 export interface ClickUpSyncPayload {
   clientId: string;
@@ -310,13 +311,28 @@ export async function syncOptimizationTaskToClickUp(payload: ClickUpTaskPayload)
       start_date: fechaMs,
       start_date_time: conHora,
       tags: ["optimizacion", payload.servicioTipo === "seo_aeo_geo" ? "seo" : "ads", cliente.nombre],
-      ...(assigneeClickupId ? { assignees: [assigneeClickupId] } : {}),
     };
 
     const taskId = existente?.clickup_task_id;
-    const res = taskId
-      ? await clickupFetch(`${API_V2}/task/${taskId}`, { method: "PUT", body: JSON.stringify(body) })
-      : await clickupFetch(`${API_V2}/list/${listId}/task`, { method: "POST", body: JSON.stringify(body) });
+    let res: Response;
+    if (taskId) {
+      // El PUT no acepta `assignees: [id]` como el POST de creación: hay que mandar `{add, rem}`.
+      // Antes se mandaba el arreglo y el responsable de una tarea ya creada nunca se actualizaba.
+      // Solo se toca el responsable si el de Kaizen tiene usuario de ClickUp mapeado; si no, se deja como está.
+      let assignees: { add: number[]; rem: number[] } | undefined;
+      if (assigneeClickupId) {
+        const actual = await clickupFetch(`${API_V2}/task/${taskId}`, { method: "GET" });
+        const { assignees: actuales = [] } = (await actual.json()) as { assignees?: { id: number }[] };
+        const cambio = calcularCambioAsignados(actuales.map((a) => Number(a.id)), assigneeClickupId);
+        if (cambio.add.length > 0 || cambio.rem.length > 0) assignees = cambio;
+      }
+      res = await clickupFetch(`${API_V2}/task/${taskId}`, { method: "PUT", body: JSON.stringify({ ...body, ...(assignees ? { assignees } : {}) }) });
+    } else {
+      res = await clickupFetch(`${API_V2}/list/${listId}/task`, {
+        method: "POST",
+        body: JSON.stringify({ ...body, ...(assigneeClickupId ? { assignees: [assigneeClickupId] } : {}) }),
+      });
+    }
     const task = (await res.json()) as { id: string };
 
     await sql`update optimizations set clickup_task_id = ${task.id}, sync_status = 'ok' where id = ${payload.optimizationId}`;

@@ -3133,6 +3133,27 @@ primero, SEO después, chat dentro de la optimización).
 - **Falta (Fases 2-3)**: API real de Google Ads (requiere developer token
   de Google), ejecución de cambios con aprobación por acción, SEO.
 
+**Bug real: el responsable de una tarea de ClickUp ya creada nunca se
+actualizaba** — descubierto al revisar el workspace real: de 10 tareas
+`optimizacion` creadas por Kaizen, solo 3 tenían responsable (varias de Ads
+de Tecny Stand/Provetec/Gonfernic sin nadie, aunque en Kaizen el responsable
+es Paulete). Dos causas: (1) `syncOptimizationTaskToClickUp` mandaba
+`assignees: [id]` también en el `PUT` de una tarea existente, pero la API de
+ClickUp solo acepta ese arreglo al crear; al actualizar espera
+`{add: [...], rem: [...]}` — así que reasignar desde el dashboard (regla D)
+nunca cambiaba nada en ClickUp; (2) la reasignación masiva de Andrés a
+Paulete (migración 0015) se hizo por SQL y nunca disparó un sync.
+Corregido: para una tarea existente se lee su lista actual de asignados y se
+calcula el `{add, rem}` (`lib/clickup/asignados.ts`, con tests) para que
+quede solo el responsable de Kaizen; solo se toca si ese usuario tiene
+`clickup_user_id` mapeado (si no, se deja como estaba). Nuevo botón admin
+"Resincronizar tareas de ClickUp" en `/ajustes`
+(`resincronizarTareasClickUp`, por lotes de 20, idempotente) para corregir
+de una vez las tareas que ya existen. Verificado con `fetch` simulado contra
+Postgres local: el `PUT` sale con `assignees: {add:[111], rem:[99]}`; no se
+probó contra la API real de ClickUp (sin token en este entorno). Typecheck,
+lint y 25 tests en verde.
+
 ---
 
 ## 1. Contexto

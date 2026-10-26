@@ -9,6 +9,7 @@ import type { FeriadoDetalle } from "@/lib/data/holidays";
 import type { UsuarioResumen } from "@/lib/data/users";
 import { guardarAjustes } from "@/lib/data/settings-actions";
 import { ImportadorConfigDashboard } from "./ImportadorConfigDashboard";
+import { ResincronizarClickUp } from "./ResincronizarClickUp";
 import { AusenciasPanel } from "./AusenciasPanel";
 import { FeriadosPanel } from "./FeriadosPanel";
 
@@ -268,6 +269,8 @@ export function AjustesView({
           <AusenciasPanel ausencias={ausencias} usuarios={responsables} esAdmin={esAdmin} usuarioActualId={usuarioActualId} />
 
           {esAdmin && <ImportadorConfigDashboard />}
+
+          {esAdmin && <ResincronizarClickUp />}
 
           {esAdmin && (
             <div>
