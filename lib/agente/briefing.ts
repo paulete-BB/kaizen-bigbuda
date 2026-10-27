@@ -93,7 +93,7 @@ export async function construirBriefingManual(datos: DatosSesion): Promise<strin
     "5. Conversa conmigo hasta que el plan esté listo. Cuando te pida cerrar, entrégame la respuesta final en el formato de abajo.",
     "",
     "## Datos del cliente",
-    `Industria: ${datos.industria ?? "no indicada"} · Sitio: ${datos.sitioWeb ?? "no indicado"} · Fecha programada: ${fmtFecha(datos.fechaProgramada)}`,
+    `Industria: ${datos.industria ?? "no indicada"} · Sitio: ${datos.sitioWeb ?? "no indicado"} · Fecha de esta optimización: hoy, ${fmtFecha(hoy)} (estaba programada para ${fmtFecha(datos.fechaProgramada)}, pero cuenta la fecha de ejecución)`,
     "",
     `## Últimas ${historial.length} optimizaciones de este servicio (de la más reciente a la más antigua)`,
     formatearHistorial(historial),

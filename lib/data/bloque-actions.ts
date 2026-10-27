@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { sql } from "@/lib/db";
 import { requireUser } from "@/lib/auth/server";
 import { completarOptimizacionAds } from "@/lib/data/optimizacion-ads-completar";
+import { hoySantiago, toIso } from "@/lib/dates";
 
 export async function toggleChecklistItemBloque(formData: FormData) {
   await requireUser();
@@ -80,7 +81,7 @@ export async function completarServicioBloque(formData: FormData) {
   const tipoLabel = String(formData.get("tipoLabel") ?? "");
   if (!optimizationId) return;
 
-  await completarOptimizacionAds({ optimizationId, clientId, tipoLabel, userId: session.userId, fechaRealizada: fecha });
+  await completarOptimizacionAds({ optimizationId, clientId, tipoLabel, userId: session.userId, fechaRealizada: toIso(hoySantiago()) });
 
   revalidatePath(`/optimizaciones/bloque/${fecha}`);
 }

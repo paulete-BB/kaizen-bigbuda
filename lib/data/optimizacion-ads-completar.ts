@@ -8,7 +8,7 @@ export interface CompletarOptimizacionAdsInput {
   clientId: string;
   tipoLabel: string;
   userId: string;
-  /** Fecha en que se registra como realizada. */
+  /** Fecha en que se registra como realizada: siempre el día en que se ejecuta, nunca la fecha en que estaba programada. */
   fechaRealizada: string;
   /** Texto para la bitácora; sin él queda la nota genérica del bloque. */
   contenidoBitacora?: string;
@@ -41,7 +41,7 @@ export async function completarOptimizacionAds(input: CompletarOptimizacionAdsIn
     where id = ${optimizationId}
   `;
 
-  const contenido = input.contenidoBitacora?.trim() || "Bloque de ads del miércoles completado.";
+  const contenido = input.contenidoBitacora?.trim() || "Bloque de Ads completado.";
   const [entrada] = await sql<{ id: string }[]>`
     insert into log_entries (client_id, optimization_id, titulo, tipo, contenido, sync_status, creado_por)
     values (${clientId}, ${optimizationId}, ${"Optimización " + tipoLabel}, 'Optimización', ${contenido}, 'pendiente_sync', ${userId})
