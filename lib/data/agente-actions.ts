@@ -87,7 +87,7 @@ export async function cerrarOptimizacionConAgente(input: { sessionId: string; re
   const hallazgos = input.hallazgos.trim();
   const proximos = proximosPasosDesdePlan(s.plan);
   const partes = [resumen];
-  if (hallazgos) partes.push(`**Hallazgos:** ${hallazgos}`);
+  if (hallazgos) partes.push(`**Hallazgos:**\n\n${hallazgos}`);
   if (proximos) partes.push(`**En espera / próximos pasos:**\n${proximos}`);
 
   try {
