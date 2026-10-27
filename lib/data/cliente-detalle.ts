@@ -1,5 +1,6 @@
 import { sql } from "@/lib/db";
 import { hoySantiago, toIso } from "@/lib/dates";
+import { limitesSemana } from "@/lib/scheduling/ads-semanal";
 
 export type ServicioTipo = "seo_aeo_geo" | "meta_ads" | "google_ads";
 
@@ -31,6 +32,10 @@ export interface ServicioDetalle {
   gastoAcumulado: number | null;
   presupuestoMensual: number | null;
   pausado: boolean;
+  /** Solo servicios de Ads: fecha de la última optimización realizada (para no repetir tareas ya hechas). */
+  ultimaOptimizacion: string | null;
+  /** Solo servicios de Ads: la optimización de esta semana a trabajar (o la pendiente más cercana). */
+  optimizacionActual: { id: string; fecha: string; agenteEstado: "en_curso" | "cerrada" | null } | null;
 }
 
 export interface DescuentoDetalle {
@@ -75,10 +80,8 @@ export interface ClienteDetalleCompleto {
   contactoTelefono: string | null;
   logoIniciales: string;
   proximaOptimizacion: string;
-  /** Id de la próxima optimización SEO-AEO-GEO `programada` de este cliente, si tiene una — usado para armar el link real de "Registrar optimización" (§3.2: SEO se registra desde acá; Ads se registra desde el bloque de su día asignado, ver `proximaOptimizacionAdsFecha`). */
+  /** Id de la próxima optimización SEO-AEO-GEO `programada` de este cliente, si tiene una — usado para armar el link real de "Registrar optimización" (§3.2: SEO se registra desde acá; Ads se trabaja desde la tarjeta de cada servicio, ver `ServicioDetalle.optimizacionActual`). */
   proximaOptimizacionSeoId: string | null;
-  /** Fecha de la próxima optimización de Ads (Meta/Google) `programada` de este cliente, si tiene una — arma el link a `/optimizaciones/bloque/{fecha}` (§3.2 Regla B: cada servicio de Ads se registra desde el bloque de su propio día, no desde una página por optimización como SEO). */
-  proximaOptimizacionAdsFecha: string | null;
   servicios: ServicioDetalle[];
   serviciosTiposExistentes: ServicioTipo[];
   descuentos: DescuentoDetalle[];
@@ -124,7 +127,7 @@ export async function getClienteDetalle(id: string): Promise<ClienteDetalleCompl
   const anio = hoyDate.getFullYear();
   const mes = hoyDate.getMonth() + 1;
 
-  const [serviciosRows, descuentosRows, tareasRows, proximaRows, proximaSeoRows, proximaAdsRows] = await Promise.all([
+  const [serviciosRows, descuentosRows, tareasRows, proximaRows, proximaSeoRows] = await Promise.all([
     sql<
       {
         id: string;
@@ -171,12 +174,29 @@ export async function getClienteDetalle(id: string): Promise<ClienteDetalleCompl
       where client_id = ${id} and tipo = 'seo_aeo_geo' and estado = 'programada'
       order by fecha_programada limit 1
     `,
-    sql<{ fecha_programada: string }[]>`
-      select fecha_programada from optimizations
-      where client_id = ${id} and tipo != 'seo_aeo_geo' and estado = 'programada'
-      order by fecha_programada limit 1
-    `,
   ]);
+
+  // Por servicio de Ads: última optimización realizada y la que toca trabajar (secuencial, no Promise.all: ver bug del pooler).
+  const ultimas = await sql<{ service_id: string; ultima: string }[]>`
+    select service_id, max(fecha_realizada)::text as ultima from optimizations
+    where client_id = ${id} and estado = 'realizada' and tipo != 'seo_aeo_geo' group by service_id
+  `;
+  const pendientes = await sql<{ id: string; service_id: string; fecha_programada: string; agente_estado: "en_curso" | "cerrada" | null }[]>`
+    select o.id, o.service_id, o.fecha_programada, ag.estado as agente_estado
+    from optimizations o left join agent_sessions ag on ag.optimization_id = o.id
+    where o.client_id = ${id} and o.tipo != 'seo_aeo_geo' and o.estado in ('programada', 'bloqueada')
+    order by o.fecha_programada
+  `;
+  const { lunes, domingo } = limitesSemana(hoy);
+  const ultimaPorServicio = new Map(ultimas.map((u) => [u.service_id, u.ultima]));
+  /** La de esta semana; si no hay, la pendiente más reciente que ya pasó; si tampoco, la próxima. Las vencidas viejas no importan. */
+  function actualDe(serviceId: string) {
+    const del = pendientes.filter((p) => p.service_id === serviceId);
+    const estaSemana = del.find((p) => p.fecha_programada >= lunes && p.fecha_programada <= domingo);
+    const pasadas = del.filter((p) => p.fecha_programada < lunes);
+    const elegida = estaSemana ?? pasadas[pasadas.length - 1] ?? del.find((p) => p.fecha_programada > domingo);
+    return elegida ? { id: elegida.id, fecha: elegida.fecha_programada, agenteEstado: elegida.agente_estado } : null;
+  }
 
   const svcSlug = (tipo: ServicioTipo): "seo" | "google" | "meta" =>
     tipo === "seo_aeo_geo" ? "seo" : tipo === "google_ads" ? "google" : "meta";
@@ -194,7 +214,6 @@ export async function getClienteDetalle(id: string): Promise<ClienteDetalleCompl
     logoIniciales: cliente.nombre.slice(0, 1).toUpperCase(),
     proximaOptimizacion: proximaRows[0]?.fecha_programada ?? "sin próxima optimización",
     proximaOptimizacionSeoId: proximaSeoRows[0]?.id ?? null,
-    proximaOptimizacionAdsFecha: proximaAdsRows[0]?.fecha_programada ?? null,
     configApis: {
       gscProperty: cliente.gsc_property,
       ga4PropertyId: cliente.ga4_property_id,
@@ -228,6 +247,8 @@ export async function getClienteDetalle(id: string): Promise<ClienteDetalleCompl
         gastoAcumulado: s.gasto_acumulado,
         presupuestoMensual: s.presupuesto_mensual,
         pausado: s.pausado,
+        ultimaOptimizacion: ultimaPorServicio.get(s.id) ?? null,
+        optimizacionActual: s.tipo === "seo_aeo_geo" || s.pausado ? null : actualDe(s.id),
       };
     }),
     serviciosTiposExistentes: serviciosRows.map((s) => s.tipo),

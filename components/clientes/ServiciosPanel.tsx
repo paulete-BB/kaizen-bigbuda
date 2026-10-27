@@ -1,8 +1,10 @@
 "use client";
 
 import { useState } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import type { ServicioDetalle, ServicioTipo } from "@/lib/data/cliente-detalle";
+import { iniciarOptimizacion } from "@/lib/data/agente-actions";
 import { actualizarVigenciaServicio, agregarServicio, pausarServicio, reactivarServicio } from "@/lib/data/cliente-actions";
 import { addMeses, diasHasta, fmtFecha, hoySantiago, parseIso } from "@/lib/dates";
 import type { UsuarioResumen } from "@/lib/data/users";
@@ -321,6 +323,34 @@ export function ServiciosPanel({
                 </div>
               ) : (
                 <div className="mt-4 text-[11.5px] text-muted-2">Vigencia indefinida.</div>
+              )}
+
+              {s.tipo !== "seo_aeo_geo" && !s.pausado && (
+                <div className="mt-4 flex flex-col gap-2 rounded-[10px] border border-border-soft bg-canvas p-3">
+                  <div className="flex items-center justify-between text-[11.5px]">
+                    <span className="text-muted-2">Última optimización</span>
+                    <span className="font-semibold">{s.ultimaOptimizacion ? fmtFecha(s.ultimaOptimizacion) : "Ninguna registrada"}</span>
+                  </div>
+                  {s.optimizacionActual ? (
+                    s.optimizacionActual.agenteEstado === "en_curso" ? (
+                      <Link
+                        href={`/optimizaciones/${s.optimizacionActual.id}/agente`}
+                        className="rounded-lg border border-accent bg-accent-soft px-3 py-2 text-center font-sans text-[12.5px] font-semibold text-accent-soft-ink"
+                      >
+                        Continuar optimización de {s.nombre} (en curso)
+                      </Link>
+                    ) : (
+                      <form action={iniciarOptimizacion}>
+                        <input type="hidden" name="optimizationId" value={s.optimizacionActual.id} />
+                        <button type="submit" className="w-full rounded-lg border-none bg-accent px-3 py-2 font-sans text-[12.5px] font-semibold text-white">
+                          Optimizar {s.nombre} · programada {fmtFecha(s.optimizacionActual.fecha)}
+                        </button>
+                      </form>
+                    )
+                  ) : (
+                    <div className="text-[11.5px] text-muted-2">No hay una optimización pendiente de {s.nombre}.</div>
+                  )}
+                </div>
               )}
 
               {editing ? (

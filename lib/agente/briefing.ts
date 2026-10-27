@@ -47,6 +47,32 @@ async function cifrasCuenta(datos: DatosSesion, desde: string, hasta: string): P
   ].join("\n\n");
 }
 
+
+/** Qué auditar en cada plataforma: el briefing de Meta y el de Google Ads no se parecen, así que cada servicio recibe su propia lista. */
+function guiaPorServicio(tipo: "meta_ads" | "google_ads", datos: DatosSesion): string[] {
+  if (tipo === "meta_ads") {
+    return [
+      `Abre el Administrador de anuncios de Meta${datos.metaAdAccountId ? ` (cuenta ${datos.metaAdAccountId})` : ""} y audita, en este orden:`,
+      "- Entrega y presupuesto: gasto vs. presupuesto del mes, campañas/conjuntos limitados por presupuesto, fase de aprendizaje (¿cuáles están en aprendizaje o 'aprendizaje limitado'?).",
+      "- Resultados reales: el evento de optimización de cada campaña, costo por resultado, y si las conversiones personalizadas están bien marcadas. La conversión que importa es la del sitio (GA4, Paid Social); en campañas de mensajes, los mensajes iniciados.",
+      "- Conjuntos de anuncios: públicos (superposición, tamaño, exclusiones), ubicaciones, frecuencia y alcance, costo por resultado por conjunto.",
+      "- Creativos: fatiga (frecuencia alta + CTR en caída), anuncios sin entrega o rechazados, qué formato/mensaje rinde mejor, necesidad de creativos nuevos.",
+      "- Medición: píxel y API de conversiones (calidad de coincidencia de eventos), UTMs de los anuncios (el utm_campaign puede ser el ID de la campaña), y que lo que reporta Meta calce con GA4.",
+      "- Cambios recientes: historial de la cuenta, para no deshacer ni pisar lo que ya se hizo.",
+    ];
+  }
+  return [
+    "Abre la cuenta de Google Ads del cliente y audita, en este orden:",
+    "- Entrega y presupuesto: gasto vs. presupuesto, campañas limitadas por presupuesto o por ranking (cuota de impresiones perdida), estrategia de puja y su fase de aprendizaje.",
+    "- Conversiones: acciones de conversión principales vs. secundarias, qué se está optimizando, conversiones vs. GA4 y llamadas/formularios sin importar.",
+    "- Términos de búsqueda: relevantes que convierten (pasar a exacta/frase), irrelevantes (negativas, idealmente en listas compartidas), y la marca propia o de competidores.",
+    "- Palabras clave: nivel de calidad, tipos de concordancia, keywords sin impresiones o sin conversiones con gasto, canibalización entre grupos y campañas.",
+    "- Anuncios: fuerza de los anuncios adaptables (RSA), titulares/descripciones de bajo rendimiento, extensiones/recursos, CTR por anuncio.",
+    "- Recomendaciones y aplicación automática: revisa que no haya cambios automáticos no deseados en el historial de cambios y desactívalos si corresponde.",
+    "- Segmentación: ubicaciones, dispositivos, horarios, y campañas detenidas que convenga ordenar.",
+  ];
+}
+
 export async function construirBriefingManual(datos: DatosSesion): Promise<string> {
   const canal = datos.tipo === "meta_ads" ? "Meta Ads" : "Google Ads";
   const hoy = toIso(hoySantiago());
@@ -86,7 +112,7 @@ export async function construirBriefingManual(datos: DatosSesion): Promise<strin
     "Actúa como Paid Media Senior de Bigbuda (usa la skill de paid media si está disponible). Vas a auditar la cuenta, armar un plan priorizado para esta semana y ayudarme a dejarlo listo. Yo ejecuto los cambios; tú propones.",
     "",
     "## Cómo trabajar",
-    `1. Abre la cuenta de ${canal} de ${datos.clienteNombre} en el navegador${datos.metaAdAccountId && datos.tipo === "meta_ads" ? ` (cuenta de anuncios de Meta: ${datos.metaAdAccountId})` : ""} y audítala: gasto y pacing, rendimiento por campaña/conjunto/anuncio, creativos fatigados, públicos, segmentaciones, términos de búsqueda (Google) y cambios recientes.`,
+    `1. Esta es una optimización de **${canal}** de ${datos.clienteNombre}: concéntrate solo en este servicio. ${guiaPorServicio(datos.tipo, datos).join("\n")}`,
     "2. ANTES de proponer nada, revisa abajo el historial y los pendientes: no repitas ni pises acciones que están en espera de más datos (respeta las fechas de revisión) y retoma lo que quedó pendiente.",
     "3. Usa las cifras de Kaizen como contexto. La conversión real del cliente es la de GA4 cuando existe; si lo que ves en la plataforma de anuncios difiere mucho, dilo.",
     "4. Prioriza por impacto en resultados de negocio. No inventes datos: si algo no lo pudiste ver, dilo.",
