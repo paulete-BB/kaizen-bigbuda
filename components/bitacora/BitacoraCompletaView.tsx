@@ -136,7 +136,7 @@ export function BitacoraCompletaView({
                           <span className="text-[11px] text-muted">{fmtFecha(item.fecha)}</span>
                           <span className="rounded-full bg-accent-soft px-2 py-px text-[10.5px] font-semibold text-accent-soft-ink">{item.tipo}</span>
                         </div>
-                        <div className="mt-0.5 text-[12px] text-muted-2">{item.desc}</div>
+                        <div className="mt-0.5 whitespace-pre-wrap text-[12px] text-muted-2">{item.desc}</div>
                         <div className="mt-1.5 flex items-center gap-3">
                           {item.responsable && <span className="text-[11px] text-muted-2">{item.responsable}</span>}
                           <span className="text-[11px] font-semibold" style={{ color: sync.color }}>

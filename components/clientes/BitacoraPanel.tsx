@@ -38,7 +38,7 @@ export function BitacoraPanel({ entradas, clienteId }: { entradas: BitacoraEntra
                     {e.tipo}
                   </span>
                 </div>
-                <div className="mt-0.5 text-[12px] text-muted-2">{e.desc}</div>
+                <div className="mt-0.5 whitespace-pre-wrap text-[12px] text-muted-2">{e.desc}</div>
                 <div className="mt-[7px] flex items-center gap-3">
                   {e.responsable && (
                     <span className="flex items-center gap-1.5 text-[11px] text-muted-2">{e.responsable}</span>

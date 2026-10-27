@@ -81,6 +81,11 @@ export async function completarServicioBloque(formData: FormData) {
   const tipoLabel = String(formData.get("tipoLabel") ?? "");
   if (!optimizationId) return;
 
+  // Con una optimización en curso (briefing/plan ya iniciados) el cierre se hace en su pantalla, que es la que
+  // guarda el resumen en la bitácora; cerrarla desde aquí la dejaría con la nota genérica y sin resumen.
+  const [enCurso] = await sql`select 1 from agent_sessions where optimization_id = ${optimizationId} and estado = 'en_curso'`;
+  if (enCurso) return;
+
   await completarOptimizacionAds({ optimizationId, clientId, tipoLabel, userId: session.userId, fechaRealizada: toIso(hoySantiago()) });
 
   revalidatePath(`/optimizaciones/bloque/${fecha}`);

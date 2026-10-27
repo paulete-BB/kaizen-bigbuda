@@ -168,7 +168,10 @@ export function BloqueCard({ item, fecha, mes, anio, defaultOpen = false }: { it
               <button onClick={guardarAvance} disabled={pending} className="ghost rounded-lg border border-border bg-surface px-3 py-2 font-sans text-[12px] font-semibold text-ink disabled:opacity-60">
                 Guardar avance
               </button>
-              {!completado && (
+              {!completado && item.agenteEstado === "en_curso" && (
+                <span className="self-center text-[11.5px] text-muted-2">Ciérrala desde “Continuar optimización” para que el resumen quede en la bitácora.</span>
+              )}
+              {!completado && item.agenteEstado !== "en_curso" && (
                 <button onClick={completar} disabled={pending} className="btn-primary rounded-lg border-none bg-accent px-3 py-2 font-sans text-[12px] font-semibold text-white disabled:opacity-60">
                   Completar servicio
                 </button>
