@@ -208,7 +208,7 @@ export function ResultadosView({
             )}
             {data.googleAds.disponible && (
               <p className="text-[10.5px] leading-relaxed text-muted-2">
-                Estas cifras vienen de GA4 (sesiones con <code>sessionMedium = cpc/paid</code>), no de una conexión directa a Google Ads — todavía
+                Estas cifras vienen de GA4 (sesiones con <code>source = google / medium = cpc</code>), no de una conexión directa a Google Ads — todavía
                 no existe esa integración (§3.14). Las conversiones y el costo pueden no coincidir con lo que reporta Google Ads directamente: Ads
                 usa su propio seguimiento de conversiones (con modelado y atribución entre dispositivos) que GA4 no replica. Para el número
                 oficial de conversiones y costo, revisar Google Ads directamente.

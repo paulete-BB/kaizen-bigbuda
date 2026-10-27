@@ -194,7 +194,7 @@ function metricasDesdeGoogleAds(actual: ResumenTraficoPagado, anterior: ResumenT
 
 /**
  * Pre-llena "¿Cómo vamos?" del informe de Ads con datos reales — Meta
- * Insights para `meta_ads`; GA4 con filtro `sessionMedium=cpc/paid` para
+ * Insights para `meta_ads`; GA4 con filtro `sessionSource=google y sessionMedium=cpc` para
  * `google_ads`, ya que no hay una API de Google Ads propia conectada
  * todavía (§3.14). También devuelve el gasto real del mes para
  * reemplazar el ingreso manual del pacing (§3.9 → automático).

@@ -36,7 +36,7 @@ export interface ClienteResumen {
   aeoSesionesIADia: KpiDiaCliente | null;
   /** Conversiones reales del sitio (GA4, Paid Social) de ayer — en 0 para clientes con campañas de mensajería (Messenger/WhatsApp), que no generan sesión en el sitio. */
   metaConversionesDia: KpiDiaCliente | null;
-  /** Conversiones reales del sitio (GA4, `sessionMedium=cpc/paid` contra la landing de Google Ads) de ayer. */
+  /** Conversiones reales del sitio (GA4, `sessionSource=google` + `sessionMedium=cpc` contra la landing de Google Ads) de ayer. */
   googleConversionesDia: KpiDiaCliente | null;
   /** Fecha de la próxima optimización `programada` (cualquier servicio) — `null` si no hay ninguna futura. */
   proximaOptimizacion: string | null;

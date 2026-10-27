@@ -148,18 +148,26 @@ export interface ResumenTraficoPagado {
   costo: number;
 }
 
+/**
+ * Solo tráfico de Google Ads: fuente `google` Y medio `cpc`/`ppc` (así llega
+ * el tráfico con auto-etiquetado, con o sin Ads vinculado a GA4). Antes se
+ * filtraba solo por medio `cpc`/`paid`, y los links de Meta con
+ * `utm_medium=cpc` o `paid` entraban como si fueran Google Ads, con campañas
+ * de Meta (IDs numéricos) mezcladas.
+ */
 function filtroTraficoPagado() {
+  const medio = (value: string) => ({ filter: { fieldName: "sessionMedium", stringFilter: { matchType: "EXACT" as const, value, caseSensitive: false } } });
   return {
-    orGroup: {
+    andGroup: {
       expressions: [
-        { filter: { fieldName: "sessionMedium", stringFilter: { matchType: "EXACT" as const, value: "cpc", caseSensitive: false } } },
-        { filter: { fieldName: "sessionMedium", stringFilter: { matchType: "EXACT" as const, value: "paid", caseSensitive: false } } },
+        { filter: { fieldName: "sessionSource", stringFilter: { matchType: "EXACT" as const, value: "google", caseSensitive: false } } },
+        { orGroup: { expressions: [medio("cpc"), medio("ppc")] } },
       ],
     },
   };
 }
 
-/** Google Ads vía GA4 (sessionMedium = cpc | paid) — usado para el informe de Google Ads, que no tiene una API de Ads propia conectada todavía. */
+/** Google Ads vía GA4 (sessionSource = google y sessionMedium = cpc | ppc) — usado para el informe de Google Ads, que no tiene una API de Ads propia conectada todavía. */
 export async function obtenerTraficoPagadoGA4(propertyId: string, startDate: string, endDate: string): Promise<ResumenTraficoPagado> {
   const data = await consultarGA4(propertyId, {
     dateRanges: [{ startDate, endDate }],
@@ -179,16 +187,19 @@ export interface CampanaPagadoGA4 {
 
 /** Desglose por campaña del tráfico pagado (Google Ads vía GA4) — misma lógica de "impacto en el negocio" que el informe: no solo gasto, sino qué campaña convierte. */
 export async function obtenerCampanasPagadoGA4(propertyId: string, startDate: string, endDate: string, limit = 10): Promise<CampanaPagadoGA4[]> {
+  // Con Ads vinculado a GA4 el nombre real viene en sessionGoogleAdsCampaignName; sin vínculo (o sin utm_campaign)
+  // GA4 lo deja en "(not set)" aunque el tráfico sea de Google Ads. Se piden las dos y se usa la que traiga nombre.
   const data = await consultarGA4(propertyId, {
     dateRanges: [{ startDate, endDate }],
-    dimensions: [{ name: "sessionCampaignName" }],
+    dimensions: [{ name: "sessionGoogleAdsCampaignName" }, { name: "sessionCampaignName" }],
     metrics: [{ name: "sessions" }, { name: "conversions" }, { name: "advertiserAdCost" }],
     dimensionFilter: filtroTraficoPagado(),
     orderBys: [{ metric: { metricName: "sessions" }, desc: true }],
     limit,
   });
+  const util = (v?: string) => (v && v !== "(not set)" && v !== "(direct)" ? v : "");
   return (data.rows ?? []).map((r) => ({
-    nombre: r.dimensionValues?.[0]?.value || "(sin nombre)",
+    nombre: util(r.dimensionValues?.[0]?.value) || util(r.dimensionValues?.[1]?.value) || "(campaña sin nombre en GA4)",
     sesiones: num(r.metricValues?.[0]?.value),
     conversiones: num(r.metricValues?.[1]?.value),
     costo: num(r.metricValues?.[2]?.value),

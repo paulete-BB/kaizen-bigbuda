@@ -103,7 +103,7 @@ const DEFINICIONES: DefHerramienta[] = [
   },
   {
     nombre: "google_ads_resumen_ga4",
-    descripcion: "Tráfico pagado de Google Ads medido en GA4 (sessionMedium cpc/paid): sesiones, conversiones y costo. LIMITACIÓN: no hay API de Google Ads conectada; GA4 puede diferir del número que muestra Google Ads (atribución distinta) y el costo requiere vinculación Ads↔GA4.",
+    descripcion: "Tráfico pagado de Google Ads medido en GA4 (sessionSource google y sessionMedium cpc; si las campañas salen sin nombre es porque GA4 no recibe el nombre: falta vincular Ads↔GA4 o el utm_campaign): sesiones, conversiones y costo. LIMITACIÓN: no hay API de Google Ads conectada; GA4 puede diferir del número que muestra Google Ads (atribución distinta) y el costo requiere vinculación Ads↔GA4.",
     schema: Rango,
     tipos: ["google_ads"],
   },
