@@ -23,8 +23,13 @@ export interface RespuestaParseada {
   avisos: string[];
 }
 
+// Los títulos pueden venir con o sin "##" (al copiar desde el chat de Claude los # suelen perderse), con
+// negrita o con ":" al final; la línea debe ser solo el título para no confundir una frase que empiece igual.
+const TITULO = (nombre: string) => `^[#*\\s]*${nombre}[*:\\s]*$`;
+const CUALQUIER_TITULO = `${TITULO("(?:RESUMEN|HALLAZGOS|PLAN)")}`;
+
 function seccion(texto: string, nombre: string): string {
-  const re = new RegExp(`^#{1,3}\\s*${nombre}\\b[^\\n]*\\n([\\s\\S]*?)(?=^#{1,3}\\s*(?:RESUMEN|HALLAZGOS|PLAN)\\b|(?![\\s\\S]))`, "im");
+  const re = new RegExp(`${TITULO(nombre)}\\n([\\s\\S]*?)(?=${CUALQUIER_TITULO}|(?![\\s\\S]))`, "im");
   return (texto.match(re)?.[1] ?? "").replace(/```[\s\S]*?```/g, "").trim();
 }
 
@@ -34,7 +39,7 @@ export function parsearRespuestaClaude(texto: string): RespuestaParseada | { err
   const hallazgos = seccion(texto, "HALLAZGOS");
 
   let plan: RespuestaParseada["plan"] = [];
-  const planSeccion = texto.match(/^#{1,3}\s*PLAN\b[^\n]*\n([\s\S]*)$/im)?.[1] ?? texto;
+  const planSeccion = texto.match(new RegExp(`${TITULO("PLAN")}\\n([\\s\\S]*)$`, "im"))?.[1] ?? texto;
   const bloque = planSeccion.match(/```(?:json)?\s*([\s\S]*?)```/i)?.[1];
   if (bloque) {
     try {

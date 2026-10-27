@@ -48,4 +48,12 @@ describe("parsearRespuestaClaude", () => {
     expect(r.plan).toHaveLength(1);
     expect(r.avisos.some((a) => a.includes("RESUMEN"))).toBe(true);
   });
+
+  it("acepta títulos sin # (como llegan al copiar desde el chat) y una línea suelta antes del bloque json", () => {
+    const r = parsearRespuestaClaude('RESUMEN\nHice varios cambios.\n\n* uno\n* dos\n\nHALLAZGOS\n\n* algo\n\nPLAN\njson\n\n```json\n[{"id":"a","prioridad":"alta","tipo":"revisar","titulo":"Revisar algo","detalle":"detalle largo"}]\n```');
+    if ("error" in r) throw new Error(r.error);
+    expect(r.resumen).toBe("Hice varios cambios.\n\n* uno\n* dos");
+    expect(r.hallazgos).toBe("* algo");
+    expect(r.plan).toHaveLength(1);
+  });
 });

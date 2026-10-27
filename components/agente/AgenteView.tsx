@@ -215,7 +215,7 @@ export function AgenteView({ usuario, vista }: { usuario: SidebarUsuario; vista:
               {!cerrada && (
                 <>
                   <div className="rounded-[14px] border border-border bg-surface p-4">
-                    <div className="text-[11px] font-bold uppercase text-faint [letter-spacing:.03em]">Paso 1 · Copiar el briefing</div>
+                    <div className="text-[11px] font-bold uppercase text-faint [letter-spacing:.03em]">Paso 1 de 3 · Copiar el briefing</div>
                     <p className="mt-1 text-[12px] text-muted-2">Abre una conversación nueva en Claude, pega el briefing y trabaja la optimización con él: revisa la cuenta, ajusta el plan y, cuando esté listo, pídele la respuesta final.</p>
                     <div className="mt-2 flex items-center gap-3">
                       <button onClick={() => void copiarBriefing()} className="btn-primary rounded-lg border-none bg-accent px-4 py-2.5 font-sans text-[12.5px] font-semibold text-white">
@@ -229,7 +229,7 @@ export function AgenteView({ usuario, vista }: { usuario: SidebarUsuario; vista:
                   </div>
 
                   <div className="rounded-[14px] border border-border bg-surface p-4">
-                    <div className="text-[11px] font-bold uppercase text-faint [letter-spacing:.03em]">Paso 2 · Pegar la respuesta final de Claude</div>
+                    <div className="text-[11px] font-bold uppercase text-faint [letter-spacing:.03em]">Paso 2 de 3 · Pegar la respuesta final de Claude</div>
                     <p className="mt-1 text-[12px] text-muted-2">El briefing le pide un formato (RESUMEN, HALLAZGOS y PLAN). Al cargarla, el plan y el resumen aparecen a la derecha y puedes editarlos. Puedes repetir este paso si Claude ajusta algo.</p>
                     <textarea value={pegado} onChange={(e) => setPegado(e.target.value)} rows={10} placeholder="Pega aquí la respuesta de Claude…" className="mt-2 w-full rounded-lg border border-border bg-surface px-3 py-2 text-[12.5px] text-ink" />
                     {mensajeCarga && (
@@ -341,8 +341,8 @@ export function AgenteView({ usuario, vista }: { usuario: SidebarUsuario; vista:
             </div>
 
             <div className="rounded-[14px] border border-border bg-surface p-4">
-              <div className="text-[11px] font-bold uppercase text-faint [letter-spacing:.03em]">Resumen para la bitácora</div>
-              <p className="mt-1 text-[11.5px] text-muted-2">Se carga desde la respuesta de Claude o lo escribes tú. Esto es lo que se guarda en la bitácora del cliente.</p>
+              <div className="text-[11px] font-bold uppercase text-faint [letter-spacing:.03em]">Paso 3 de 3 · Revisar y cerrar</div>
+              <p className="mt-1 text-[11.5px] text-muted-2">Este es el resumen que se guarda en la bitácora del cliente. Se llena al cargar la respuesta de Claude (paso 2) y puedes editarlo. Al cerrar, la optimización queda realizada hoy y se programa la de la próxima semana.</p>
               <textarea value={resumen} onChange={(e) => setResumen(e.target.value)} disabled={cerrada} rows={6} placeholder="Qué se hizo, qué se decidió y qué queda en espera…" className="mt-2 w-full rounded-lg border border-border bg-surface px-2.5 py-2 text-[12.5px] text-ink disabled:opacity-60" />
               <label className="mt-2 flex flex-col gap-1">
                 <span className="text-[11px] font-semibold text-muted-2">Hallazgos (opcional)</span>

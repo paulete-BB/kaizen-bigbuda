@@ -151,31 +151,51 @@ export function BloqueCard({ item, fecha, mes, anio, defaultOpen = false }: { it
                 </div>
               </>
             )}
-            {!completado && (
-              <form action={iniciarOptimizacion} className="mt-1">
-                <input type="hidden" name="optimizationId" value={item.optimizationId} />
-                <button type="submit" className="w-full rounded-lg border border-accent bg-accent-soft px-3 py-2 font-sans text-[12.5px] font-semibold text-accent-soft-ink">
-                  {item.agenteEstado === "en_curso" ? "Continuar optimización" : "Iniciar optimización"}
-                </button>
-              </form>
-            )}
-            {completado && item.agenteEstado && (
-              <Link href={`/optimizaciones/${item.optimizationId}/agente`} className="mt-1 text-[12px] font-semibold text-accent">
-                Ver la optimización registrada
-              </Link>
-            )}
-            <div className="mt-2 flex gap-2">
+            <div className="mt-2 flex flex-col gap-2 rounded-[10px] border border-border-soft bg-canvas p-3">
+              <div className="text-[11px] font-bold uppercase text-faint [letter-spacing:.03em]">Optimización de esta semana</div>
+              {completado ? (
+                <>
+                  <p className="text-[12px] text-muted-2">Ya está cerrada y registrada en la bitácora del cliente.</p>
+                  {item.agenteEstado && (
+                    <Link href={`/optimizaciones/${item.optimizationId}/agente`} className="text-[12.5px] font-semibold text-accent">
+                      Ver resumen y plan de esta optimización →
+                    </Link>
+                  )}
+                </>
+              ) : item.agenteEstado === "en_curso" ? (
+                <>
+                  <p className="text-[12px] text-muted-2">
+                    <span className="font-semibold text-warning">En curso.</span> Ya tienes el briefing. Cuando termines en Claude, vuelve a esa pantalla: ahí pegas su respuesta y cierras la optimización.
+                  </p>
+                  <Link href={`/optimizaciones/${item.optimizationId}/agente`} className="rounded-lg border border-accent bg-accent-soft px-3 py-2 text-center font-sans text-[12.5px] font-semibold text-accent-soft-ink">
+                    Abrir briefing y cerrar la optimización
+                  </Link>
+                </>
+              ) : (
+                <>
+                  <p className="text-[12px] text-muted-2">Kaizen te arma un briefing con el historial y las cifras de la cuenta para trabajar la optimización en Claude. Al terminar, el resumen queda en la bitácora.</p>
+                  <form action={iniciarOptimizacion}>
+                    <input type="hidden" name="optimizationId" value={item.optimizationId} />
+                    <button type="submit" className="w-full rounded-lg border-none bg-accent px-3 py-2 font-sans text-[12.5px] font-semibold text-white">
+                      Empezar optimización (preparar briefing)
+                    </button>
+                  </form>
+                  <button
+                    onClick={() => {
+                      if (confirm("Se marcará como realizada SIN resumen: en la bitácora solo quedará “Bloque de Ads completado”. ¿Cerrar así?")) void completar();
+                    }}
+                    disabled={pending}
+                    className="self-start text-[11.5px] text-muted-2 underline disabled:opacity-60"
+                  >
+                    Marcar como hecha sin resumen
+                  </button>
+                </>
+              )}
+            </div>
+            <div className="mt-1">
               <button onClick={guardarAvance} disabled={pending} className="ghost rounded-lg border border-border bg-surface px-3 py-2 font-sans text-[12px] font-semibold text-ink disabled:opacity-60">
-                Guardar avance
+                Guardar presupuesto, gasto y notas
               </button>
-              {!completado && item.agenteEstado === "en_curso" && (
-                <span className="self-center text-[11.5px] text-muted-2">Ciérrala desde “Continuar optimización” para que el resumen quede en la bitácora.</span>
-              )}
-              {!completado && item.agenteEstado !== "en_curso" && (
-                <button onClick={completar} disabled={pending} className="btn-primary rounded-lg border-none bg-accent px-3 py-2 font-sans text-[12px] font-semibold text-white disabled:opacity-60">
-                  Completar servicio
-                </button>
-              )}
             </div>
           </div>
         </div>
