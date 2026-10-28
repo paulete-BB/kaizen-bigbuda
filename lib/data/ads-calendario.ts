@@ -13,7 +13,9 @@ import type { Holiday } from "@/lib/scheduling/types";
  * vacío aunque todos los servicios tuvieran su día asignado.
  *
  * Idempotente: no inserta si el servicio ya tiene una optimización no
- * cancelada esa semana (cubre las que ya existían y las movidas por feriado).
+ * cancelada esa semana (cubre las que ya existían y las movidas por feriado) ni si el servicio ya
+ * se optimizó esa semana, aunque lo realizado fuera una optimización programada
+ * para otra fecha.
  * Un lock de Postgres evita duplicados si dos cargas del calendario corren a
  * la vez. Las filas nacen con `sync_status = 'ok'` y sin tarea de ClickUp a
  * propósito: la tarea se crea recién cuando llega esa semana
@@ -45,7 +47,8 @@ export async function generarOptimizacionesAds(opts: { serviceId?: string; hoy?:
         const [existe] = await tx`
           select 1 from optimizations
           where service_id = ${s.id} and estado != 'cancelada'
-            and (fecha_programada between ${lunes} and ${domingo} or fecha_programada = ${objetivo})
+            and (fecha_programada between ${lunes} and ${domingo} or fecha_programada = ${objetivo}
+                 or (estado = 'realizada' and fecha_realizada between ${lunes} and ${domingo}))
           limit 1
         `;
         if (existe) continue;
