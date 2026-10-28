@@ -6,8 +6,13 @@ optimización. Hoy GA4 no coincide con Ads (otra atribución, costo en 0 sin ví
 "(not set)").
 
 ## Lo que hay que conseguir (fuera del código)
-1. **Cuenta de administrador (MCC) de Google Ads** de la agencia, con las cuentas de los clientes
-   vinculadas. La API se llama a través del MCC (`login-customer-id`).
+1. **Cuenta de administrador (MCC) propia de Bigbuda.** Hoy no existe: las cuentas de Ads son de
+   cada cliente y están separadas. El developer token solo se emite desde una cuenta de
+   administrador, así que hay que crear una (gratis) con paulete@bigbuda.com. Las cuentas de los
+   clientes pueden seguir siendo de ellos: sirve que el usuario de Google que conecta Kaizen tenga
+   acceso directo a cada cuenta (invitado como usuario), y/o vincularlas al MCC (el cliente acepta
+   una invitación; con eso se usa `login-customer-id`). Para solicitar acceso básico Google pide
+   cuentas vinculadas: empezar vinculando una (p. ej. Tecny Stand).
 2. **Developer token**: se pide en el *Centro de API* del MCC (solo visible logueado en esa cuenta).
    Nace con acceso de prueba (solo cuentas de prueba); para cuentas reales hay que solicitar
    **acceso básico** con un formulario (requiere email de contacto de API al día). La revisión puede
