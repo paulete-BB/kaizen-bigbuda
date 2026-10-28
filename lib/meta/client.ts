@@ -150,7 +150,7 @@ export async function obtenerSerieDiariaMeta(config: ConfigMeta, since: string, 
   if (!token) throw new Error(config.metaTokenKey ? `META_TOKEN_${config.metaTokenKey} no configurado` : "META_TOKEN no configurado");
 
   const fields = "spend,impressions,clicks,actions";
-  const data = await metaFetch(`/act_${config.adAccountId}/insights`, { fields, time_range: timeRange(since, until), time_increment: "1", level: "account" }, token);
+  const data = await metaFetch(`/act_${config.adAccountId}/insights`, { fields, time_range: timeRange(since, until), time_increment: "1", level: "account", limit: "500" }, token);
   const num = (v: unknown) => (typeof v === "string" ? parseFloat(v) || 0 : 0);
   return (data.data ?? []).map((row: Record<string, unknown>) => ({
     fecha: String(row.date_start ?? ""),
