@@ -66,6 +66,8 @@ export interface ConfigApis {
   fbPageId: string | null;
   igAccountId: string | null;
   metaTokenKey: string | null;
+  /** ID de la cuenta de Google Ads del cliente (10 dígitos, sin guiones) para la API de Google Ads. */
+  googleAdsCustomerId: string | null;
 }
 
 export interface ClienteDetalleCompleto {
@@ -113,11 +115,12 @@ export async function getClienteDetalle(id: string): Promise<ClienteDetalleCompl
       fb_page_id: string | null;
       ig_account_id: string | null;
       meta_token_key: string | null;
+      google_ads_customer_id: string | null;
       datos_retenidos_nota: string | null;
       contacto_anonimizado_en: string | null;
     }[]
   >`select id, nombre, empresa, industria, sitio_web, estado, contacto_nombre, contacto_email, contacto_telefono,
-       gsc_property, ga4_property_id, google_ads_ga4_property_id, meta_ads_ga4_property_id, meta_ad_account_id, fb_page_id, ig_account_id, meta_token_key,
+       gsc_property, ga4_property_id, google_ads_ga4_property_id, meta_ads_ga4_property_id, meta_ad_account_id, fb_page_id, ig_account_id, meta_token_key, google_ads_customer_id,
        datos_retenidos_nota,
        to_char(contacto_anonimizado_en at time zone 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS"Z"') as contacto_anonimizado_en
      from clients where id = ${id}`;
@@ -223,6 +226,7 @@ export async function getClienteDetalle(id: string): Promise<ClienteDetalleCompl
       fbPageId: cliente.fb_page_id,
       igAccountId: cliente.ig_account_id,
       metaTokenKey: cliente.meta_token_key,
+      googleAdsCustomerId: cliente.google_ads_customer_id,
     },
     datosRetenidosNota: cliente.datos_retenidos_nota,
     contactoAnonimizadoEn: cliente.contacto_anonimizado_en,

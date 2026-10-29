@@ -4,6 +4,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import type { ConfigApis } from "@/lib/data/cliente-detalle";
 import { guardarConfigApis } from "@/lib/data/cliente-actions";
+import { probarConexionAds } from "@/lib/data/google-ads-actions";
 
 export function IntegracionesPanel({ clientId, configApis }: { clientId: string; configApis: ConfigApis }) {
   const router = useRouter();
@@ -16,7 +17,10 @@ export function IntegracionesPanel({ clientId, configApis }: { clientId: string;
     fbPageId: configApis.fbPageId ?? "",
     igAccountId: configApis.igAccountId ?? "",
     metaTokenKey: configApis.metaTokenKey ?? "",
+    googleAdsCustomerId: configApis.googleAdsCustomerId ?? "",
   });
+  const [probando, setProbando] = useState(false);
+  const [prueba, setPrueba] = useState<{ ok: boolean; mensaje: string } | null>(null);
   const [pending, setPending] = useState(false);
   const [guardado, setGuardado] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -24,6 +28,16 @@ export function IntegracionesPanel({ clientId, configApis }: { clientId: string;
   function set<K extends keyof typeof draft>(key: K, value: string) {
     setDraft((d) => ({ ...d, [key]: value }));
     setGuardado(false);
+  }
+
+  async function probar() {
+    setProbando(true);
+    setPrueba(null);
+    try {
+      setPrueba(await probarConexionAds(clientId));
+    } finally {
+      setProbando(false);
+    }
   }
 
   async function guardar() {
@@ -77,6 +91,12 @@ export function IntegracionesPanel({ clientId, configApis }: { clientId: string;
           <Campo label="Facebook Page ID" value={draft.fbPageId} onChange={(v) => set("fbPageId", v)} placeholder="" />
           <Campo label="Instagram Account ID" value={draft.igAccountId} onChange={(v) => set("igAccountId", v)} placeholder="" />
           <Campo
+            label="ID de cuenta de Google Ads"
+            value={draft.googleAdsCustomerId}
+            onChange={(v) => set("googleAdsCustomerId", v)}
+            placeholder="738-056-4660 — para traer los datos directo de Google Ads"
+          />
+          <Campo
             label="Token de Meta alternativo (opcional)"
             value={draft.metaTokenKey}
             onChange={(v) => set("metaTokenKey", v)}
@@ -91,6 +111,14 @@ export function IntegracionesPanel({ clientId, configApis }: { clientId: string;
           particular manda las campañas de Meta a una landing propia (sin ese dato, el cruce de conversiones reales con
           GA4 cae al conteo de Meta, que puede no ser preciso).
         </p>
+        {configApis.googleAdsCustomerId && (
+          <div className="flex flex-wrap items-center gap-3">
+            <button onClick={probar} disabled={probando} className="ghost rounded-lg border border-border bg-surface px-3 py-2 text-[12px] font-semibold text-ink disabled:opacity-60">
+              {probando ? "Probando…" : "Probar conexión con Google Ads"}
+            </button>
+            {prueba && <span className={`text-[12px] font-semibold ${prueba.ok ? "text-success" : "text-danger"}`}>{prueba.mensaje}</span>}
+          </div>
+        )}
         <div className="flex items-center gap-3">
           <button onClick={guardar} disabled={pending} className="btn-primary self-start rounded-lg border-none bg-accent px-4 py-2 text-[12.5px] font-semibold text-white disabled:opacity-60">
             {pending ? "Guardando…" : "Guardar"}

@@ -6,6 +6,7 @@ import { sql } from "@/lib/db";
 import { requireUser } from "@/lib/auth/server";
 import { syncLogEntryToClickUp } from "@/lib/clickup/client";
 import { addMeses, fmtFecha } from "@/lib/dates";
+import { normalizarCustomerId } from "@/lib/google/ads";
 import type { ServicioTipo } from "./cliente-detalle";
 
 const SERVICE_LABEL: Record<ServicioTipo, string> = {
@@ -343,6 +344,9 @@ export async function guardarConfigApis(formData: FormData): Promise<AccionConfi
   const metaAdAccountId = String(formData.get("metaAdAccountId") ?? "").trim().replace(/^act_/, "");
   const fbPageId = String(formData.get("fbPageId") ?? "").trim();
   const igAccountId = String(formData.get("igAccountId") ?? "").trim();
+  const googleAdsCustomerIdRaw = String(formData.get("googleAdsCustomerId") ?? "").trim();
+  const googleAdsCustomerId = googleAdsCustomerIdRaw ? normalizarCustomerId(googleAdsCustomerIdRaw) : null;
+  if (googleAdsCustomerIdRaw && !googleAdsCustomerId) return { ok: false, error: "El ID de Google Ads debe tener 10 dígitos (ej. 738-056-4660)." };
   const metaTokenKey = String(formData.get("metaTokenKey") ?? "")
     .trim()
     .toUpperCase()
@@ -357,7 +361,8 @@ export async function guardarConfigApis(formData: FormData): Promise<AccionConfi
       meta_ad_account_id = ${metaAdAccountId || null},
       fb_page_id = ${fbPageId || null},
       ig_account_id = ${igAccountId || null},
-      meta_token_key = ${metaTokenKey || null}
+      meta_token_key = ${metaTokenKey || null},
+      google_ads_customer_id = ${googleAdsCustomerId}
     where id = ${clientId}
   `;
   revalidatePath(`/clientes/${clientId}`);

@@ -5,12 +5,16 @@ const AUTH_URL = "https://accounts.google.com/o/oauth2/v2/auth";
 const TOKEN_URL = "https://oauth2.googleapis.com/token";
 const USERINFO_URL = "https://openidconnect.googleapis.com/v1/userinfo";
 
-const SCOPES = [
-  "openid",
-  "email",
-  "https://www.googleapis.com/auth/webmasters.readonly",
-  "https://www.googleapis.com/auth/analytics.readonly",
-].join(" ");
+/** El permiso de Google Ads solo se pide si hay developer token configurado, para no cambiar la pantalla de consentimiento (ni arriesgar la conexión de GSC/GA4) en entornos sin la integración. */
+function scopes(): string {
+  return [
+    "openid",
+    "email",
+    "https://www.googleapis.com/auth/webmasters.readonly",
+    "https://www.googleapis.com/auth/analytics.readonly",
+    ...(process.env.GOOGLE_ADS_DEVELOPER_TOKEN ? ["https://www.googleapis.com/auth/adwords"] : []),
+  ].join(" ");
+}
 
 function base64url(buf: Buffer) {
   return buf.toString("base64").replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
@@ -44,7 +48,7 @@ export function construirUrlAutorizacion(pkce: PkceState): string {
     client_id: clientId,
     redirect_uri: redirectUri(),
     response_type: "code",
-    scope: SCOPES,
+    scope: scopes(),
     access_type: "offline",
     // Fuerza pantalla de consentimiento en cada conexión: Google solo
     // devuelve refresh_token la primera vez salvo que se pida explícito.
