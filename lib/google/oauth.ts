@@ -1,5 +1,6 @@
 import crypto from "node:crypto";
 import { sql } from "@/lib/db";
+import { urlApp } from "@/lib/app-url";
 
 const AUTH_URL = "https://accounts.google.com/o/oauth2/v2/auth";
 const TOKEN_URL = "https://oauth2.googleapis.com/token";
@@ -35,7 +36,7 @@ export function generarPkce(): PkceState {
 }
 
 function redirectUri(): string {
-  const appUrl = process.env.NEXT_PUBLIC_APP_URL;
+  const appUrl = urlApp();
   if (!appUrl) throw new Error("NEXT_PUBLIC_APP_URL no configurado — necesario para el redirect_uri de Google OAuth");
   return `${appUrl}/api/auth/google/callback`;
 }

@@ -1,4 +1,5 @@
 import { sql } from "@/lib/db";
+import { urlApp } from "@/lib/app-url";
 import { getSettings } from "@/lib/data/settings";
 import { calcularCambioAsignados } from "@/lib/clickup/asignados";
 
@@ -300,7 +301,7 @@ export async function syncOptimizationTaskToClickUp(payload: ClickUpTaskPayload)
     const conHora = payload.servicioTipo === "seo_aeo_geo" || !!payload.horaProgramada;
     const hora = payload.horaProgramada ?? (payload.servicioTipo === "seo_aeo_geo" ? "12:00" : "00:00");
     const fechaMs = epochMsSantiago(payload.fechaProgramada, hora);
-    const appUrl = process.env.NEXT_PUBLIC_APP_URL;
+    const appUrl = urlApp();
     const enlace = appUrl ? `\n\n${appUrl}/clientes/${payload.clientId}` : `\n\n(ficha del cliente: /clientes/${payload.clientId})`;
 
     const body = {
