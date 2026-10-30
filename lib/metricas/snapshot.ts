@@ -1,6 +1,6 @@
 import { sql } from "@/lib/db";
 
-export type FuenteMetrica = "gsc" | "ga4" | "meta";
+export type FuenteMetrica = "gsc" | "ga4" | "meta" | "google_ads";
 
 export interface ResultadoConSnapshot<T> {
   datos: T;

@@ -193,25 +193,54 @@ export function ResultadosView({
             )}
           </Panel>
 
-          <Panel titulo="Google Ads" etiqueta="GA4 · tráfico pagado" color={COLOR_GOOGLE} disponible={data.googleAds.disponible} motivo={data.googleAds.motivo} deCache={data.googleAds.deCache}>
+          <Panel
+            titulo="Google Ads"
+            etiqueta={data.googleAds.fuente === "api" ? "API de Google Ads" : "GA4 · tráfico pagado"}
+            color={COLOR_GOOGLE}
+            disponible={data.googleAds.disponible}
+            motivo={data.googleAds.motivo}
+            deCache={data.googleAds.deCache}
+          >
             <InsightCallout texto={data.googleAds.insight} />
             <KpiFila kpis={data.googleAds.kpis} />
             <div>
-              <div className="mb-2 text-[11.5px] font-semibold text-muted">Sesiones pagas por día</div>
-              <SerieTiempo serie={data.googleAds.serie} hitos={data.googleAds.hitos} color={COLOR_GOOGLE} formato="numero" />
+              <div className="mb-2 text-[11.5px] font-semibold text-muted">{data.googleAds.fuente === "api" ? "Clics y conversiones por día" : "Sesiones pagas por día"}</div>
+              {data.googleAds.fuente === "api" ? (
+                <SerieTiempo
+                  serie={data.googleAds.serie}
+                  serieSecundaria={data.googleAds.serieConversiones}
+                  etiquetaPrincipal="Clics"
+                  etiquetaSecundaria="Conversiones"
+                  hitos={data.googleAds.hitos}
+                  color={COLOR_GOOGLE}
+                  colorSecundario="var(--color-success)"
+                  formato="numero"
+                />
+              ) : (
+                <SerieTiempo serie={data.googleAds.serie} hitos={data.googleAds.hitos} color={COLOR_GOOGLE} formato="numero" />
+              )}
             </div>
             {data.googleAds.campanas.length > 0 && (
               <div>
                 <div className="mb-2 text-[11.5px] font-semibold text-muted">Resultados por campaña</div>
-                <TablaCampanas filas={data.googleAds.campanas} etiquetaInteracciones="Sesiones" moneda="CLP" />
+                <TablaCampanas
+                  filas={data.googleAds.campanas}
+                  etiquetaInteracciones={data.googleAds.fuente === "api" ? "Clics" : "Sesiones"}
+                  moneda={data.googleAds.moneda ?? "CLP"}
+                />
               </div>
             )}
-            {data.googleAds.disponible && (
+            {data.googleAds.disponible && data.googleAds.fuente === "api" && (
               <p className="text-[10.5px] leading-relaxed text-muted-2">
-                Estas cifras vienen de GA4 (sesiones con <code>source = google / medium = cpc</code>), no de una conexión directa a Google Ads — todavía
-                no existe esa integración (§3.14). Las conversiones y el costo pueden no coincidir con lo que reporta Google Ads directamente: Ads
-                usa su propio seguimiento de conversiones (con modelado y atribución entre dispositivos) que GA4 no replica. Para el número
-                oficial de conversiones y costo, revisar Google Ads directamente.
+                Estas cifras vienen directo de la API de Google Ads: costo, clics y conversiones tal como las muestra la cuenta, en su moneda. Las
+                conversiones de Google Ads pueden diferir de las de GA4 (otra atribución).
+              </p>
+            )}
+            {data.googleAds.disponible && data.googleAds.fuente !== "api" && (
+              <p className="text-[10.5px] leading-relaxed text-muted-2">
+                Estas cifras vienen de GA4 (sesiones con <code>source = google / medium = cpc</code>), no de una conexión directa a Google Ads: este
+                cliente todavía no tiene el ID de su cuenta de Google Ads cargado en la ficha. Las conversiones y el costo pueden no coincidir con lo que
+                reporta Google Ads directamente. Para el número oficial, carga el ID de la cuenta o revisa Google Ads directamente.
               </p>
             )}
           </Panel>

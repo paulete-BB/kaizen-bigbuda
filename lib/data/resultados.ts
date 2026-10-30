@@ -1,4 +1,5 @@
 import { sql } from "@/lib/db";
+import { obtenerCampanasAds, obtenerResumenAds, obtenerSerieDiariaAds, type ResumenAds } from "@/lib/google/ads-datos";
 import { addDaysIso, fmtSemana, hoySantiago, isoSemana, toIso } from "@/lib/dates";
 import { conCacheDeSnapshot } from "@/lib/metricas/snapshot";
 import { obtenerKeywordsGSC, obtenerResumenGSC, obtenerSerieDiariaGSC, type ResumenGSC } from "@/lib/google/gsc";
@@ -261,8 +262,14 @@ export interface SeccionGoogleAds {
   insight: string | null;
   kpis: KpiResultado[];
   serie: PuntoSerie[];
+  /** Solo con la API de Google Ads: conversiones por día, mismo rango que `serie` (clics). */
+  serieConversiones?: PuntoSerie[];
   hitos: Hito[];
   campanas: FilaCampana[];
+  /** De dónde salen las cifras: la API de Google Ads (oficial) o GA4 filtrado por google / cpc (proxy). */
+  fuente?: "api" | "ga4";
+  /** Moneda de las cifras de costo (la de la cuenta de Google Ads); "CLP" para el proxy de GA4. */
+  moneda?: string;
 }
 
 export interface ResultadosCliente {
@@ -658,6 +665,48 @@ async function seccionMeta(
   }
 }
 
+export async function seccionGoogleAdsApi(
+  clientId: string,
+  serviceId: string | null,
+  customerId: string,
+  desde: string,
+  hasta: string,
+  desdeAnt: string,
+  hastaAnt: string,
+  hitos: Hito[],
+): Promise<SeccionGoogleAds> {
+  try {
+    const [{ datos: actual, deCache }, { datos: anterior }, serieDiaria, campanas] = await Promise.all([
+      conCacheDeSnapshot<ResumenAds>({ clientId, serviceId, fuente: "google_ads", periodoInicio: desde, periodoFin: hasta, fetchLive: () => obtenerResumenAds(customerId, desde, hasta) }),
+      conCacheDeSnapshot<ResumenAds>({ clientId, serviceId, fuente: "google_ads", periodoInicio: desdeAnt, periodoFin: hastaAnt, fetchLive: () => obtenerResumenAds(customerId, desdeAnt, hastaAnt) }),
+      // Sin conversor de snapshot (otra forma que el resumen): si la API falla, el resumen cacheado igual se muestra.
+      obtenerSerieDiariaAds(customerId, desde, hasta).catch(() => []),
+      obtenerCampanasAds(customerId, desde, hasta, 8).catch(() => []),
+    ]);
+    const moneda = actual.moneda || "CLP";
+    return {
+      disponible: true,
+      fuente: "api",
+      moneda,
+      deCache: deCache ? "Datos del último snapshot disponible (la API no respondió)." : null,
+      insight: insightAds(delta(actual.cpa, anterior.cpa, true), delta(actual.conversiones, anterior.conversiones)),
+      kpis: [
+        { etiqueta: "Costo", valor: fmtMoneda(actual.costo, moneda), delta: delta(actual.costo, anterior.costo) },
+        { etiqueta: "Clics", valor: fmtNumero(actual.clics), delta: delta(actual.clics, anterior.clics) },
+        { etiqueta: "Conversiones", valor: fmtNumero(actual.conversiones), delta: delta(actual.conversiones, anterior.conversiones) },
+        { etiqueta: "Costo por conversión", valor: fmtMoneda(actual.cpa, moneda), delta: delta(actual.cpa, anterior.cpa, true) },
+      ],
+      serie: rellenarDias(desde, hasta, serieDiaria.map((p) => ({ fecha: p.fecha, valor: p.clics }))),
+      serieConversiones: rellenarDias(desde, hasta, serieDiaria.map((p) => ({ fecha: p.fecha, valor: p.conversiones }))),
+      hitos,
+      campanas: armarCampanas(campanas.map((c) => ({ nombre: c.nombre, interacciones: c.clics, conversiones: c.conversiones, gastoOCosto: c.costo }))),
+    };
+  } catch (e) {
+    const motivo = e instanceof Error && e.message ? e.message : "No se pudo obtener datos de la API de Google Ads para este período.";
+    return { disponible: false, motivo, insight: null, kpis: [], serie: [], hitos: [], campanas: [] };
+  }
+}
+
 async function seccionGoogleAds(
   clientId: string,
   serviceId: string | null,
@@ -731,8 +780,9 @@ export async function obtenerResultadosCliente(clientId: string, rango: RangoRes
         meta_ads_ga4_property_id: string | null;
         meta_ad_account_id: string | null;
         meta_token_key: string | null;
+        google_ads_customer_id: string | null;
       }[]
-    >`select nombre, gsc_property, ga4_property_id, google_ads_ga4_property_id, meta_ads_ga4_property_id, meta_ad_account_id, meta_token_key from clients where id = ${clientId}`,
+    >`select nombre, gsc_property, ga4_property_id, google_ads_ga4_property_id, meta_ads_ga4_property_id, meta_ad_account_id, meta_token_key, google_ads_customer_id from clients where id = ${clientId}`,
     sql<{ id: string; tipo: ServicioTipo }[]>`select id, tipo from services where client_id = ${clientId} and not pausado`,
     obtenerTodosLosHitos(clientId, actual.desde, actual.hasta),
   ]);
@@ -778,7 +828,9 @@ export async function obtenerResultadosCliente(clientId: string, rango: RangoRes
         )
       : ({ disponible: false, motivo: "Este cliente no tiene Meta Ads contratado.", insight: null, kpis: [], serie: [], serieConversiones: [], hitos: [], campanas: [], moneda: "USD" } as SeccionMeta),
     servicioIdPorTipo.has("google_ads")
-      ? seccionGoogleAds(clientId, servicioIdPorTipo.get("google_ads")!, cliente.google_ads_ga4_property_id, actual.desde, actual.hasta, anterior.desde, anterior.hasta, hitosPorTipo.google_ads)
+      ? cliente.google_ads_customer_id
+        ? seccionGoogleAdsApi(clientId, servicioIdPorTipo.get("google_ads")!, cliente.google_ads_customer_id, actual.desde, actual.hasta, anterior.desde, anterior.hasta, hitosPorTipo.google_ads)
+        : seccionGoogleAds(clientId, servicioIdPorTipo.get("google_ads")!, cliente.google_ads_ga4_property_id, actual.desde, actual.hasta, anterior.desde, anterior.hasta, hitosPorTipo.google_ads)
       : ({ disponible: false, motivo: "Este cliente no tiene Google Ads contratado.", insight: null, kpis: [], serie: [], hitos: [], campanas: [] } as SeccionGoogleAds),
   ]);
 

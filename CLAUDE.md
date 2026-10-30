@@ -3260,6 +3260,43 @@ Claude (claude.ai o la extensión del navegador, con la skill de paid media).
   (sin credenciales aquí). Los informes con IA siguen necesitando la API; sin
   saldo quedan con las secciones narrativas vacías (degradan solos).
 
+**Integración con la API de Google Ads (lectura)** — pedido de Paulete para
+traer los datos exactos de las campañas (GA4 no coincide con Ads: otra
+atribución, costo en 0 sin vínculo, campañas "(not set)", y el filtro viejo
+`sessionMedium = cpc|paid` dejaba entrar tráfico de Meta). Plan completo en
+`docs/plan-google-ads-api.md`.
+
+- **Acceso**: Bigbuda no tenía cuenta de administrador; se creó la MCC
+  "Bigbuda" (948-990-2568). Las cuentas de Ads son de cada cliente: Kaizen
+  prueba primero el acceso directo del usuario de Google conectado y, si Google
+  responde `USER_PERMISSION_DENIED`, reintenta con `login-customer-id` = MCC
+  (`lib/google/ads.ts`, recuerda cuál funcionó por cuenta). **Google eliminó los
+  developer tokens en septiembre de 2026**: el nivel de acceso lo da el proyecto
+  de Google Cloud de las credenciales OAuth (se pidió "Explorador"; Básico y
+  Estándar exigen verificar la empresa). Kaizen no envía developer token; la
+  versión de la API es `v23` (`GOOGLE_ADS_API_VERSION` para cambiarla; Google
+  retira versiones cada ~12 meses).
+- **Datos**: `lib/google/ads-datos.ts` — resumen, campañas (con cuota de
+  impresiones perdida por presupuesto y ranking), serie diaria, términos de
+  búsqueda, keywords con nivel de calidad, anuncios con su fuerza e historial de
+  cambios. Montos en micros convertidos a unidades; moneda de la cuenta sin
+  convertir. Los nombres de campos GAQL están escritos de memoria y **sin probar
+  contra la API real**: si un bloque falla, el briefing dice "no disponible: …".
+- **Config**: migración 0021 (`clients.google_ads_customer_id`, ficha del cliente
+  con botón "Probar conexión") y 0022 (valor `google_ads` en `metric_fuente`,
+  para cachear el resumen sin chocar con el proxy de GA4). El OAuth ahora pide
+  siempre el permiso `adwords`.
+- **Dónde se usa hoy**: briefing de Google Ads (6 bloques en paralelo) y pestaña
+  Resultados de Google Ads (KPIs, clics/conversiones por día, campañas). Sin ID de
+  cuenta, Resultados sigue con el proxy de GA4 y lo dice en la nota al pie.
+  **Falta**: informes, pacing automático y alerta "sin conversiones ayer" siguen
+  con GA4.
+- **Dos bugs de configuración encontrados en el camino** (no de código):
+  `NEXT_PUBLIC_APP_URL` con "/" final daba `redirect_uri_mismatch` al reconectar
+  Google y `//` en los enlaces de ClickUp (ahora `lib/app-url.ts` la normaliza); y
+  el deploy falló porque `next/font/google` descarga Onest en cada build (ahora
+  alojada en `app/fonts/`).
+
 ---
 
 ## 1. Contexto
