@@ -1,11 +1,14 @@
 import type { Metadata } from "next";
-import { Onest } from "next/font/google";
+import localFont from "next/font/local";
 import "./globals.css";
 
-const onest = Onest({
+// Onest alojada en el repositorio (variable, pesos 100-900, subconjunto latin): con next/font/google el build de Vercel
+// descarga la tipografía desde Google Fonts y falla entero si esa descarga se cae (Module not found en font/google).
+const onest = localFont({
+  src: "./fonts/onest-latin-wght-normal.woff2",
   variable: "--font-onest",
-  subsets: ["latin"],
-  weight: ["400", "500", "600", "700"],
+  weight: "100 900",
+  display: "swap",
 });
 
 export const metadata: Metadata = {
