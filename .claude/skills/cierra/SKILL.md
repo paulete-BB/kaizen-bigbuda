@@ -15,7 +15,7 @@ Entrega la respuesta final de la optimización en el formato de abajo. La person
 
 ## Formato (respétalo exacto, sin texto antes ni después)
 
-```
+````
 ## RESUMEN
 Texto para la bitácora del cliente: qué se hizo y decidió esta semana, claro y sin relleno, en párrafos cortos o viñetas. Lenguaje de negocio; no cites las reuniones con el cliente.
 
@@ -42,7 +42,7 @@ Hallazgos relevantes del análisis (opcional; deja la sección con una línea si
   }
 ]
 ```
-```
+````
 
 ## Reglas del bloque PLAN
 
