@@ -81,6 +81,12 @@ describe("consultarGoogleAds", () => {
     await expect(consultarGoogleAds("4444444444", "SELECT 1")).rejects.toBeInstanceOf(ErrorGoogleAds);
   });
 
+  it("explica con claridad un developer token pegado dos veces", async () => {
+    process.env.GOOGLE_ADS_DEVELOPER_TOKEN = "abcdefghijklmnopqrstuv abcdefghijklmnopqrstuv";
+    vi.stubGlobal("fetch", vi.fn());
+    await expect(consultarGoogleAds("7777777777", "SELECT 1")).rejects.toThrow(/pegado dos veces/);
+  });
+
   it("respeta la versión configurada por variable de entorno", async () => {
     process.env.GOOGLE_ADS_API_VERSION = "v24";
     const fetchMock = vi.fn(async () => ok([]));

@@ -66,8 +66,12 @@ export function traducirErrorGoogleAds(status: number, cuerpo: unknown): ErrorGo
 const accesoPorCuenta = new Map<string, "directo" | "mcc">();
 
 async function llamar(customerId: string, query: string, loginCustomerId: string | null): Promise<FilaGoogleAds[]> {
-  const developerToken = process.env.GOOGLE_ADS_DEVELOPER_TOKEN;
+  const developerToken = process.env.GOOGLE_ADS_DEVELOPER_TOKEN?.trim();
   if (!developerToken) throw new ErrorGoogleAds("Falta GOOGLE_ADS_DEVELOPER_TOKEN en las variables de entorno.", "SIN_DEVELOPER_TOKEN");
+  // Un token mal pegado (duplicado, con espacios o saltos de línea) hace fallar la cabecera con un error críptico del navegador.
+  if (!/^[A-Za-z0-9_-]+$/.test(developerToken)) {
+    throw new ErrorGoogleAds("GOOGLE_ADS_DEVELOPER_TOKEN tiene espacios o está pegado dos veces: debe ser un solo valor (22 caracteres). Corrígelo en Vercel y vuelve a desplegar.", "DEVELOPER_TOKEN_MAL_FORMADO");
+  }
   const accessToken = await obtenerAccessTokenGoogle();
   const version = process.env.GOOGLE_ADS_API_VERSION ?? VERSION_POR_DEFECTO;
 
