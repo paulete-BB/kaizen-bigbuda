@@ -6,14 +6,14 @@ const AUTH_URL = "https://accounts.google.com/o/oauth2/v2/auth";
 const TOKEN_URL = "https://oauth2.googleapis.com/token";
 const USERINFO_URL = "https://openidconnect.googleapis.com/v1/userinfo";
 
-/** El permiso de Google Ads solo se pide si hay developer token configurado, para no cambiar la pantalla de consentimiento (ni arriesgar la conexión de GSC/GA4) en entornos sin la integración. */
+/** Search Console, Analytics y Google Ads (este último, solo lectura de datos de las cuentas de los clientes). */
 function scopes(): string {
   return [
     "openid",
     "email",
     "https://www.googleapis.com/auth/webmasters.readonly",
     "https://www.googleapis.com/auth/analytics.readonly",
-    ...(process.env.GOOGLE_ADS_DEVELOPER_TOKEN ? ["https://www.googleapis.com/auth/adwords"] : []),
+    "https://www.googleapis.com/auth/adwords",
   ].join(" ");
 }
 

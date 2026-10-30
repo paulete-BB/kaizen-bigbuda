@@ -9,7 +9,7 @@ import { obtenerAccessTokenGoogle } from "@/lib/google/oauth";
  * de la MCC. Se prueba primero sin cabecera y, si Google responde permiso denegado, se reintenta con la
  * MCC; se recuerda cuál funcionó por cuenta mientras viva el proceso.
  *
- * La versión de la API se configura con `GOOGLE_ADS_API_VERSION` (Google retira versiones cada ~12 meses:
+ * Sin developer token: el nivel de acceso lo da el proyecto de Google Cloud de las credenciales OAuth. La versión de la API se configura con `GOOGLE_ADS_API_VERSION` (Google retira versiones cada ~12 meses:
  * revisar developers.google.com/google-ads/api/docs/sunset-dates).
  */
 
@@ -36,9 +36,9 @@ export function normalizarCustomerId(raw: string): string | null {
 }
 
 const MENSAJES: Record<string, string> = {
-  DEVELOPER_TOKEN_NOT_APPROVED: "El developer token todavía está en acceso de prueba: solo funciona con cuentas de prueba. Falta que Google apruebe el acceso básico.",
-  DEVELOPER_TOKEN_INVALID: "El developer token no es válido: revisa GOOGLE_ADS_DEVELOPER_TOKEN en Vercel.",
-  DEVELOPER_TOKEN_PROHIBITED: "Google no permite usar este developer token desde este proyecto.",
+  DEVELOPER_TOKEN_NOT_APPROVED: "El proyecto de Google Cloud todavía solo tiene acceso de prueba a la API de Google Ads (solo cuentas de prueba). Revisa el nivel de acceso en la consola de Google Cloud: debe ser Explorador o superior.",
+  DEVELOPER_TOKEN_INVALID: "Google rechazó el developer token: Kaizen ya no lo envía.",
+  DEVELOPER_TOKEN_PROHIBITED: "Google no permite usar este proyecto de Google Cloud con la API de Google Ads.",
   USER_PERMISSION_DENIED: "El usuario de Google conectado no tiene acceso a esta cuenta de Google Ads (ni directo ni por la MCC de Bigbuda).",
   CUSTOMER_NOT_FOUND: "No existe una cuenta de Google Ads con ese ID.",
   CUSTOMER_NOT_ENABLED: "La cuenta de Google Ads está cancelada o no está habilitada.",
@@ -66,20 +66,15 @@ export function traducirErrorGoogleAds(status: number, cuerpo: unknown): ErrorGo
 const accesoPorCuenta = new Map<string, "directo" | "mcc">();
 
 async function llamar(customerId: string, query: string, loginCustomerId: string | null): Promise<FilaGoogleAds[]> {
-  const developerToken = process.env.GOOGLE_ADS_DEVELOPER_TOKEN?.trim();
-  if (!developerToken) throw new ErrorGoogleAds("Falta GOOGLE_ADS_DEVELOPER_TOKEN en las variables de entorno.", "SIN_DEVELOPER_TOKEN");
-  // Un token mal pegado (duplicado, con espacios o saltos de línea) hace fallar la cabecera con un error críptico del navegador.
-  if (!/^[A-Za-z0-9_-]+$/.test(developerToken)) {
-    throw new ErrorGoogleAds("GOOGLE_ADS_DEVELOPER_TOKEN tiene espacios o está pegado dos veces: debe ser un solo valor (22 caracteres). Corrígelo en Vercel y vuelve a desplegar.", "DEVELOPER_TOKEN_MAL_FORMADO");
-  }
   const accessToken = await obtenerAccessTokenGoogle();
   const version = process.env.GOOGLE_ADS_API_VERSION ?? VERSION_POR_DEFECTO;
 
   const headers: Record<string, string> = {
     Authorization: `Bearer ${accessToken}`,
-    "developer-token": developerToken,
     "Content-Type": "application/json",
   };
+  // Sin cabecera developer-token: desde septiembre de 2026 Google ya no los usa (el acceso depende del proyecto de
+  // Google Cloud de las credenciales OAuth) y la rechazará en una versión futura de la API.
   if (loginCustomerId) headers["login-customer-id"] = loginCustomerId;
 
   const res = await fetch(`https://googleads.googleapis.com/${version}/customers/${customerId}/googleAds:searchStream`, {

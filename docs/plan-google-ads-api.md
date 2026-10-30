@@ -13,11 +13,11 @@ optimización. Hoy GA4 no coincide con Ads (otra atribución, costo en 0 sin ví
    acceso directo a cada cuenta (invitado como usuario), y/o vincularlas al MCC (el cliente acepta
    una invitación; con eso se usa `login-customer-id`). Para solicitar acceso básico Google pide
    cuentas vinculadas: empezar vinculando una (p. ej. Tecny Stand).
-2. **Developer token**: se pide en el *Centro de API* del MCC (solo visible logueado en esa cuenta).
-   Nace con acceso de prueba (solo cuentas de prueba); para cuentas reales hay que solicitar
-   **acceso básico** con un formulario (requiere email de contacto de API al día). La revisión puede
-   demorar días. Un resultado de búsqueda mencionó que Google estaría cambiando los tokens en
-   2026: confirmar en la documentación vigente antes de pedirlo.
+2. **Nivel de acceso de la API (cambió en septiembre de 2026)**: Google eliminó los developer
+   tokens; el acceso lo da el **proyecto de Google Cloud** de las credenciales OAuth y se pide en la
+   consola de Google Cloud (Google Ads API, Overview). El formulario pide el número del proyecto
+   (los dígitos al inicio del ID de cliente OAuth). Se solicitó el nivel **Explorador**; Básico y
+   Estándar exigen verificación de marca. Kaizen no envía developer token.
 3. **Scope nuevo en el OAuth de Google**: `https://www.googleapis.com/auth/adwords`. Hay que
    habilitar la *Google Ads API* en el proyecto de Google Cloud y volver a conectar la cuenta en
    Ajustes (hoy solo tiene Search Console y Analytics). La persona que conecte debe tener acceso

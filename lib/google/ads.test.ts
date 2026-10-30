@@ -2,14 +2,14 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("@/lib/google/oauth", () => ({ obtenerAccessTokenGoogle: vi.fn(async () => "access-token") }));
 
-import { consultarGoogleAds, ErrorGoogleAds, normalizarCustomerId, probarConexionGoogleAds, traducirErrorGoogleAds } from "./ads";
+import { consultarGoogleAds, normalizarCustomerId, probarConexionGoogleAds, traducirErrorGoogleAds } from "./ads";
 
 const error = (status: number, code: string, message = "x") =>
   new Response(JSON.stringify([{ error: { code: status, status: "PERMISSION_DENIED", message, details: [{ errors: [{ errorCode: { authorizationError: code } }] }] } }]), { status });
 const ok = (results: unknown[]) => new Response(JSON.stringify([{ results }]));
 
 beforeEach(() => {
-  process.env.GOOGLE_ADS_DEVELOPER_TOKEN = "dev-token";
+  delete process.env.GOOGLE_ADS_DEVELOPER_TOKEN;
 });
 afterEach(() => {
   vi.unstubAllGlobals();
@@ -27,9 +27,10 @@ describe("normalizarCustomerId", () => {
 });
 
 describe("traducirErrorGoogleAds", () => {
-  it("traduce el developer token en acceso de prueba", () => {
+  it("traduce el acceso de prueba del proyecto", () => {
     const e = traducirErrorGoogleAds(403, { error: { details: [{ errors: [{ errorCode: { authorizationError: "DEVELOPER_TOKEN_NOT_APPROVED" } }] }] } });
     expect(e.message).toMatch(/acceso de prueba/);
+    expect(e.message).toMatch(/Explorador/);
     expect(e.permisoDenegado).toBe(false);
   });
   it("marca el permiso denegado para poder reintentar por la MCC", () => {
@@ -41,7 +42,7 @@ describe("traducirErrorGoogleAds", () => {
 });
 
 describe("consultarGoogleAds", () => {
-  it("con acceso directo manda las cabeceras sin login-customer-id y junta los lotes", async () => {
+  it("con acceso directo manda las cabeceras sin developer token ni login-customer-id y junta los lotes", async () => {
     const fetchMock = vi.fn(async () => new Response(JSON.stringify([{ results: [{ a: 1 }] }, { results: [{ a: 2 }] }])));
     vi.stubGlobal("fetch", fetchMock);
     const filas = await consultarGoogleAds("1111111111", "SELECT 1");
@@ -49,7 +50,7 @@ describe("consultarGoogleAds", () => {
     const [url, init] = fetchMock.mock.calls[0] as unknown as [string, RequestInit];
     expect(url).toBe("https://googleads.googleapis.com/v23/customers/1111111111/googleAds:searchStream");
     const h = init.headers as Record<string, string>;
-    expect(h["developer-token"]).toBe("dev-token");
+    expect(h["developer-token"]).toBeUndefined();
     expect(h.Authorization).toBe("Bearer access-token");
     expect(h["login-customer-id"]).toBeUndefined();
   });
@@ -76,15 +77,12 @@ describe("consultarGoogleAds", () => {
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 
-  it("falla con un mensaje claro si falta el developer token", async () => {
-    delete process.env.GOOGLE_ADS_DEVELOPER_TOKEN;
-    await expect(consultarGoogleAds("4444444444", "SELECT 1")).rejects.toBeInstanceOf(ErrorGoogleAds);
-  });
-
-  it("explica con claridad un developer token pegado dos veces", async () => {
-    process.env.GOOGLE_ADS_DEVELOPER_TOKEN = "abcdefghijklmnopqrstuv abcdefghijklmnopqrstuv";
-    vi.stubGlobal("fetch", vi.fn());
-    await expect(consultarGoogleAds("7777777777", "SELECT 1")).rejects.toThrow(/pegado dos veces/);
+  it("no manda developer token aunque exista la variable (Google ya no los usa)", async () => {
+    process.env.GOOGLE_ADS_DEVELOPER_TOKEN = "abcdefghijklmnopqrstuv";
+    const fetchMock = vi.fn(async () => ok([]));
+    vi.stubGlobal("fetch", fetchMock);
+    await consultarGoogleAds("4444444444", "SELECT 1");
+    expect(((fetchMock.mock.calls[0] as unknown as [string, RequestInit])[1].headers as Record<string, string>)["developer-token"]).toBeUndefined();
   });
 
   it("respeta la versión configurada por variable de entorno", async () => {
