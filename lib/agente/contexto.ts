@@ -19,6 +19,8 @@ export interface DatosSesion {
   metaTokenKey: string | null;
   /** GA4 contra el que se cruzan las conversiones del servicio: la landing dedicada si existe, si no el del sitio (Meta); solo la landing de Google Ads (Google). */
   ga4PropertyId: string | null;
+  /** ID de la cuenta de Google Ads del cliente (API de Google Ads); null si no está configurado. */
+  googleAdsCustomerId: string | null;
   estado: "en_curso" | "cerrada";
 }
 
@@ -40,11 +42,12 @@ export async function cargarDatosSesion(sessionId: string): Promise<DatosSesion 
       ga4_property_id: string | null;
       google_ads_ga4_property_id: string | null;
       meta_ads_ga4_property_id: string | null;
+      google_ads_customer_id: string | null;
     }[]
   >`
     select s.id as session_id, s.optimization_id, s.client_id, s.service_id, s.estado, o.tipo, o.fecha_programada,
            c.nombre as cliente_nombre, c.industria, c.sitio_web, c.meta_ad_account_id, c.meta_token_key,
-           c.ga4_property_id, c.google_ads_ga4_property_id, c.meta_ads_ga4_property_id
+           c.ga4_property_id, c.google_ads_ga4_property_id, c.meta_ads_ga4_property_id, c.google_ads_customer_id
     from agent_sessions s
     join optimizations o on o.id = s.optimization_id
     join clients c on c.id = s.client_id
@@ -64,6 +67,7 @@ export async function cargarDatosSesion(sessionId: string): Promise<DatosSesion 
     metaAdAccountId: r.meta_ad_account_id,
     metaTokenKey: r.meta_token_key,
     ga4PropertyId: r.tipo === "meta_ads" ? r.meta_ads_ga4_property_id ?? r.ga4_property_id : r.google_ads_ga4_property_id,
+    googleAdsCustomerId: r.google_ads_customer_id,
     estado: r.estado,
   };
 }

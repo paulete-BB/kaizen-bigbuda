@@ -1,6 +1,14 @@
 import { sql } from "@/lib/db";
 import { addDaysIso, fmtFecha, hoySantiago, toIso } from "@/lib/dates";
 import { obtenerCampanasMeta, obtenerResumenMeta } from "@/lib/meta/client";
+import {
+  obtenerAnunciosAds,
+  obtenerCambiosRecientesAds,
+  obtenerCampanasAds,
+  obtenerKeywordsAds,
+  obtenerResumenAds,
+  obtenerTerminosBusquedaAds,
+} from "@/lib/google/ads-datos";
 import { obtenerCampanasMetaGA4, obtenerCampanasPagadoGA4, obtenerTraficoPagadoGA4 } from "@/lib/google/ga4";
 import { cargarHistorial, formatearHistorial, HISTORIAL_INICIAL, MIN_HISTORIAL, pendientesHeredados, type DatosSesion } from "@/lib/agente/contexto";
 
@@ -39,14 +47,36 @@ async function cifrasCuenta(datos: DatosSesion, desde: string, hasta: string): P
     } else partes.push("### GA4\n(sin GA4 configurado para este servicio)");
     return partes.join("\n\n");
   }
-  if (!datos.ga4PropertyId) return "### Google Ads vía GA4\n(el cliente no tiene el GA4 de la landing de Google Ads configurado)";
-  const ga4 = datos.ga4PropertyId;
-  return [
-    await seguro(`GA4 · tráfico pagado de Google Ads (${rango}). OJO: puede diferir de lo que muestra Google Ads (otra atribución); el número oficial está en Google Ads`, () => obtenerTraficoPagadoGA4(ga4, desde, hasta)),
-    await seguro(`GA4 · campañas de Google Ads (${rango})`, () => obtenerCampanasPagadoGA4(ga4, desde, hasta, 30)),
-  ].join("\n\n");
+  const bloques: string[] = [];
+  if (datos.googleAdsCustomerId) {
+    // Datos directos de la API de Google Ads (los números oficiales de la cuenta). El historial de cambios mira 30 días: es el máximo que permite la API.
+    const id = datos.googleAdsCustomerId;
+    const hace30 = addDaysIso(toIso(hoySantiago()), -30);
+    // En paralelo: son llamadas externas independientes y el briefing se arma al abrir la pantalla.
+    bloques.push(
+      ...(await Promise.all([
+      seguro(`Google Ads (API) · resumen de la cuenta (${rango}). Costo en la moneda de la cuenta; son los números oficiales de Google Ads`, () => obtenerResumenAds(id, desde, hasta)),
+      seguro(`Google Ads (API) · campañas (${rango}), con cuota de impresiones perdida por presupuesto y por ranking`, () => obtenerCampanasAds(id, desde, hasta, 30)),
+      seguro(`Google Ads (API) · términos de búsqueda con más gasto (${rango})`, () => obtenerTerminosBusquedaAds(id, desde, hasta, 40)),
+      seguro(`Google Ads (API) · keywords con más gasto, con nivel de calidad (${rango})`, () => obtenerKeywordsAds(id, desde, hasta, 40)),
+      seguro(`Google Ads (API) · anuncios con su fuerza (${rango})`, () => obtenerAnunciosAds(id, desde, hasta, 30)),
+      seguro(`Google Ads (API) · cambios recientes de la cuenta, incluidos los automáticos de Google (desde ${hace30})`, () => obtenerCambiosRecientesAds(id, hace30, 60)),
+      ])),
+    );
+  } else {
+    bloques.push("### Google Ads (API)\n(el cliente no tiene el ID de cuenta de Google Ads en su ficha: no se pudieron traer los datos oficiales)");
+  }
+  if (!datos.ga4PropertyId) {
+    bloques.push("### Google Ads vía GA4\n(el cliente no tiene el GA4 de la landing de Google Ads configurado)");
+  } else {
+    const ga4 = datos.ga4PropertyId;
+    bloques.push(
+      await seguro(`GA4 · tráfico pagado de Google Ads en la landing (${rango}). Es la conversión del sitio; puede diferir de Google Ads (otra atribución)`, () => obtenerTraficoPagadoGA4(ga4, desde, hasta)),
+      await seguro(`GA4 · campañas de Google Ads (${rango})`, () => obtenerCampanasPagadoGA4(ga4, desde, hasta, 30)),
+    );
+  }
+  return bloques.join("\n\n");
 }
-
 
 /** Qué auditar en cada plataforma: el briefing de Meta y el de Google Ads no se parecen, así que cada servicio recibe su propia lista. */
 function guiaPorServicio(tipo: "meta_ads" | "google_ads", datos: DatosSesion): string[] {
@@ -114,7 +144,9 @@ export async function construirBriefingManual(datos: DatosSesion): Promise<strin
     "## Cómo trabajar",
     `1. Esta es una optimización de **${canal}** de ${datos.clienteNombre}: concéntrate solo en este servicio. ${guiaPorServicio(datos.tipo, datos).join("\n")}`,
     "2. ANTES de proponer nada, revisa abajo el historial y los pendientes: no repitas ni pises acciones que están en espera de más datos (respeta las fechas de revisión) y retoma lo que quedó pendiente.",
-    "3. Usa las cifras de Kaizen como contexto. La conversión real del cliente es la de GA4 cuando existe; si lo que ves en la plataforma de anuncios difiere mucho, dilo.",
+    datos.tipo === "google_ads" && datos.googleAdsCustomerId
+      ? "3. Abajo van los datos directos de la API de Google Ads (costo, conversiones, campañas, términos de búsqueda, keywords, anuncios y cambios recientes): son los números oficiales de la cuenta y tu punto de partida; confirma en la cuenta lo que vayas a cambiar. GA4 muestra la conversión del sitio y puede diferir (otra atribución)."
+      : "3. Usa las cifras de Kaizen como contexto. La conversión real del cliente es la de GA4 cuando existe; si lo que ves en la plataforma de anuncios difiere mucho, dilo.",
     "4. Prioriza por impacto en resultados de negocio. No inventes datos: si algo no lo pudiste ver, dilo.",
     "5. Conversa conmigo hasta que el plan esté listo. Cuando te pida cerrar, entrégame la respuesta final en el formato de abajo.",
     "",
