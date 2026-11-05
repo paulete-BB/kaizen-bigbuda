@@ -2,6 +2,7 @@ import { conCacheDeSnapshot } from "@/lib/metricas/snapshot";
 import { obtenerResumenGSC } from "@/lib/google/gsc";
 import { obtenerTraficoIAGA4, obtenerTraficoPagadoGA4, type ResumenTraficoPagado } from "@/lib/google/ga4";
 import { obtenerResumenMeta, type ResumenInsightsMeta } from "@/lib/meta/client";
+import { obtenerResumenAds, type ResumenAds } from "@/lib/google/ads-datos";
 import { criterioDeMetrica, criterioAFavorable } from "@/lib/informes/metricas-catalogo";
 import type { InformeAdsCombinadoContenido, InformeMarketingContenido, InformeSeoContenido } from "@/lib/informes/tipos";
 
@@ -10,6 +11,8 @@ export interface ConfigApisCliente {
   ga4PropertyId: string | null;
   /** Propiedad GA4 de la landing de Google Ads, distinta de `ga4PropertyId` (sitio principal) — las campañas no apuntan al sitio del cliente. */
   googleAdsGa4PropertyId: string | null;
+  /** ID de la cuenta de Google Ads (API de Google Ads): si está, es la fuente de los números oficiales de Google Ads y reemplaza al proxy de GA4. */
+  googleAdsCustomerId?: string | null;
   metaAdAccountId: string | null;
   metaTokenKey: string | null;
 }
@@ -193,6 +196,27 @@ function metricasDesdeGoogleAds(actual: ResumenTraficoPagado, anterior: ResumenT
 }
 
 /**
+ * Métricas de "¿Cómo vamos?" con los datos oficiales de la API de Google
+ * Ads — mismo conjunto, orden y fórmulas que `seccionGoogleAdsApi` en
+ * `lib/data/resultados.ts` (Costo, Clics, Conversiones, Costo por
+ * conversión), por el mismo pedido de que el informe muestre las mismas
+ * métricas que Resultados. Montos en la moneda de la cuenta de Ads.
+ */
+export function metricasDesdeGoogleAdsApi(actual: ResumenAds, anterior: ResumenAds): InformeMarketingContenido["comoVamosCifras"]["metricas"] {
+  const moneda = actual.moneda || "CLP";
+  const d = (etiqueta: string, a: number, b: number) => {
+    const { texto, direccion, favorable } = calcularDelta(etiqueta, a, b);
+    return { deltaTexto: texto, deltaDireccion: direccion, favorable };
+  };
+  return [
+    { etiqueta: "Costo", valor: fmtMoneda(actual.costo, moneda), ...d("Costo", actual.costo, anterior.costo) },
+    { etiqueta: "Clics", valor: fmtNumero(actual.clics), ...d("Clics", actual.clics, anterior.clics) },
+    { etiqueta: "Conversiones", valor: fmtNumero(actual.conversiones), ...d("Conversiones", actual.conversiones, anterior.conversiones) },
+    { etiqueta: "Costo por conversión", valor: fmtMoneda(actual.cpa, moneda), ...d("Costo por conversión", actual.cpa, anterior.cpa) },
+  ];
+}
+
+/**
  * Pre-llena "¿Cómo vamos?" del informe de Ads con datos reales — Meta
  * Insights para `meta_ads`; GA4 con filtro `sessionSource=google y sessionMedium=cpc` para
  * `google_ads`, ya que no hay una API de Google Ads propia conectada
@@ -220,6 +244,19 @@ export async function prellenarAdsDesdeApis(
       return { metricas: metricasDesdeMeta(actual, anterior), gastoReal: { valor: actual.gasto, moneda: actual.moneda } };
     } catch {
       return { metricas: [], gastoReal: null };
+    }
+  }
+
+  if (servicioTipo === "google_ads" && config.googleAdsCustomerId) {
+    try {
+      const customerId = config.googleAdsCustomerId;
+      const [{ datos: actual }, { datos: anterior }] = await Promise.all([
+        conCacheDeSnapshot<ResumenAds>({ clientId, serviceId, fuente: "google_ads", periodoInicio: inicio, periodoFin: fin, fetchLive: () => obtenerResumenAds(customerId, inicio, fin) }),
+        conCacheDeSnapshot<ResumenAds>({ clientId, serviceId, fuente: "google_ads", periodoInicio: inicioAnt, periodoFin: finAnt, fetchLive: () => obtenerResumenAds(customerId, inicioAnt, finAnt) }),
+      ]);
+      return { metricas: metricasDesdeGoogleAdsApi(actual, anterior), gastoReal: { valor: actual.costo, moneda: actual.moneda || "CLP" } };
+    } catch {
+      // la API falló y no hay snapshot: se intenta con el proxy de GA4 si el cliente lo tiene configurado
     }
   }
 
@@ -316,7 +353,19 @@ export async function prellenarAdsCombinadoDesdeApis(
   }
 
   let google: (ResultadoPrellenadoAds & { conversiones: number }) | null = null;
-  if (googleServiceId && config.googleAdsGa4PropertyId) {
+  if (googleServiceId && config.googleAdsCustomerId) {
+    try {
+      const customerId = config.googleAdsCustomerId;
+      const [{ datos: actual }, { datos: anterior }] = await Promise.all([
+        conCacheDeSnapshot<ResumenAds>({ clientId, serviceId: googleServiceId, fuente: "google_ads", periodoInicio: inicio, periodoFin: fin, fetchLive: () => obtenerResumenAds(customerId, inicio, fin) }),
+        conCacheDeSnapshot<ResumenAds>({ clientId, serviceId: googleServiceId, fuente: "google_ads", periodoInicio: inicioAnt, periodoFin: finAnt, fetchLive: () => obtenerResumenAds(customerId, inicioAnt, finAnt) }),
+      ]);
+      google = { metricas: metricasDesdeGoogleAdsApi(actual, anterior), gastoReal: { valor: actual.costo, moneda: actual.moneda || "CLP" }, conversiones: actual.conversiones };
+    } catch {
+      // la API falló y no hay snapshot: se intenta con el proxy de GA4 más abajo
+    }
+  }
+  if (!google && googleServiceId && config.googleAdsGa4PropertyId) {
     try {
       const [{ datos: actual }, { datos: anterior }] = await Promise.all([
         conCacheDeSnapshot({ clientId, serviceId: googleServiceId, fuente: "ga4", periodoInicio: inicio, periodoFin: fin, fetchLive: () => obtenerTraficoPagadoGA4(config.googleAdsGa4PropertyId!, inicio, fin) }),

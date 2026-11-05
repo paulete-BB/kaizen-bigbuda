@@ -9,7 +9,7 @@
  * (subir si es malo), y con filas manuales sin el campo en absoluto, lo que
  * las dejaba todas en rojo por defecto.
  *
- * Exactamente las mismas 9 métricas que usa `seccionMeta`/`seccionGoogleAds`
+ * Las mismas métricas que usa `seccionMeta`/`seccionGoogleAds`
  * en `lib/data/resultados.ts` (pestaña Resultados) — pedido explícito del
  * usuario: el informe debe mostrar "las mismas métricas" que Resultados, no
  * un superset. "CPC" (Meta) y "Costo" total (Google Ads) existían acá pero
@@ -30,6 +30,9 @@ export const CRITERIO_METRICA: Record<string, CriterioMetrica> = {
   Conversiones: "sube_bueno",
   "Tasa de conversión": "sube_bueno",
   "Costo por conversión": "sube_malo",
+  // Solo con la API de Google Ads (igual que en Resultados): costo total de la cuenta y clics.
+  Costo: "neutro",
+  Clics: "sube_bueno",
 };
 
 /** Lista para el `<select>` del editor — mismo orden que `CRITERIO_METRICA`. */

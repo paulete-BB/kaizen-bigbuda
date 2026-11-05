@@ -3629,3 +3629,15 @@ Cada fase debe entregarse funcionando y probada antes de pasar a la siguiente.
 - ¿Las tareas de ClickUp se crean en una lista global "Operaciones" o en la lista de cada cliente? (default propuesto: global, configurable).
 - ¿Quiénes son los responsables por defecto de cada línea de servicio? (definir en settings).
 - ¿El informe de marketing mensual usa la misma plantilla visual que el de SEO con secciones adaptadas? (propuesto: sí, misma plantilla con métricas de campañas).
+
+**Google Ads por API también en informes, pacing y alerta de ayer** — con
+`clients.google_ads_customer_id` cargado, el pre-llenado de informes de Google
+Ads (individual y combinado) usa `obtenerResumenAds` (snapshot fuente
+`google_ads`) con las mismas métricas que Resultados (Costo, Clics,
+Conversiones, Costo por conversión; "Costo" neutro y "Clics" sube_bueno en
+`metricas-catalogo.ts`), y `gastoReal` del pacing sale de la API en la moneda de
+la cuenta. El cron `snapshot-conversiones-ayer` guarda "ayer" desde la API de
+Ads para esos servicios, y la lista de `/clientes` lee snapshots `ga4` o
+`google_ads`. Sin ID de cuenta, o si la API falla sin snapshot, se mantiene el
+proxy de GA4. Sin migración nueva. Typecheck, lint y 72 tests en verde; no
+probado contra la API real de Ads desde este entorno.
