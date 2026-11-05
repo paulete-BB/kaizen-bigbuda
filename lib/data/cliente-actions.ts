@@ -347,6 +347,7 @@ export async function guardarConfigApis(formData: FormData): Promise<AccionConfi
   const googleAdsCustomerIdRaw = String(formData.get("googleAdsCustomerId") ?? "").trim();
   const googleAdsCustomerId = googleAdsCustomerIdRaw ? normalizarCustomerId(googleAdsCustomerIdRaw) : null;
   if (googleAdsCustomerIdRaw && !googleAdsCustomerId) return { ok: false, error: "El ID de Google Ads debe tener 10 dígitos (ej. 738-056-4660)." };
+  const metaExcluirCampanas = String(formData.get("metaExcluirCampanas") ?? "").trim();
   const metaTokenKey = String(formData.get("metaTokenKey") ?? "")
     .trim()
     .toUpperCase()
@@ -362,6 +363,7 @@ export async function guardarConfigApis(formData: FormData): Promise<AccionConfi
       fb_page_id = ${fbPageId || null},
       ig_account_id = ${igAccountId || null},
       meta_token_key = ${metaTokenKey || null},
+      meta_excluir_campanas = ${metaExcluirCampanas || null},
       google_ads_customer_id = ${googleAdsCustomerId}
     where id = ${clientId}
   `;

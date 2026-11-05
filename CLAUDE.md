@@ -3641,3 +3641,15 @@ Ads para esos servicios, y la lista de `/clientes` lee snapshots `ga4` o
 `google_ads`. Sin ID de cuenta, o si la API falla sin snapshot, se mantiene el
 proxy de GA4. Sin migración nueva. Typecheck, lint y 72 tests en verde; no
 probado contra la API real de Ads desde este entorno.
+
+**Meta: excluir campañas ajenas de la cuenta + Google Ads solo campañas activas** —
+Korvyn comparte cuenta publicitaria de Meta con campañas de familiares. Nueva columna
+`clients.meta_excluir_campanas` (migración `0023`, aditiva; campo "Excluir campañas de Meta" en la
+ficha, fragmentos del nombre separados por coma, ej. `Siria`). Meta Insights recibe un `filtering`
+con un `campaign.name NOT_CONTAIN` por fragmento (`parseExcluirCampanas`/`filtroExcluir` en
+`lib/meta/client.ts`), así que se filtran a la vez el resumen, la serie diaria y las campañas en
+Resultados, informes, la alerta de "ayer" y el briefing/herramientas del agente. **No filtra** la
+línea de conversiones de GA4 (canal Paid Social), que es por propiedad y no por campaña. Google
+Ads: la tabla de campañas ahora pide solo `campaign.status = 'ENABLED'` (antes todas menos
+eliminadas). **Migración 0023 pendiente de aplicar en producción** antes de mergear: sin ella la
+ficha del cliente y Resultados fallan con "column does not exist".

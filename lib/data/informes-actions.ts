@@ -48,8 +48,9 @@ async function obtenerConfigApisCliente(clientId: string): Promise<ConfigApisCli
       google_ads_customer_id: string | null;
       meta_ad_account_id: string | null;
       meta_token_key: string | null;
+      meta_excluir_campanas: string | null;
     }[]
-  >`select gsc_property, ga4_property_id, google_ads_ga4_property_id, google_ads_customer_id, meta_ad_account_id, meta_token_key from clients where id = ${clientId}`;
+  >`select gsc_property, ga4_property_id, google_ads_ga4_property_id, google_ads_customer_id, meta_ad_account_id, meta_token_key, meta_excluir_campanas from clients where id = ${clientId}`;
   return {
     gscProperty: cliente?.gsc_property ?? null,
     ga4PropertyId: cliente?.ga4_property_id ?? null,
@@ -57,6 +58,7 @@ async function obtenerConfigApisCliente(clientId: string): Promise<ConfigApisCli
     googleAdsCustomerId: cliente?.google_ads_customer_id ?? null,
     metaAdAccountId: cliente?.meta_ad_account_id ?? null,
     metaTokenKey: cliente?.meta_token_key ?? null,
+    metaExcluirCampanas: cliente?.meta_excluir_campanas ?? null,
   };
 }
 

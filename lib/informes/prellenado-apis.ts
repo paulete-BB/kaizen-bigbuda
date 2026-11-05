@@ -1,7 +1,7 @@
 import { conCacheDeSnapshot } from "@/lib/metricas/snapshot";
 import { obtenerResumenGSC } from "@/lib/google/gsc";
 import { obtenerTraficoIAGA4, obtenerTraficoPagadoGA4, type ResumenTraficoPagado } from "@/lib/google/ga4";
-import { obtenerResumenMeta, type ResumenInsightsMeta } from "@/lib/meta/client";
+import { obtenerResumenMeta, parseExcluirCampanas, type ResumenInsightsMeta } from "@/lib/meta/client";
 import { obtenerResumenAds, type ResumenAds } from "@/lib/google/ads-datos";
 import { criterioDeMetrica, criterioAFavorable } from "@/lib/informes/metricas-catalogo";
 import type { InformeAdsCombinadoContenido, InformeMarketingContenido, InformeSeoContenido } from "@/lib/informes/tipos";
@@ -15,6 +15,8 @@ export interface ConfigApisCliente {
   googleAdsCustomerId?: string | null;
   metaAdAccountId: string | null;
   metaTokenKey: string | null;
+  /** Texto con fragmentos de nombre de campañas de Meta a excluir (separados por coma). */
+  metaExcluirCampanas?: string | null;
 }
 
 export function limitesMes(mes: number, anio: number): { inicio: string; fin: string } {
@@ -236,7 +238,7 @@ export async function prellenarAdsDesdeApis(
 
   if (servicioTipo === "meta_ads" && config.metaAdAccountId) {
     try {
-      const metaConfig = { adAccountId: config.metaAdAccountId, metaTokenKey: config.metaTokenKey };
+      const metaConfig = { adAccountId: config.metaAdAccountId, metaTokenKey: config.metaTokenKey, excluirCampanas: parseExcluirCampanas(config.metaExcluirCampanas) };
       const [{ datos: actual }, { datos: anterior }] = await Promise.all([
         conCacheDeSnapshot({ clientId, serviceId, fuente: "meta", periodoInicio: inicio, periodoFin: fin, fetchLive: () => obtenerResumenMeta(metaConfig, inicio, fin) }),
         conCacheDeSnapshot({ clientId, serviceId, fuente: "meta", periodoInicio: inicioAnt, periodoFin: finAnt, fetchLive: () => obtenerResumenMeta(metaConfig, inicioAnt, finAnt) }),
@@ -341,7 +343,7 @@ export async function prellenarAdsCombinadoDesdeApis(
   let meta: (ResultadoPrellenadoAds & { resultados: number }) | null = null;
   if (metaServiceId && config.metaAdAccountId) {
     try {
-      const metaConfig = { adAccountId: config.metaAdAccountId, metaTokenKey: config.metaTokenKey };
+      const metaConfig = { adAccountId: config.metaAdAccountId, metaTokenKey: config.metaTokenKey, excluirCampanas: parseExcluirCampanas(config.metaExcluirCampanas) };
       const [{ datos: actual }, { datos: anterior }] = await Promise.all([
         conCacheDeSnapshot({ clientId, serviceId: metaServiceId, fuente: "meta", periodoInicio: inicio, periodoFin: fin, fetchLive: () => obtenerResumenMeta(metaConfig, inicio, fin) }),
         conCacheDeSnapshot({ clientId, serviceId: metaServiceId, fuente: "meta", periodoInicio: inicioAnt, periodoFin: finAnt, fetchLive: () => obtenerResumenMeta(metaConfig, inicioAnt, finAnt) }),

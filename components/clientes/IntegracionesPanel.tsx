@@ -18,6 +18,7 @@ export function IntegracionesPanel({ clientId, configApis }: { clientId: string;
     igAccountId: configApis.igAccountId ?? "",
     metaTokenKey: configApis.metaTokenKey ?? "",
     googleAdsCustomerId: configApis.googleAdsCustomerId ?? "",
+    metaExcluirCampanas: configApis.metaExcluirCampanas ?? "",
   });
   const [probando, setProbando] = useState(false);
   const [prueba, setPrueba] = useState<{ ok: boolean; mensaje: string } | null>(null);
@@ -95,6 +96,12 @@ export function IntegracionesPanel({ clientId, configApis }: { clientId: string;
             value={draft.googleAdsCustomerId}
             onChange={(v) => set("googleAdsCustomerId", v)}
             placeholder="738-056-4660 — para traer los datos directo de Google Ads"
+          />
+          <Campo
+            label="Excluir campañas de Meta (opcional)"
+            value={draft.metaExcluirCampanas}
+            onChange={(v) => set("metaExcluirCampanas", v)}
+            placeholder="Texto del nombre, separado por coma (ej. Siria) — campañas de la cuenta que no son nuestras"
           />
           <Campo
             label="Token de Meta alternativo (opcional)"

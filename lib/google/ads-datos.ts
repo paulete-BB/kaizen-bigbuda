@@ -75,7 +75,7 @@ const cuota = (v: unknown): number | null => (v === undefined || v === null || v
 export async function obtenerCampanasAds(customerId: string, desde: string, hasta: string, limite = 30): Promise<CampanaAds[]> {
   const filas = await consultarGoogleAds(
     customerId,
-    `SELECT campaign.id, campaign.name, campaign.status, metrics.cost_micros, metrics.clicks, metrics.impressions, metrics.conversions, metrics.search_impression_share, metrics.search_budget_lost_impression_share, metrics.search_rank_lost_impression_share FROM campaign WHERE ${rango(desde, hasta)} AND campaign.status != 'REMOVED' ORDER BY metrics.cost_micros DESC LIMIT ${Math.min(limite, 200)}`,
+    `SELECT campaign.id, campaign.name, campaign.status, metrics.cost_micros, metrics.clicks, metrics.impressions, metrics.conversions, metrics.search_impression_share, metrics.search_budget_lost_impression_share, metrics.search_rank_lost_impression_share FROM campaign WHERE ${rango(desde, hasta)} AND campaign.status = 'ENABLED' ORDER BY metrics.cost_micros DESC LIMIT ${Math.min(limite, 200)}`,
   );
   return filas.map((f) => {
     const c = dig(f, "campaign");
