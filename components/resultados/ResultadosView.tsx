@@ -80,6 +80,7 @@ export function ResultadosView({
           <SelectorResultados clientes={clientes} clienteId={data.clienteId} rango={data.rango} />
 
           <Panel titulo="SEO · AEO · GEO" etiqueta="Search Console" color={COLOR_SEO} disponible={data.seo.disponible} motivo={data.seo.motivo} deCache={data.seo.deCache}>
+            <p className="text-[11.5px] font-semibold text-muted-2">Datos aproximados: puede haber un desfase de hasta 72 horas.</p>
             <InsightCallout texto={data.seo.insight} />
             <KpiFila kpis={data.seo.kpis} />
             {data.seo.funnel && (
