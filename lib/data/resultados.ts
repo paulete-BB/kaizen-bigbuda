@@ -25,7 +25,7 @@ import {
 import { obtenerCampanasMeta, obtenerResumenMeta, obtenerSerieDiariaMeta, type ResumenInsightsMeta } from "@/lib/meta/client";
 import type { ServicioTipo } from "@/lib/data/cliente-detalle";
 import type { ReportTipo } from "@/lib/data/informes";
-import { RANGOS_RESULTADOS, type RangoResultados } from "@/lib/resultados-rango";
+import { calcularRangosResultados, RANGOS_RESULTADOS, type RangoResultados } from "@/lib/resultados-rango";
 
 export { RANGOS_RESULTADOS, type RangoResultados };
 
@@ -90,11 +90,7 @@ export interface RangoFechas {
 const GSC_LATENCIA_DIAS = 3;
 
 function calcularRangos(rango: RangoResultados): { actual: RangoFechas; anterior: RangoFechas } {
-  const hasta = toIso(hoySantiago());
-  const desde = addDaysIso(hasta, -(rango - 1));
-  const hastaAnterior = addDaysIso(desde, -1);
-  const desdeAnterior = addDaysIso(hastaAnterior, -(rango - 1));
-  return { actual: { desde, hasta }, anterior: { desde: desdeAnterior, hasta: hastaAnterior } };
+  return calcularRangosResultados(rango, toIso(hoySantiago()));
 }
 
 function desplazarParaGsc(fechas: RangoFechas): RangoFechas {

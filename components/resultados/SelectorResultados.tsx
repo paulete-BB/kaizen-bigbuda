@@ -2,7 +2,7 @@
 
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { RANGOS_RESULTADOS, type RangoResultados } from "@/lib/resultados-rango";
+import { etiquetaRango, RANGOS_RESULTADOS, type RangoResultados } from "@/lib/resultados-rango";
 import type { ClienteSelectorResultados } from "@/lib/data/resultados";
 
 export function SelectorResultados({
@@ -42,7 +42,7 @@ export function SelectorResultados({
               boxShadow: r === rango ? "0 1px 2px rgba(0,0,0,0.06)" : undefined,
             }}
           >
-            {r}d
+            {etiquetaRango(r)}
           </Link>
         ))}
       </div>

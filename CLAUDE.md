@@ -3297,6 +3297,16 @@ atribución, costo en 0 sin vínculo, campañas "(not set)", y el filtro viejo
   el deploy falló porque `next/font/google` descarga Onest en cada build (ahora
   alojada en `app/fonts/`).
 
+**Resultados: rangos de 7 días y "Este mes"** — pedido de Paulete ("7 días, 14
+días, 28 días y este mes"). `lib/resultados-rango.ts` (sin dependencias de
+servidor, con tests) concentra el parseo del parámetro `rango` de la URL
+(`7|14|28|90|mes`, cualquier otro valor cae a 28), las etiquetas del selector y el
+cálculo de fechas. Para "Este mes" (día 1 a hoy) el período de comparación son los
+**mismos días del mes anterior** (1-5 nov vs. 1-5 oct, sin pasarse del último día de
+un mes más corto), no el mes completo ni la ventana inmediatamente anterior. Se
+conservó el rango de 90 días. El retraso de 3 días de Search Console sigue
+aplicándose igual: el día 1 del mes, SEO muestra datos hasta ~3 días antes.
+
 ---
 
 ## 1. Contexto
