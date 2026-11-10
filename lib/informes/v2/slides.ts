@@ -486,6 +486,7 @@ export function seccionesSinDatos(c: InformeV2Contenido, tipo: ReportTipo): stri
   for (const e of esperadas) {
     const s = c.datos[e.clave] as { disponible: boolean; motivo?: string } | undefined;
     if (!s?.disponible) faltan.push(`${e.etiqueta}: ${s?.motivo ?? "sin datos"}`);
+    else if ((s as { deCache?: string | null }).deCache) faltan.push(`${e.etiqueta}: ${(s as { deCache?: string | null }).deCache} Las cifras pueden estar desactualizadas.`);
   }
   return faltan;
 }
