@@ -222,7 +222,7 @@ export function InformeEditorV2({ informe, contenidoInicial, usuario }: { inform
             <fieldset disabled={soloLectura} className="flex flex-col gap-4 disabled:opacity-60">
               <Seccion titulo={`Insights con Claude (${secciones.length === 0 ? "sin datos todavía" : pendientes.length === 0 ? "completos" : `faltan ${pendientes.map((s) => ETIQUETA_SECCION[s]).join(", ")}`})`}>
                 <ol className="ml-4 list-decimal text-[12.5px] text-muted">
-                  <li>Copia el prompt y pégalo en Claude (claude.ai o la extensión del navegador; empieza llamando a la skill /paid_media_senior).</li>
+                  <li>Copia el prompt y pégalo en Claude (claude.ai o la extensión del navegador; empieza llamando a la skill /paid-media-senior).</li>
                   <li>Pega aquí abajo la respuesta de Claude y cárgala: llena los insights, «Lo que hicimos» y «Lo que viene».</li>
                   <li>Revisa cada frase: apunta a ~{LARGO_INSIGHT_OBJETIVO} caracteres.</li>
                 </ol>
