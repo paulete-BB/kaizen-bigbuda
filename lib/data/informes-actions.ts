@@ -18,6 +18,8 @@ import {
 } from "@/lib/informes/tipos";
 import { prellenarAdsCombinadoDesdeApis, prellenarAdsDesdeApis, prellenarSeoDesdeApis, type ConfigApisCliente } from "@/lib/informes/prellenado-apis";
 import { generarNarrativaMarketing, generarNarrativaSeo } from "@/lib/informes/generacion-ia";
+import { construirInformeV2 } from "@/lib/informes/v2/construir";
+import { esInformeV2, type InformeV2Contenido } from "@/lib/informes/v2/tipos";
 import { getSettings } from "@/lib/data/settings";
 import type { ServicioTipo } from "@/lib/data/cliente-detalle";
 import type { ReportTipo } from "@/lib/data/informes";
@@ -126,6 +128,33 @@ async function prellenarAccionesDesdeBitacora(serviceId: string, mes: number, an
   return rows.map((r) => ({ accion: r.resumen, efecto: "" }));
 }
 
+async function origenEsV2(reportId: string): Promise<boolean> {
+  const [origen] = await sql<{ contenido_json: unknown }[]>`select contenido_json from reports where id = ${reportId}`;
+  return esInformeV2(origen?.contenido_json);
+}
+
+/** Crea un informe v2 (idempotente por cliente/tipo/período): la foto de datos sale de la misma capa que la pestaña Resultados. */
+async function crearInformeV2Interno(clientId: string, tipo: ReportTipo, periodoMes: number, periodoAnio: number): Promise<InformeCreado> {
+  const [existente] = await sql<{ id: string }[]>`
+    select id from reports where client_id = ${clientId} and tipo = ${tipo} and periodo_mes = ${periodoMes} and periodo_anio = ${periodoAnio}
+  `;
+  if (existente) return { id: existente.id, creado: false };
+
+  let serviceId: string | null = null;
+  if (tipo !== "ads_combinado") {
+    const [servicio] = await sql<{ id: string }[]>`select id from services where client_id = ${clientId} and tipo = ${tipo}`;
+    serviceId = servicio?.id ?? null;
+  }
+  const contenido = await construirInformeV2(clientId, tipo, periodoMes, periodoAnio);
+  const [creado] = await sql<{ id: string }[]>`
+    insert into reports (client_id, service_id, tipo, periodo_mes, periodo_anio, contenido_json)
+    values (${clientId}, ${serviceId}, ${tipo}, ${periodoMes}, ${periodoAnio}, ${sql.json(contenido as unknown as Parameters<typeof sql.json>[0])})
+    returning id
+  `;
+  revalidatePath(`/clientes/${clientId}/informes`);
+  return { id: creado.id, creado: true };
+}
+
 export interface InformeCreado {
   id: string;
   /** false si ya existía un informe para ese (cliente, tipo, período) y se devolvió ese en vez de crear uno nuevo. */
@@ -152,6 +181,12 @@ export async function crearInformeInterno(
   periodoAnio: number,
   duplicarDeId: string | null,
 ): Promise<InformeCreado> {
+  // Formato actual (v2): datos automáticos de Resultados + insights con Claude.
+  // Solo se mantienen los formatos anteriores al duplicar un informe viejo.
+  if (!duplicarDeId || (await origenEsV2(duplicarDeId))) {
+    return crearInformeV2Interno(clientId, tipo, periodoMes, periodoAnio);
+  }
+
   if (tipo === "ads_combinado") {
     return crearInformeAdsCombinadoInterno(clientId, periodoMes, periodoAnio, duplicarDeId);
   }
@@ -329,7 +364,7 @@ export async function crearInforme(formData: FormData): Promise<void> {
   redirect(`/informes/${id}`);
 }
 
-export async function guardarContenidoInforme(reportId: string, contenido: InformeSeoContenido | InformeMarketingContenido | InformeAdsCombinadoContenido): Promise<AccionInformeResultado> {
+export async function guardarContenidoInforme(reportId: string, contenido: InformeSeoContenido | InformeMarketingContenido | InformeAdsCombinadoContenido | InformeV2Contenido): Promise<AccionInformeResultado> {
   await requireUser();
   const [reporte] = await sql<{ estado: string; client_id: string }[]>`select estado, client_id from reports where id = ${reportId}`;
   if (!reporte) return { ok: false, error: "Informe no encontrado." };
@@ -400,4 +435,27 @@ export async function registrarEnvioInforme(formData: FormData): Promise<AccionI
   revalidatePath(`/informes/${reportId}`);
   revalidatePath(`/clientes/${reporte.client_id}/informes`);
   return { ok: true };
+}
+
+/**
+ * Vuelve a tomar la foto de datos de un informe v2 (ej. tras arreglar una
+ * integración, o para sumar los días que pasaron desde que se creó el
+ * borrador). Conserva lo que escribió la persona: insights, lo que hicimos,
+ * lo que viene y el link de agenda.
+ */
+export async function actualizarDatosInforme(reportId: string): Promise<AccionInformeResultado & { contenido?: InformeV2Contenido }> {
+  await requireUser();
+  const [reporte] = await sql<{ estado: string; client_id: string; tipo: ReportTipo; periodo_mes: number; periodo_anio: number; contenido_json: unknown }[]>`
+    select estado, client_id, tipo, periodo_mes, periodo_anio, contenido_json from reports where id = ${reportId}
+  `;
+  if (!reporte) return { ok: false, error: "Informe no encontrado." };
+  if (reporte.estado === "enviado") return { ok: false, error: "Este informe ya se envió y no se puede editar." };
+  if (!esInformeV2(reporte.contenido_json)) return { ok: false, error: "Este informe usa el formato anterior." };
+
+  const actual = reporte.contenido_json;
+  const nuevo = await construirInformeV2(reporte.client_id, reporte.tipo, reporte.periodo_mes, reporte.periodo_anio);
+  const contenido: InformeV2Contenido = { ...nuevo, insights: actual.insights, hechos: actual.hechos, proximos: actual.proximos, agendaUrl: actual.agendaUrl };
+  await sql`update reports set contenido_json = ${sql.json(contenido as unknown as Parameters<typeof sql.json>[0])}, actualizado_en = now() where id = ${reportId}`;
+  revalidatePath(`/informes/${reportId}`);
+  return { ok: true, contenido };
 }

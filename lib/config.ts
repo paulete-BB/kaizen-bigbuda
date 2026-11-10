@@ -21,3 +21,11 @@ export const OPTIMIZACIONES_SEO_EN_KAIZEN = false;
  * pega de vuelta el resultado. Se activa con `AGENTE_INTEGRADO=1`.
  */
 export const agenteIntegradoActivo = () => process.env.AGENTE_INTEGRADO === "1";
+
+/**
+ * Día del mes desde el cual se generan solos los informes mensuales de todos
+ * los servicios (SEO · AEO · GEO, Meta Ads, Google Ads). Los datos son los 28
+ * días que terminan el día de emisión, así que el informe sale con la
+ * información al día. Los informes SEO los envía Marcel los 28 de cada mes.
+ */
+export const DIA_EMISION_INFORMES = 28;

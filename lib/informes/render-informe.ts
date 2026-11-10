@@ -3,8 +3,11 @@ import { renderSlidesSeo } from "@/lib/informes/slides-seo";
 import { renderSlidesMarketing, type ServicioAdsTipo } from "@/lib/informes/slides-marketing";
 import { renderSlidesAdsCombinado } from "@/lib/informes/slides-ads-combinado";
 import type { InformeCompleto } from "@/lib/data/informes";
+import { renderSlidesV2 } from "@/lib/informes/v2/slides";
+import { esInformeV2 } from "@/lib/informes/v2/tipos";
 
 const LOGO_SRC = "/informes/logo-bigbuda.svg";
+const LOGO_SRC_CLARO = "/informes/logo-bigbuda-dark.svg";
 
 /** Arma las slides HTML de un informe ya cargado, según su tipo de servicio. */
 export function renderSlidesInforme(informe: InformeCompleto): string[] {
@@ -19,6 +22,18 @@ export function renderSlidesInforme(informe: InformeCompleto): string[] {
     fechaSnapshotLabel,
     logoSrc: LOGO_SRC,
   };
+
+  if (esInformeV2(informe.contenido)) {
+    return renderSlidesV2({
+      clienteNombre: informe.clienteNombre,
+      clienteEmpresa: informe.clienteEmpresa,
+      contactoNombre: informe.contactoNombre,
+      mesAnioLabel,
+      tipo: informe.tipo,
+      contenido: informe.contenido,
+      logoSrc: LOGO_SRC_CLARO,
+    });
+  }
 
   if (informe.tipo === "seo_aeo_geo") {
     return renderSlidesSeo({ ...base, contenido: informe.contenido as InformeSeoContenido });
