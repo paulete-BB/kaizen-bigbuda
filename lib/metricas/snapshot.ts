@@ -6,6 +6,8 @@ export interface ResultadoConSnapshot<T> {
   datos: T;
   obtenidoEn: string;
   deCache: boolean;
+  /** Si `deCache`, el motivo real por el que falló la llamada en vivo. */
+  errorApi?: string;
 }
 
 /**
@@ -42,6 +44,6 @@ export async function conCacheDeSnapshot<T>(opts: {
       limit 1
     `;
     if (!snapshot) throw e;
-    return { datos: snapshot.datos_json, obtenidoEn: snapshot.obtenido_en, deCache: true };
+    return { datos: snapshot.datos_json, obtenidoEn: snapshot.obtenido_en, deCache: true, errorApi: e instanceof Error ? e.message : String(e) };
   }
 }

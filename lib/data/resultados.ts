@@ -594,7 +594,7 @@ async function seccionMeta(
   }
   const config = { adAccountId: metaAdAccountId, metaTokenKey, excluirCampanas: parseExcluirCampanas(excluirCampanas) };
   try {
-    const [{ datos: actual, deCache }, { datos: anterior }, serieDiaria, campanas, campanasGa4, conversionesPaidSocialDiaria] = await Promise.all([
+    const [{ datos: actual, deCache, obtenidoEn, errorApi }, { datos: anterior }, serieDiaria, campanas, campanasGa4, conversionesPaidSocialDiaria] = await Promise.all([
       conCacheDeSnapshot<ResumenInsightsMeta>({ clientId, serviceId, fuente: "meta", periodoInicio: desde, periodoFin: hasta, fetchLive: () => obtenerResumenMeta(config, desde, hasta) }),
       conCacheDeSnapshot<ResumenInsightsMeta>({ clientId, serviceId, fuente: "meta", periodoInicio: desdeAnt, periodoFin: hastaAnt, fetchLive: () => obtenerResumenMeta(config, desdeAnt, hastaAnt) }),
       obtenerSerieDiariaMeta(config, desde, hasta),
@@ -628,7 +628,7 @@ async function seccionMeta(
     const conversionesPaidSocialPorDia = new Map(conversionesPaidSocialDiaria.map((p) => [p.fecha, p.conversiones]));
     return {
       disponible: true,
-      deCache: deCache ? "Datos del último snapshot disponible (la API no respondió)." : null,
+      deCache: deCache ? `Datos del snapshot del ${obtenidoEn.slice(0, 10)} (la API de Meta no respondió: ${errorApi ?? "sin detalle"}).` : null,
       insight: insightAds(delta(costoActual, costoAnterior, true), delta(actual.resultados, anterior.resultados)),
       moneda: actual.moneda,
       kpis: [
