@@ -67,11 +67,16 @@ export const ESTILOS_V2 = `
 /* ───────────────────────── helpers ───────────────────────── */
 
 const fmtPct = (n: number) => `${(n * 100).toFixed(1).replace(".", ",")} %`;
-const fmtMoneda = (n: number, moneda: string) => `${n.toLocaleString("es-CL", { maximumFractionDigits: 2 })} ${moneda}`;
+// Montos como "$1.234", sin código de moneda.
+const fmtMoneda = (n: number) => `$${n.toLocaleString("es-CL", { maximumFractionDigits: 2 })}`;
 
 export function fechaLarga(iso: string): string {
   const d = parseIso(iso);
   return `${d.getDate()} de ${mesLargo(d.getMonth() + 1)} de ${d.getFullYear()}`;
+}
+
+export function diasEntreIso(desde: string, hasta: string): number {
+  return Math.round((parseIso(hasta).getTime() - parseIso(desde).getTime()) / 86400000) + 1;
 }
 
 /** "28 de septiembre al 25 de octubre de 2026". */
@@ -101,11 +106,11 @@ const NOTAS_KPI: Record<string, string> = {
 };
 
 /** Convierte el valor ya formateado ("2,5%", "0,14 USD", "1.234") al mismo formato pero con otro número. */
-function comoValor(valor: string, n: number): string {
-  const m = valor.match(/^(-?[\d.]+(?:,\d+)?)(.*)$/);
+export function comoValor(valor: string, n: number): string {
+  const m = valor.match(/^(\D*?)(-?[\d.]+(?:,\d+)?)(.*)$/);
   if (!m) return fmtNum(n);
-  const dec = m[1].includes(",") ? m[1].split(",")[1].length : 0;
-  return `${fmtNum(n, dec)}${m[2]}`;
+  const dec = m[2].includes(",") ? m[2].split(",")[1].length : 0;
+  return `${m[1]}${fmtNum(n, dec)}${m[3]}`;
 }
 
 function textoDelta(d: Delta): string {
@@ -235,7 +240,7 @@ function slidePortada(ctx: ContextoV2): SlideDef {
       <div class="v2-lbl" style="font-size:24px;">${esc(ctx.mesAnioLabel.toUpperCase().replace(/ (\d{4})$/, " DE $1"))}</div>
       <h1 style="font-size:104px;line-height:1.0;font-weight:800;letter-spacing:-0.04em;margin:22px 0 26px;">Informe mensual<br><span style="font-size:${tamanoServicio}px;">${esc(servicio)}</span></h1>
       <div style="font-size:50px;font-weight:800;letter-spacing:-0.02em;">${esc(ctx.clienteNombre)}</div>
-      <div class="v2-card" style="margin-top:36px;max-width:880px;"><div class="v2-lbl" style="font-size:18px;">Período del informe</div><div style="font-size:36px;font-weight:800;margin:8px 0 6px;">${esc(rangoLargo(c.periodo.desde, c.periodo.hasta))}</div><div style="font-size:22px;color:#4a463d;">Comparado con los 28 días anteriores: ${esc(rangoLargo(c.periodo.anteriorDesde, c.periodo.anteriorHasta))}</div></div>
+      <div class="v2-card" style="margin-top:36px;max-width:880px;"><div class="v2-lbl" style="font-size:18px;">Período del informe</div><div style="font-size:36px;font-weight:800;margin:8px 0 6px;">${esc(rangoLargo(c.periodo.desde, c.periodo.hasta))}</div><div style="font-size:22px;color:#4a463d;">Comparado con el período anterior: ${esc(rangoLargo(c.periodo.anteriorDesde, c.periodo.anteriorHasta))}</div></div>
       <p class="v2-nota" style="margin-top:24px;max-width:880px;font-size:24px;"><b style="color:${COLOR.tinta};">Qué cubre este informe:</b> ${esc(cubre)}</p>
       <p class="v2-nota" style="margin-top:18px;font-size:22px;line-height:1.6;">Emitido el <b style="color:${COLOR.tinta};">${esc(fechaLarga(c.periodo.emitidoEn))}</b><br>Preparado por el equipo de marketing de Bigbuda</p>
     </div>
@@ -280,7 +285,7 @@ function slideSeoCrecimiento(c: InformeV2Contenido, seo: SeccionSeo): SlideDef {
   const embudo = f
     ? `<div class="v2-card" style="margin-top:22px;padding:20px 28px;"><div class="v2-lbl" style="font-size:17px;margin-bottom:10px;">Del buscador a la conversión</div><div style="display:flex;align-items:center;gap:18px;font-size:22px;"><div><div style="font-size:40px;font-weight:800;">${fmtNum(f.impresiones)}</div>apariciones</div><span style="color:${COLOR.suave};font-size:20px;">→ ${fmtPct(f.pctImpresionesAClics)} →</span><div><div style="font-size:40px;font-weight:800;">${fmtNum(f.clics)}</div>clics</div><span style="color:${COLOR.suave};font-size:20px;">→ ${fmtPct(f.pctClicsAConversiones)} →</span><div><div style="font-size:40px;font-weight:800;">${fmtNum(f.conversiones)}</div>conversiones</div></div></div>`
     : "";
-  const html = `${titulo(t, `Cada punto es un día, del ${fechaCorta(c.periodo.desde)} al ${fechaCorta(c.periodo.hasta)}. Se compara con los 28 días anteriores.`)}
+  const html = `${titulo(t, `Cada punto es un día, del ${fechaCorta(c.periodo.desde)} al ${fechaCorta(c.periodo.hasta)}. Se compara con el período anterior.`)}
   <div style="display:grid;grid-template-columns:830px 1fr;gap:26px;align-items:start;">
     <div class="v2-card">${tablaKpis(seo.kpis)}<div class="v2-nota" style="margin-top:18px;"><b>Qué significa para ti:</b> más personas encuentran tu sitio cuando buscan lo que vendes. Posición media: el puesto en que apareces; mientras más bajo el número, más arriba.</div></div>
     <div><div class="v2-card"><div style="font-size:26px;font-weight:800;margin-bottom:12px;">Clics${seo.serieConversiones.length ? " y conversiones" : ""} por día</div>${graficoClicsConversiones(seo.serie, seo.serieConversiones, "Clics desde Google", 790, 250)}</div>${embudo}</div>
@@ -349,7 +354,7 @@ function slideAds(nombre: "Meta Ads" | "Google Ads", s: SeccionMeta | SeccionGoo
   const t = res && costo ? `${nombre}: ${res.valor} ${res.etiqueta.toLowerCase()} a ${costo.valor} cada uno.` : `${nombre}: cómo les fue a tus campañas.`;
   const nombreClics = nombre === "Google Ads" && (s as SeccionGoogleAds).fuente === "ga4" ? "Sesiones" : "Clics";
   const conv = (s as SeccionMeta).serieConversiones;
-  const html = `${titulo(t, `Cada punto es un día, del ${fechaCorta(c.periodo.desde)} al ${fechaCorta(c.periodo.hasta)}. Se compara con los 28 días anteriores.`)}
+  const html = `${titulo(t, `Cada punto es un día, del ${fechaCorta(c.periodo.desde)} al ${fechaCorta(c.periodo.hasta)}. Se compara con el período anterior.`)}
   <div style="display:grid;grid-template-columns:830px 1fr;gap:26px;align-items:start;">
     <div class="v2-card">${tablaKpis(s.kpis)}</div>
     <div class="v2-card"><div style="font-size:26px;font-weight:800;margin-bottom:12px;">${nombreClics}${conv && conv.length ? " y conversiones" : ""} por día</div>${graficoClicsConversiones(s.serie, conv, nombreClics, 790, 360)}</div>
@@ -361,7 +366,7 @@ function slideCampanas(nombre: "Meta Ads" | "Google Ads", campanas: FilaCampana[
   if (campanas.length === 0) return null;
   const filas = campanas
     .slice(0, 8)
-    .map((f) => `<tr><td style="max-width:640px;">${esc(f.nombre)}</td><td>${fmtNum(f.interacciones)}</td><td class="fuerte">${fmtNum(f.conversiones)}</td><td>${fmtPct(f.tasaConversion)}</td><td>${f.costoPorConversion !== null ? esc(fmtMoneda(f.costoPorConversion, moneda)) : "—"}</td></tr>`)
+    .map((f) => `<tr><td style="max-width:640px;">${esc(f.nombre)}</td><td>${fmtNum(f.interacciones)}</td><td class="fuerte">${fmtNum(f.conversiones)}</td><td>${fmtPct(f.tasaConversion)}</td><td>${f.costoPorConversion !== null ? esc(fmtMoneda(f.costoPorConversion)) : "—"}</td></tr>`)
     .join("");
   const mejor = [...campanas].filter((f) => f.conversiones > 0 && f.costoPorConversion !== null).sort((a, b) => a.costoPorConversion! - b.costoPorConversion!)[0];
   const t = mejor ? `La campaña que más rinde: ${mejor.nombre}.` : "Qué campañas están rindiendo.";
@@ -409,12 +414,12 @@ function slideMetodologia(ctx: ContextoV2): SlideDef {
   const { seo, aeo, meta, googleAds } = seccionesDisponibles(c);
   const fila = (k: string, v: string) => `<div style="display:grid;grid-template-columns:260px 1fr;gap:24px;padding:16px 0;border-bottom:2px solid #ece8de;"><div style="font-size:22px;font-weight:800;color:${COLOR.dorado};">${esc(k)}</div><div style="font-size:23px;line-height:1.45;color:#2f2c26;">${v}</div></div>`;
   const filas: string[] = [];
-  filas.push(fila("Período", `<b>Período actual:</b> ${esc(rangoLargo(c.periodo.desde, c.periodo.hasta))} (28 días). <b>28 días anteriores:</b> ${esc(rangoLargo(c.periodo.anteriorDesde, c.periodo.anteriorHasta))}, medidos con el mismo método.`));
+  filas.push(fila("Período", `<b>Período actual:</b> ${esc(rangoLargo(c.periodo.desde, c.periodo.hasta))} (${diasEntreIso(c.periodo.desde, c.periodo.hasta)} días). <b>Período anterior:</b> ${esc(rangoLargo(c.periodo.anteriorDesde, c.periodo.anteriorHasta))}, medidos con el mismo método.`));
   if (seo) filas.push(fila("Google Search Console", `Clics, apariciones, CTR y posición media de tu sitio. Google entrega estos datos con 3 días de retraso${seo.gscHasta ? `: el último día medido es el ${esc(fechaLarga(seo.gscHasta))}` : ""}. Posición media: puesto promedio en los resultados; mientras más bajo el número, más arriba apareces.`));
   if (aeo || seo) filas.push(fila("Google Analytics", "Visitas y conversiones del sitio. Las visitas desde asistentes de IA son un mínimo medido: Google Analytics no siempre identifica ese origen."));
   if (meta) filas.push(fila("Meta Ads", `Inversión, resultados y campañas de Facebook e Instagram, en ${esc(meta.moneda)}. En campañas que llevan al sitio, la conversión es la medida en Google Analytics; en campañas de mensajes, las conversaciones iniciadas.`));
   if (googleAds) filas.push(fila("Google Ads", googleAds.fuente === "ga4" ? "Cifras aproximadas medidas con Google Analytics (visitas pagas de Google). Para el número oficial de la cuenta, revisa Google Ads directo." : "Cifras oficiales de tu cuenta de Google Ads: costo, clics, conversiones y campañas activas."));
-  filas.push(fila("Cómo leerlo", "Las flechas verdes son buenas noticias y las rojas, alertas: en costos y en posición media, bajar es mejorar. “Antes” es el período anterior de 28 días."));
+  filas.push(fila("Cómo leerlo", "Las flechas verdes son buenas noticias y las rojas, alertas: en costos y en posición media, bajar es mejorar. “Antes” es el período anterior de igual largo."));
   return { seccion: "Anexo · Metodología", html: `<h1 class="v2-t" style="margin-bottom:18px;">Cómo medimos.</h1>${filas.join("")}` };
 }
 

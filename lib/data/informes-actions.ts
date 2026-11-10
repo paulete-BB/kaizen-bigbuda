@@ -18,7 +18,7 @@ import {
 } from "@/lib/informes/tipos";
 import { prellenarAdsCombinadoDesdeApis, prellenarAdsDesdeApis, prellenarSeoDesdeApis, type ConfigApisCliente } from "@/lib/informes/prellenado-apis";
 import { generarNarrativaMarketing, generarNarrativaSeo } from "@/lib/informes/generacion-ia";
-import { construirInformeV2 } from "@/lib/informes/v2/construir";
+import { construirInformeV2, periodoPersonalizado } from "@/lib/informes/v2/construir";
 import { esInformeV2, type InformeV2Contenido } from "@/lib/informes/v2/tipos";
 import { getSettings } from "@/lib/data/settings";
 import type { ServicioTipo } from "@/lib/data/cliente-detalle";
@@ -438,12 +438,14 @@ export async function registrarEnvioInforme(formData: FormData): Promise<AccionI
 }
 
 /**
- * Vuelve a tomar la foto de datos de un informe v2 (ej. tras arreglar una
- * integración, o para sumar los días que pasaron desde que se creó el
- * borrador). Conserva lo que escribió la persona: insights, lo que hicimos,
- * lo que viene y el link de agenda.
+ * Vuelve a tomar la foto de datos de un informe v2: tras arreglar una
+ * integración, para sumar los días que pasaron, o para cambiar el período.
+ * `rango`: fechas elegidas a mano (período personalizado, se compara con el
+ * período de igual largo anterior); `null` vuelve al mes completo; sin
+ * argumento mantiene el modo actual. Conserva lo que escribió la persona:
+ * insights, lo que hicimos, lo que viene y el link de agenda.
  */
-export async function actualizarDatosInforme(reportId: string): Promise<AccionInformeResultado & { contenido?: InformeV2Contenido }> {
+export async function actualizarDatosInforme(reportId: string, rango?: { desde: string; hasta: string } | null): Promise<AccionInformeResultado & { contenido?: InformeV2Contenido }> {
   await requireUser();
   const [reporte] = await sql<{ estado: string; client_id: string; tipo: ReportTipo; periodo_mes: number; periodo_anio: number; contenido_json: unknown }[]>`
     select estado, client_id, tipo, periodo_mes, periodo_anio, contenido_json from reports where id = ${reportId}
@@ -453,8 +455,18 @@ export async function actualizarDatosInforme(reportId: string): Promise<AccionIn
   if (!esInformeV2(reporte.contenido_json)) return { ok: false, error: "Este informe usa el formato anterior." };
 
   const actual = reporte.contenido_json;
-  const nuevo = await construirInformeV2(reporte.client_id, reporte.tipo, reporte.periodo_mes, reporte.periodo_anio);
-  const contenido: InformeV2Contenido = { ...nuevo, insights: actual.insights, hechos: actual.hechos, proximos: actual.proximos, agendaUrl: actual.agendaUrl };
+  const rangoUsar = rango === undefined ? (actual.periodo.personalizado ? { desde: actual.periodo.desde, hasta: actual.periodo.hasta } : null) : rango;
+  if (rangoUsar && !periodoPersonalizado(rangoUsar.desde, rangoUsar.hasta)) {
+    return { ok: false, error: "Fechas inválidas: usa un rango de hasta un año que no termine en el futuro." };
+  }
+  const nuevo = await construirInformeV2(reporte.client_id, reporte.tipo, reporte.periodo_mes, reporte.periodo_anio, rangoUsar);
+  const contenido: InformeV2Contenido = {
+    ...nuevo,
+    insights: actual.insights,
+    hechos: actual.hechos.some((h) => h.trim()) ? actual.hechos : nuevo.hechos,
+    proximos: actual.proximos.some((p) => p.trim()) ? actual.proximos : nuevo.proximos,
+    agendaUrl: actual.agendaUrl,
+  };
   await sql`update reports set contenido_json = ${sql.json(contenido as unknown as Parameters<typeof sql.json>[0])}, actualizado_en = now() where id = ${reportId}`;
   revalidatePath(`/informes/${reportId}`);
   return { ok: true, contenido };

@@ -18,13 +18,15 @@ export const INSIGHTS_POR_SECCION = 3;
 export const AGENDA_URL_POR_DEFECTO = "calendly.com/paulete-bigbuda/30min";
 
 export interface PeriodoV2 {
-  /** Ventana actual (28 días) y la inmediatamente anterior, con sus fechas ISO. */
+  /** Ventana actual y la inmediatamente anterior con la que se compara, con sus fechas ISO. */
   desde: string;
   hasta: string;
   anteriorDesde: string;
   anteriorHasta: string;
   /** Día en que se emitió el informe (foto de los datos). */
   emitidoEn: string;
+  /** true si alguien eligió las fechas a mano (en vez del mes completo); "Actualizar datos" las respeta. */
+  personalizado?: boolean;
 }
 
 /** Secciones de Resultados sin los hitos (solo sirven para el overlay de la pestaña). */
@@ -44,6 +46,8 @@ export interface InformeV2Contenido {
   hechos: string[];
   /** "Lo que viene": próximos pasos (máx. 5). */
   proximos: string[];
+  /** Bitácora del período (optimizaciones, entradas y reuniones) en texto: contexto del prompt para Claude. */
+  bitacora?: string;
   agendaUrl: string;
 }
 

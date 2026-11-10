@@ -3700,3 +3700,25 @@ los *insights* para sacarlos con Claude, y con el diseño del PDF "Informe SEO-A
   de 12 slides y PDF apaisado de 12 páginas; capturas de cada slide revisadas. **No probado** con
   datos reales de GSC/GA4/Meta/Google Ads (sin credenciales en este entorno). Typecheck, lint y 76
   tests en verde.
+
+**Informes v2: mes completo, selector de fechas, montos con `$`, prompt con la skill y "hicimos/viene" con Claude** —
+ajustes de Paulete al probar el formato nuevo:
+
+- **Período = mes completo**: el informe de (mes, año) trae del 1 al último día de ese mes y se compara con el
+  mes anterior completo (el mes en curso va del 1 a hoy contra los mismos días del anterior). `periodoDelInforme`
+  (`lib/informes/v2/construir.ts`, con tests). Search Console ya no se corre siempre 3 días: `desplazamientoGsc`
+  (`lib/data/resultados.ts`) solo corre la ventana lo necesario para terminar en hoy − 3, así que un mes cerrado
+  trae sus 31 días y las ventanas que terminan hoy se comportan igual que antes.
+- **Fechas a mano para casos especiales**: en el editor, "Datos del informe" tiene Desde/Hasta + "Aplicar fechas"
+  (`actualizarDatosInforme(reportId, rango)`; se compara con el período de igual largo anterior, máx. 1 año, sin
+  fechas futuras), "Volver al mes completo" y "Actualizar datos" (respeta el modo vigente:
+  `periodo.personalizado`). Los textos del informe ya no dicen "28 días".
+- **Montos como `$1.234`** sin código de moneda, en Resultados (`fmtMoneda` de `resultados.ts` y
+  `TablaCampanas.tsx`) y en el informe v2. Los informes del formato anterior (`prellenado-apis.ts`) no se tocaron.
+- **Prompt**: empieza con `/paid_media_senior` (la skill) en vez de "Eres analista…". Ahora pide también
+  `## Lo que hicimos` y `## Lo que viene` (3-5 líneas cada uno) además de los insights, con la **bitácora del
+  período** como contexto (`contenido.bitacora`: optimizaciones con resumen/hallazgos/próximos pasos, entradas
+  de la bitácora y notas de reuniones, estas últimas solo de contexto). `parsearRespuesta` carga las tres cosas
+  al pegar la respuesta. El prellenado automático desde `optimizations` sigue, pero queda vacío si el servicio
+  no tiene optimizaciones registradas en Kaizen (caso SEO: las lleva Marcel fuera de Kaizen) — para eso sirve el
+  prompt. Verificado con Postgres local + `next dev` + Playwright (octubre = 1–31, fechas a mano, prompt).
