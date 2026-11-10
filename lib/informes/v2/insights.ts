@@ -8,7 +8,7 @@
 import type { KpiResultado } from "@/lib/data/resultados";
 import type { ReportTipo } from "@/lib/data/informes";
 import { INSIGHTS_POR_SECCION, LARGO_INSIGHT_OBJETIVO, type InformeV2Contenido, type SeccionInsight } from "@/lib/informes/v2/tipos";
-import { rangoLargo } from "@/lib/informes/v2/slides";
+import { comoValor, rangoLargo } from "@/lib/informes/v2/slides";
 
 export const ETIQUETA_SECCION: Record<SeccionInsight, string> = {
   seo: "SEO · AEO · GEO",
@@ -27,7 +27,7 @@ export function seccionesDeInsights(tipo: ReportTipo, c: InformeV2Contenido): Se
 
 function lineaKpi(k: KpiResultado): string {
   const cambio = k.delta ? (k.delta.pct === null ? "sin dato anterior" : `${k.delta.pct > 0 ? "+" : ""}${Math.round(k.delta.pct * 10) / 10}%`) : "sin comparación";
-  const antes = k.anteriorNum !== undefined ? ` (antes: ${k.anteriorNum.toLocaleString("es-CL", { maximumFractionDigits: 2 })})` : "";
+  const antes = k.anteriorNum !== undefined ? ` (antes: ${comoValor(k.valor, k.anteriorNum)})` : "";
   return `- ${k.etiqueta}: ${k.valor}${antes}, cambio ${cambio}`;
 }
 
@@ -56,10 +56,9 @@ function bloqueDatos(seccion: SeccionInsight, c: InformeV2Contenido): string {
     const s = seccion === "meta" ? c.datos.meta : c.datos.googleAds;
     if (s?.disponible) {
       partes.push(`${ETIQUETA_SECCION[seccion]}:`, ...s.kpis.map(lineaKpi));
-      const moneda = seccion === "meta" ? c.datos.meta?.moneda : (c.datos.googleAds?.moneda ?? "CLP");
       if (s.campanas.length) {
-        partes.push(`Campañas (${moneda}):`);
-        for (const f of s.campanas.slice(0, 6)) partes.push(`- "${f.nombre}": ${f.interacciones} clics/visitas, ${f.conversiones} conversiones, costo por conversión ${f.costoPorConversion !== null ? Math.round(f.costoPorConversion * 100) / 100 : "sin dato"}`);
+        partes.push("Campañas:");
+        for (const f of s.campanas.slice(0, 6)) partes.push(`- "${f.nombre}": ${f.interacciones} clics/visitas, ${f.conversiones} conversiones, costo por conversión ${f.costoPorConversion !== null ? `$${(Math.round(f.costoPorConversion * 100) / 100).toLocaleString("es-CL")}` : "sin dato"}`);
       }
     }
   }
@@ -70,29 +69,48 @@ function bloqueDatos(seccion: SeccionInsight, c: InformeV2Contenido): string {
 export function construirPromptInsights(o: { clienteNombre: string; industria?: string | null; mesAnioLabel: string; tipo: ReportTipo; contenido: InformeV2Contenido }): string {
   const c = o.contenido;
   const secciones = seccionesDeInsights(o.tipo, c);
-  const formato = secciones.map((s) => `## ${ETIQUETA_SECCION[s]}\n- (frase 1)\n- (frase 2)\n- (frase 3)`).join("\n\n");
+  const formatoInsights = secciones.map((s) => `## ${ETIQUETA_SECCION[s]}\n- (frase 1)\n- (frase 2)\n- (frase 3)`).join("\n\n");
   const datos = secciones.map((s) => `### ${ETIQUETA_SECCION[s]}\n${bloqueDatos(s, c)}`).join("\n\n");
-  const hechos = c.hechos.filter((h) => h.trim()).map((h) => `- ${h}`).join("\n");
+  const bitacora = (c.bitacora ?? "").trim();
 
-  return `Eres analista de marketing digital senior en Bigbuda, una agencia de Santiago. Vas a escribir los INSIGHTS del informe mensual de nuestro cliente. Los lee el dueño del negocio: no es técnico, así que habla de clientes, ventas y contactos, no de métricas internas.
+  return `/paid_media_senior
+
+Vas a escribir el contenido de texto del informe mensual de nuestro cliente. Lo lee el dueño del negocio: no es técnico, así que habla de clientes, ventas y contactos, no de métricas internas.
 
 CLIENTE: ${o.clienteNombre}${o.industria ? ` (${o.industria})` : ""}
 INFORME: ${o.mesAnioLabel}
 PERÍODO: ${rangoLargo(c.periodo.desde, c.periodo.hasta)}, comparado con ${rangoLargo(c.periodo.anteriorDesde, c.periodo.anteriorHasta)}
 
+QUÉ ESCRIBIR
+1) INSIGHTS: EXACTAMENTE ${INSIGHTS_POR_SECCION} frases por servicio, de unos ${LARGO_INSIGHT_OBJETIVO} caracteres cada una (nunca más de ${LARGO_INSIGHT_OBJETIVO + 15}; cuéntalas, tienen que caber en una tarjeta). Cada frase es una idea distinta: (1) qué pasó, con la cifra concreta; (2) por qué le importa al negocio; (3) qué haremos o qué esperar.
+2) LO QUE HICIMOS: 3 a 5 acciones del período en lenguaje de negocio, una línea cada una (máx. ~120 caracteres), sacadas de la bitácora de abajo. Nada técnico ni interno.
+3) LO QUE VIENE: 3 a 5 próximos pasos (máx. ~100 caracteres cada uno), en orden de prioridad, coherentes con los datos y con los próximos pasos de la bitácora.
+
 REGLAS
-- Escribe EXACTAMENTE ${INSIGHTS_POR_SECCION} frases por servicio.
-- Cada frase de unos ${LARGO_INSIGHT_OBJETIVO} caracteres (nunca más de ${LARGO_INSIGHT_OBJETIVO + 15}). Cuéntalas: tienen que caber en una tarjeta.
-- Cada frase es una idea distinta: (1) qué pasó, con la cifra concreta; (2) por qué le importa al negocio; (3) qué haremos o qué esperar.
-- Usa solo las cifras de los datos de abajo. No inventes números, causas ni hechos.
+- Usa solo las cifras y hechos de los datos y la bitácora de abajo. No inventes números, causas ni acciones.
 - Si algo empeoró, dilo con honestidad y di qué haremos. No exageres lo bueno.
+- Montos con el formato $1.234 (sin escribir CLP, USD ni otra moneda).
 - Español de Chile, sin emojis, sin jerga (di "visitas", no "sesiones"; "puesto en Google", no "posición media").
+- No menciones reuniones ni notas internas.
 
 DATOS DEL PERÍODO
 ${datos}
-${hechos ? `\nLO QUE HICIMOS ESTE PERÍODO (contexto)\n${hechos}\n` : ""}
+
+BITÁCORA DEL PERÍODO
+${bitacora || "(sin registros en el período: escribe LO QUE HICIMOS solo si se puede deducir de los datos; si no, deja esa sección con una sola línea que diga \"Sin acciones registradas\")"}
+
 FORMATO DE RESPUESTA (respeta los títulos y los guiones; nada más)
-${formato}`;
+${formatoInsights}
+
+## Lo que hicimos
+- (acción 1)
+- (acción 2)
+- (acción 3)
+
+## Lo que viene
+- (paso 1)
+- (paso 2)
+- (paso 3)`;
 }
 
 const SECCION_POR_TITULO: [RegExp, SeccionInsight][] = [
@@ -109,23 +127,43 @@ function limpiar(texto: string): string {
     .trim();
 }
 
-/** Separa la respuesta de Claude en frases por servicio. Tolera títulos con o sin `#`/negritas y viñetas `-`, `*`, `•` o `1.`. */
-export function parsearInsights(texto: string): Partial<Record<SeccionInsight, string[]>> {
-  const out: Partial<Record<SeccionInsight, string[]>> = {};
-  let actual: SeccionInsight | null = null;
+export interface RespuestaParseada {
+  insights: Partial<Record<SeccionInsight, string[]>>;
+  hechos: string[];
+  proximos: string[];
+}
+
+/** Separa la respuesta de Claude en insights por servicio y las listas "lo que hicimos" / "lo que viene". Tolera títulos con o sin `#`/negritas y viñetas `-`, `*`, `•` o `1.`. */
+export function parsearRespuesta(texto: string): RespuestaParseada {
+  const out: RespuestaParseada = { insights: {}, hechos: [], proximos: [] };
+  let actual: SeccionInsight | "hechos" | "proximos" | null = null;
   for (const bruta of texto.split(/\r?\n/)) {
     const linea = bruta.trim();
     if (!linea) continue;
     const esViñeta = /^([-*•]|\d+[.)])\s+/.test(linea);
     if (!esViñeta) {
       const titulo = linea.replace(/^#+\s*/, "").replace(/[*_:]/g, "").trim();
-      const hit = SECCION_POR_TITULO.find(([re]) => re.test(titulo));
-      if (hit && titulo.length <= 40) actual = hit[1];
+      if (titulo.length <= 40) {
+        if (/hicimos/i.test(titulo)) actual = "hechos";
+        else if (/viene|pr[oó]ximos/i.test(titulo)) actual = "proximos";
+        else {
+          const hit = SECCION_POR_TITULO.find(([re]) => re.test(titulo));
+          if (hit) actual = hit[1];
+        }
+      }
       continue;
     }
     if (!actual) continue;
     const frase = limpiar(linea.replace(/^([-*•]|\d+[.)])\s+/, ""));
-    if (frase && !/^\(frase \d\)$/i.test(frase)) (out[actual] ??= []).push(frase);
+    if (!frase || /^\((frase|acción|paso) \d\)$/i.test(frase)) continue;
+    if (actual === "hechos") out.hechos.push(frase);
+    else if (actual === "proximos") out.proximos.push(frase);
+    else (out.insights[actual] ??= []).push(frase);
   }
   return out;
+}
+
+/** Solo los insights por servicio (atajo de `parsearRespuesta`). */
+export function parsearInsights(texto: string): Partial<Record<SeccionInsight, string[]>> {
+  return parsearRespuesta(texto).insights;
 }

@@ -10,7 +10,7 @@ import { InformeDeckPreview } from "@/components/informes/InformeDeckPreview";
 import { actualizarDatosInforme, cambiarEstadoInforme, guardarContenidoInforme, registrarEnvioInforme, type AccionInformeResultado } from "@/lib/data/informes-actions";
 import { fmtMesAnio } from "@/lib/informes/tipos";
 import { fechaLarga, rangoLargo, renderSlidesV2, seccionesSinDatos } from "@/lib/informes/v2/slides";
-import { construirPromptInsights, ETIQUETA_SECCION, parsearInsights, seccionesDeInsights } from "@/lib/informes/v2/insights";
+import { construirPromptInsights, ETIQUETA_SECCION, parsearRespuesta, seccionesDeInsights } from "@/lib/informes/v2/insights";
 import { INSIGHTS_POR_SECCION, LARGO_INSIGHT_MAX, LARGO_INSIGHT_OBJETIVO, type InformeV2Contenido, type SeccionInsight } from "@/lib/informes/v2/tipos";
 import type { InformeCompleto } from "@/lib/data/informes";
 
@@ -26,6 +26,8 @@ export function InformeEditorV2({ informe, contenidoInicial, usuario }: { inform
   const [actualizando, setActualizando] = useState(false);
   const [copiado, setCopiado] = useState(false);
   const [pegado, setPegado] = useState("");
+  const [fechaDesde, setFechaDesde] = useState(contenidoInicial.periodo.desde);
+  const [fechaHasta, setFechaHasta] = useState(contenidoInicial.periodo.hasta);
   const [aviso, setAviso] = useState<string | null>(null);
   const soloLectura = informe.estado === "enviado";
 
@@ -80,18 +82,21 @@ export function InformeEditorV2({ informe, contenidoInicial, usuario }: { inform
   }
 
   function cargarRespuesta() {
-    const r = parsearInsights(pegado);
-    const cargadas = secciones.filter((s) => (r[s]?.length ?? 0) > 0);
-    if (cargadas.length === 0) {
-      setAviso("No encontré frases. Pega la respuesta de Claude con los títulos (## SEO · AEO · GEO, ## Meta Ads…) y las frases con guion.");
+    const r = parsearRespuesta(pegado);
+    const cargadas = secciones.filter((s) => (r.insights[s]?.length ?? 0) > 0);
+    if (cargadas.length === 0 && r.hechos.length === 0 && r.proximos.length === 0) {
+      setAviso("No encontré nada. Pega la respuesta de Claude con los títulos (## SEO · AEO · GEO, ## Meta Ads, ## Lo que hicimos, ## Lo que viene) y las frases con guion.");
       return;
     }
     actualizar((c) => {
       const insights = { ...c.insights };
-      for (const s of cargadas) insights[s] = (r[s] ?? []).slice(0, INSIGHTS_POR_SECCION);
-      return { ...c, insights };
+      for (const s of cargadas) insights[s] = (r.insights[s] ?? []).slice(0, INSIGHTS_POR_SECCION);
+      return { ...c, insights, hechos: r.hechos.length ? r.hechos.slice(0, 8) : c.hechos, proximos: r.proximos.length ? r.proximos.slice(0, 5) : c.proximos };
     });
-    setAviso(`Cargué ${cargadas.map((s) => `${r[s]!.slice(0, INSIGHTS_POR_SECCION).length} de ${ETIQUETA_SECCION[s]}`).join(" y ")}. Revísalas abajo antes de enviar.`);
+    const partes = cargadas.map((s) => `${Math.min(r.insights[s]!.length, INSIGHTS_POR_SECCION)} de ${ETIQUETA_SECCION[s]}`);
+    if (r.hechos.length) partes.push(`${Math.min(r.hechos.length, 8)} de "Lo que hicimos"`);
+    if (r.proximos.length) partes.push(`${Math.min(r.proximos.length, 5)} de "Lo que viene"`);
+    setAviso(`Cargué ${partes.join(", ")}. Revísalas abajo antes de enviar.`);
     setPegado("");
   }
 
@@ -104,16 +109,18 @@ export function InformeEditorV2({ informe, contenidoInicial, usuario }: { inform
     });
   }
 
-  async function refrescarDatos() {
+  async function refrescarDatos(rango?: { desde: string; hasta: string } | null) {
     setActualizando(true);
     setError(null);
-    const res = await actualizarDatosInforme(informe.id);
+    const res = await actualizarDatosInforme(informe.id, rango);
     setActualizando(false);
     if (!res.ok || !res.contenido) setError(res.error ?? "No se pudieron actualizar los datos.");
     else {
       dirty.current = false;
       setContenido(res.contenido);
-      setAviso("Datos actualizados con la información de hoy.");
+      setFechaDesde(res.contenido.periodo.desde);
+      setFechaHasta(res.contenido.periodo.hasta);
+      setAviso("Datos actualizados.");
     }
   }
 
@@ -183,17 +190,40 @@ export function InformeEditorV2({ informe, contenidoInicial, usuario }: { inform
                 </div>
               )}
               {!soloLectura && (
-                <button type="button" onClick={refrescarDatos} disabled={actualizando} className="ghost self-start rounded-lg border border-border px-3 py-2 text-[12.5px] font-semibold text-muted disabled:opacity-60">
-                  {actualizando ? "Actualizando…" : "Actualizar datos"}
-                </button>
+                <div className="flex flex-col gap-2 rounded-lg border border-border p-3">
+                  <div className="text-[12px] font-semibold text-muted-2">
+                    Período: {contenido.periodo.personalizado ? "fechas elegidas a mano" : "mes completo"}. Para casos especiales elige otras fechas (se compara con el período de igual largo anterior).
+                  </div>
+                  <div className="flex flex-wrap items-end gap-2">
+                    <label className="flex flex-col gap-1">
+                      <span className="text-[11.5px] font-semibold text-muted-2">Desde</span>
+                      <input type="date" value={fechaDesde} max={fechaHasta} onChange={(e) => setFechaDesde(e.target.value)} className="rounded-lg border border-border bg-surface px-3 py-2 text-[13px] text-ink" />
+                    </label>
+                    <label className="flex flex-col gap-1">
+                      <span className="text-[11.5px] font-semibold text-muted-2">Hasta</span>
+                      <input type="date" value={fechaHasta} min={fechaDesde} onChange={(e) => setFechaHasta(e.target.value)} className="rounded-lg border border-border bg-surface px-3 py-2 text-[13px] text-ink" />
+                    </label>
+                    <button type="button" onClick={() => refrescarDatos({ desde: fechaDesde, hasta: fechaHasta })} disabled={actualizando || !fechaDesde || !fechaHasta} className="btn-primary rounded-lg bg-accent px-3 py-2 text-[12.5px] font-semibold text-white disabled:opacity-60">
+                      {actualizando ? "Actualizando…" : "Aplicar fechas"}
+                    </button>
+                    {contenido.periodo.personalizado && (
+                      <button type="button" onClick={() => refrescarDatos(null)} disabled={actualizando} className="ghost rounded-lg border border-border px-3 py-2 text-[12.5px] font-semibold text-muted disabled:opacity-60">
+                        Volver al mes completo
+                      </button>
+                    )}
+                    <button type="button" onClick={() => refrescarDatos()} disabled={actualizando} className="ghost rounded-lg border border-border px-3 py-2 text-[12.5px] font-semibold text-muted disabled:opacity-60">
+                      Actualizar datos
+                    </button>
+                  </div>
+                </div>
               )}
             </Seccion>
 
             <fieldset disabled={soloLectura} className="flex flex-col gap-4 disabled:opacity-60">
               <Seccion titulo={`Insights con Claude (${secciones.length === 0 ? "sin datos todavía" : pendientes.length === 0 ? "completos" : `faltan ${pendientes.map((s) => ETIQUETA_SECCION[s]).join(", ")}`})`}>
                 <ol className="ml-4 list-decimal text-[12.5px] text-muted">
-                  <li>Copia el prompt y pégalo en Claude (claude.ai o la extensión del navegador).</li>
-                  <li>Pega aquí abajo la respuesta de Claude y carga los insights.</li>
+                  <li>Copia el prompt y pégalo en Claude (claude.ai o la extensión del navegador; empieza llamando a la skill /paid_media_senior).</li>
+                  <li>Pega aquí abajo la respuesta de Claude y cárgala: llena los insights, «Lo que hicimos» y «Lo que viene».</li>
                   <li>Revisa cada frase: apunta a ~{LARGO_INSIGHT_OBJETIVO} caracteres.</li>
                 </ol>
                 <div className="flex flex-wrap items-center gap-2">
@@ -248,7 +278,7 @@ export function InformeEditorV2({ informe, contenidoInicial, usuario }: { inform
                 {secciones.length === 0 && <p className="text-[12.5px] text-muted-2">Este informe no tiene secciones con datos para generar insights.</p>}
               </Seccion>
 
-              <Seccion titulo="Lo que hicimos (se prellena desde la bitácora)">
+              <Seccion titulo="Lo que hicimos">
                 <ListaTextosEditable items={contenido.hechos} addLabel="Agregar acción" onChange={(hechos) => actualizar((c) => ({ ...c, hechos }))} />
               </Seccion>
 

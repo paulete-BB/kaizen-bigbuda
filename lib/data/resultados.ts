@@ -1,6 +1,6 @@
 import { sql } from "@/lib/db";
 import { obtenerCampanasAds, obtenerResumenAds, obtenerSerieDiariaAds, type ResumenAds } from "@/lib/google/ads-datos";
-import { addDaysIso, fmtSemana, hoySantiago, isoSemana, toIso } from "@/lib/dates";
+import { addDaysIso, fmtSemana, hoySantiago, isoSemana, parseIso, toIso } from "@/lib/dates";
 import { conCacheDeSnapshot } from "@/lib/metricas/snapshot";
 import { obtenerKeywordsGSC, obtenerResumenGSC, obtenerSerieDiariaGSC, type ResumenGSC } from "@/lib/google/gsc";
 import {
@@ -93,8 +93,20 @@ function calcularRangos(rango: RangoResultados): { actual: RangoFechas; anterior
   return calcularRangosResultados(rango, toIso(hoySantiago()));
 }
 
-function desplazarParaGsc(fechas: RangoFechas): RangoFechas {
-  return { desde: addDaysIso(fechas.desde, -GSC_LATENCIA_DIAS), hasta: addDaysIso(fechas.hasta, -GSC_LATENCIA_DIAS) };
+/**
+ * Cuántos días hay que correr la ventana para que termine en el último día
+ * que Search Console ya procesó (hoy − 3). Una ventana que termina hoy se
+ * corre 3 días (comportamiento de siempre); una que ya termina antes —un mes
+ * cerrado, por ejemplo— no se toca, así el informe de octubre trae del 1 al 31.
+ */
+function desplazamientoGsc(hasta: string): number {
+  const limite = addDaysIso(toIso(hoySantiago()), -GSC_LATENCIA_DIAS);
+  if (hasta <= limite) return 0;
+  return Math.round((parseIso(hasta).getTime() - parseIso(limite).getTime()) / 86400000);
+}
+
+function desplazarParaGsc(fechas: RangoFechas, dias: number): RangoFechas {
+  return { desde: addDaysIso(fechas.desde, -dias), hasta: addDaysIso(fechas.hasta, -dias) };
 }
 
 export interface Hito {
@@ -289,7 +301,8 @@ const fmtPct = (n: number) => `${(n * 100).toFixed(1).replace(".", ",")}%`;
 // que en una reunión con el cliente se lee como un dato roto. maximumFractionDigits
 // solo agrega decimales cuando el valor real los tiene, así que montos grandes
 // (inversión, presupuestos) siguen mostrándose sin decimales de sobra.
-const fmtMoneda = (n: number, moneda = "USD") => `${n.toLocaleString("es-CL", { maximumFractionDigits: 2 })} ${moneda}`;
+// Los montos se muestran como "$1.234" sin código de moneda (pedido del equipo); el segundo parámetro se mantiene solo para no tocar cada llamada.
+const fmtMoneda = (n: number, _moneda?: string) => `$${n.toLocaleString("es-CL", { maximumFractionDigits: 2 })}`; // eslint-disable-line @typescript-eslint/no-unused-vars
 
 /** Las APIs a veces omiten días sin actividad — se completa el rango con 0 para que el eje X del gráfico sea un calendario continuo (necesario para que los hitos se ubiquen en la posición correcta). */
 function rellenarDias(desde: string, hasta: string, puntos: { fecha: string; valor: number }[]): PuntoSerie[] {
@@ -422,8 +435,9 @@ async function seccionSeo(
     // `desplazarParaGsc` más arriba. Pedirle a la API el rango nominal
     // (terminando hoy) no falla, pero devuelve los últimos días vacíos o
     // parciales, subcontando clics/impresiones reales sin ningún aviso.
-    const { desde: desdeGsc, hasta: hastaGsc } = desplazarParaGsc({ desde, hasta });
-    const { desde: desdeAntGsc, hasta: hastaAntGsc } = desplazarParaGsc({ desde: desdeAnt, hasta: hastaAnt });
+    const corrimiento = desplazamientoGsc(hasta);
+    const { desde: desdeGsc, hasta: hastaGsc } = desplazarParaGsc({ desde, hasta }, corrimiento);
+    const { desde: desdeAntGsc, hasta: hastaAntGsc } = desplazarParaGsc({ desde: desdeAnt, hasta: hastaAnt }, corrimiento);
 
     const [{ datos: actual, deCache }, { datos: anterior }, serieDiaria, keywordsActual, keywordsAnterior, organico, serieConversionesDiaria] = await Promise.all([
       conCacheDeSnapshot<ResumenGSC>({ clientId, serviceId, fuente: "gsc", periodoInicio: desdeGsc, periodoFin: hastaGsc, fetchLive: () => obtenerResumenGSC(gscProperty, desdeGsc, hastaGsc) }),

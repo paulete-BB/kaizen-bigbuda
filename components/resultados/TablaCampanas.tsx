@@ -4,7 +4,7 @@ const fmtNumero = (n: number) => Math.round(n).toLocaleString("es-CL");
 const fmtPct = (n: number) => `${(n * 100).toFixed(1).replace(".", ",")}%`;
 // Sin Math.round: el costo por conversión suele ser menor a la unidad — ver el
 // mismo comentario en lib/data/resultados.ts.
-const fmtMoneda = (n: number, moneda: string) => `${n.toLocaleString("es-CL", { maximumFractionDigits: 2 })} ${moneda}`;
+const fmtMoneda = (n: number, _moneda?: string) => `$${n.toLocaleString("es-CL", { maximumFractionDigits: 2 })}`; // eslint-disable-line @typescript-eslint/no-unused-vars
 
 export function TablaCampanas({
   filas,
