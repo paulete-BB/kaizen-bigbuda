@@ -3653,3 +3653,50 @@ línea de conversiones de GA4 (canal Paid Social), que es por propiedad y no por
 Ads: la tabla de campañas ahora pide solo `campaign.status = 'ENABLED'` (antes todas menos
 eliminadas). **Migración 0023 pendiente de aplicar en producción** antes de mergear: sin ella la
 ficha del cliente y Resultados fallan con "column does not exist".
+
+**Informes mensuales automáticos (formato v2) con el diseño del PDF de referencia** — pedido de
+Paulete: informes 100 % automáticos, con los mismos gráficos que la pestaña Resultados, dejando solo
+los *insights* para sacarlos con Claude, y con el diseño del PDF "Informe SEO-AEO-GEO 2026-10" pero
+**manteniendo el apaisado** 1920×1080.
+
+- **Qué es el v2**: `reports.contenido_json.version === 2` (`lib/informes/v2/`). Guarda una **foto de
+  los datos de Resultados** (`obtenerResultadosPeriodo`, refactor de `obtenerResultadosCliente` que
+  acepta rangos explícitos; sin hitos) para la ventana del informe, más lo que escribe una persona:
+  `insights` (3 frases por servicio), `hechos` ("Lo que hicimos", prellenado desde
+  `optimizations.resumen` realizadas en la ventana), `proximos` ("Lo que viene", desde
+  `optimizations.proximos_pasos`) y `agendaUrl` (default `calendly.com/paulete-bigbuda/30min`, el del
+  PDF). No requiere migración. **Los informes anteriores siguen con su formato y editores** (se
+  distinguen por la ausencia de `version`); los formatos viejos solo se usan al duplicar uno viejo.
+  La generación narrativa con la API de Anthropic (`generacion-ia.ts`) ya no se usa en informes nuevos.
+- **Ventana**: 28 días que terminan el día de emisión (hoy si es el mes en curso; último día del mes si
+  es uno pasado) contra los 28 anteriores — mismo criterio que el rango "28 días" de Resultados
+  (Search Console desplazado 3 días). `periodoDelInforme()` en `construir.ts`.
+- **Generación automática** (`lib/informes/auto-generar.ts`, cron diario `generar-informes`): desde el
+  día `DIA_EMISION_INFORMES` (28, `lib/config.ts`) crea el borrador del mes para todos los clientes
+  activos: SEO · AEO · GEO por cliente, y Meta + Google Ads como un solo `ads_combinado` (o el individual
+  si solo tiene uno). Antes los de Ads salían la primera semana del mes: **cambió a un solo día de
+  emisión para todos** (los SEO los envía Marcel el 28); para otro día basta cambiar la constante.
+  Idempotente (índice único cliente/tipo/período). Las secciones sin integración o con la API caída
+  sin caché se **omiten** del deck y el editor avisa qué falta.
+- **Diseño** (`slides.ts`, `graficos.ts`): fondo crema, tarjetas blancas, números grandes, Antes/Ahora
+  con barras, píldoras de delta verde/rojo según `favorable` (costos y posición: bajar es mejorar),
+  caja oscura "Lo que viene", metodología, pie "Página X de N". Gráficos como SVG en texto con los
+  mismos datos de Resultados: clics + conversiones por día, distribución de posiciones y keywords con
+  cambio de puesto, tendencia semanal por fuente de IA con páginas de aterrizaje, campañas. Secciones
+  del PDF **sin fuente de datos en Kaizen** (Google Business, visibilidad en respuestas de IA, auditoría
+  técnica, libro de cambios por página) no se construyeron. Tipografía: Onest (la del resto de la app),
+  no Inter. `KpiResultado` ganó `actualNum`/`anteriorNum` (porcentajes en puntos, igual que el valor
+  mostrado) para dibujar el Antes/Ahora.
+- **Insights con Claude** (`insights.ts`, `InformeEditorV2.tsx`): botón "Copiar prompt para Claude"
+  arma un prompt con las cifras, keywords/campañas y lo hecho en el período; pide **3 frases por
+  servicio de ~150 caracteres** (objetivo `LARGO_INSIGHT_OBJETIVO`, aviso del editor desde 190) en un
+  formato fijo (`## SEO · AEO · GEO` / `## Meta Ads` / `## Google Ads` con guiones). Se pega la
+  respuesta y `parsearInsights` (tolerante, con tests) la separa; cada frase queda editable con
+  contador de caracteres. Sin API de Anthropic. "Actualizar datos" vuelve a tomar la foto conservando
+  lo escrito. Una página de insights sin frases no sale en el PDF.
+- Verificado con Postgres local + `next dev` + Playwright: crear el borrador desde la UI (Tecny Stand,
+  sin credenciales → secciones omitidas y aviso), con datos de ejemplo inyectados copiar el prompt,
+  pegar una respuesta, cargar 3+3 insights (autoguardado confirmado en la base), vista de impresión
+  de 12 slides y PDF apaisado de 12 páginas; capturas de cada slide revisadas. **No probado** con
+  datos reales de GSC/GA4/Meta/Google Ads (sin credenciales en este entorno). Typecheck, lint y 76
+  tests en verde.

@@ -162,6 +162,9 @@ export interface KpiResultado {
   etiqueta: string;
   valor: string;
   delta: Delta | null;
+  /** Valores numéricos crudos del período actual y del anterior — los informes los usan para dibujar el "Antes / Ahora" (el `valor` ya viene formateado como texto). */
+  actualNum?: number;
+  anteriorNum?: number;
 }
 
 export interface PuntoSerie {
@@ -450,10 +453,10 @@ async function seccionSeo(
     const keywordsTop = [...keywordsActual].sort((a, b) => b.clics - a.clics).slice(0, 10);
 
     const kpis: KpiResultado[] = [
-      { etiqueta: "Clics", valor: fmtNumero(actual.clics), delta: delta(actual.clics, anterior.clics) },
-      { etiqueta: "Impresiones", valor: fmtNumero(actual.impresiones), delta: delta(actual.impresiones, anterior.impresiones) },
-      { etiqueta: "CTR", valor: fmtPct(actual.ctr), delta: delta(actual.ctr, anterior.ctr) },
-      { etiqueta: "Posición media", valor: actual.posicionMedia.toFixed(1).replace(".", ","), delta: delta(actual.posicionMedia, anterior.posicionMedia, true) },
+      { etiqueta: "Clics", valor: fmtNumero(actual.clics), delta: delta(actual.clics, anterior.clics), actualNum: actual.clics, anteriorNum: anterior.clics },
+      { etiqueta: "Impresiones", valor: fmtNumero(actual.impresiones), delta: delta(actual.impresiones, anterior.impresiones), actualNum: actual.impresiones, anteriorNum: anterior.impresiones },
+      { etiqueta: "CTR", valor: fmtPct(actual.ctr), delta: delta(actual.ctr, anterior.ctr), actualNum: actual.ctr * 100, anteriorNum: anterior.ctr * 100 },
+      { etiqueta: "Posición media", valor: actual.posicionMedia.toFixed(1).replace(".", ","), delta: delta(actual.posicionMedia, anterior.posicionMedia, true), actualNum: actual.posicionMedia, anteriorNum: anterior.posicionMedia },
     ];
 
     let funnel: Funnel | null = null;
@@ -463,8 +466,8 @@ async function seccionSeo(
       const tasaConv = convActual.sesiones > 0 ? convActual.conversiones / convActual.sesiones : 0;
       const tasaConvAnt = convAnterior.sesiones > 0 ? convAnterior.conversiones / convAnterior.sesiones : 0;
       kpis.push(
-        { etiqueta: "Conversiones orgánicas", valor: fmtNumero(convActual.conversiones), delta: delta(convActual.conversiones, convAnterior.conversiones) },
-        { etiqueta: "Tasa de conversión", valor: fmtPct(tasaConv), delta: delta(tasaConv, tasaConvAnt) },
+        { etiqueta: "Conversiones orgánicas", valor: fmtNumero(convActual.conversiones), delta: delta(convActual.conversiones, convAnterior.conversiones), actualNum: convActual.conversiones, anteriorNum: convAnterior.conversiones },
+        { etiqueta: "Tasa de conversión", valor: fmtPct(tasaConv), delta: delta(tasaConv, tasaConvAnt), actualNum: tasaConv * 100, anteriorNum: tasaConvAnt * 100 },
       );
       funnel = {
         impresiones: actual.impresiones,
@@ -615,11 +618,11 @@ async function seccionMeta(
       insight: insightAds(delta(costoActual, costoAnterior, true), delta(actual.resultados, anterior.resultados)),
       moneda: actual.moneda,
       kpis: [
-        { etiqueta: "Inversión", valor: fmtMoneda(actual.gasto, actual.moneda), delta: delta(actual.gasto, anterior.gasto) },
-        { etiqueta: "Resultados", valor: fmtNumero(actual.resultados), delta: delta(actual.resultados, anterior.resultados) },
-        { etiqueta: "Costo por resultado", valor: fmtMoneda(costoActual, actual.moneda), delta: delta(costoActual, costoAnterior, true) },
-        { etiqueta: "CTR", valor: `${actual.ctr.toFixed(2)}%`, delta: delta(actual.ctr, anterior.ctr) },
-        { etiqueta: "Alcance", valor: fmtNumero(actual.alcance), delta: delta(actual.alcance, anterior.alcance) },
+        { etiqueta: "Inversión", valor: fmtMoneda(actual.gasto, actual.moneda), delta: delta(actual.gasto, anterior.gasto), actualNum: actual.gasto, anteriorNum: anterior.gasto },
+        { etiqueta: "Resultados", valor: fmtNumero(actual.resultados), delta: delta(actual.resultados, anterior.resultados), actualNum: actual.resultados, anteriorNum: anterior.resultados },
+        { etiqueta: "Costo por resultado", valor: fmtMoneda(costoActual, actual.moneda), delta: delta(costoActual, costoAnterior, true), actualNum: costoActual, anteriorNum: costoAnterior },
+        { etiqueta: "CTR", valor: `${actual.ctr.toFixed(2)}%`, delta: delta(actual.ctr, anterior.ctr), actualNum: actual.ctr, anteriorNum: anterior.ctr },
+        { etiqueta: "Alcance", valor: fmtNumero(actual.alcance), delta: delta(actual.alcance, anterior.alcance), actualNum: actual.alcance, anteriorNum: anterior.alcance },
       ],
       // Clics vs. resultados (conversiones efectivas) por día — pedido
       // explícito del usuario, reemplaza el gráfico de solo-gasto: lo que
@@ -688,10 +691,10 @@ export async function seccionGoogleAdsApi(
       deCache: deCache ? "Datos del último snapshot disponible (la API no respondió)." : null,
       insight: insightAds(delta(actual.cpa, anterior.cpa, true), delta(actual.conversiones, anterior.conversiones)),
       kpis: [
-        { etiqueta: "Costo", valor: fmtMoneda(actual.costo, moneda), delta: delta(actual.costo, anterior.costo) },
-        { etiqueta: "Clics", valor: fmtNumero(actual.clics), delta: delta(actual.clics, anterior.clics) },
-        { etiqueta: "Conversiones", valor: fmtNumero(actual.conversiones), delta: delta(actual.conversiones, anterior.conversiones) },
-        { etiqueta: "Costo por conversión", valor: fmtMoneda(actual.cpa, moneda), delta: delta(actual.cpa, anterior.cpa, true) },
+        { etiqueta: "Costo", valor: fmtMoneda(actual.costo, moneda), delta: delta(actual.costo, anterior.costo), actualNum: actual.costo, anteriorNum: anterior.costo },
+        { etiqueta: "Clics", valor: fmtNumero(actual.clics), delta: delta(actual.clics, anterior.clics), actualNum: actual.clics, anteriorNum: anterior.clics },
+        { etiqueta: "Conversiones", valor: fmtNumero(actual.conversiones), delta: delta(actual.conversiones, anterior.conversiones), actualNum: actual.conversiones, anteriorNum: anterior.conversiones },
+        { etiqueta: "Costo por conversión", valor: fmtMoneda(actual.cpa, moneda), delta: delta(actual.cpa, anterior.cpa, true), actualNum: actual.cpa, anteriorNum: anterior.cpa },
       ],
       serie: rellenarDias(desde, hasta, serieDiaria.map((p) => ({ fecha: p.fecha, valor: p.clics }))),
       serieConversiones: rellenarDias(desde, hasta, serieDiaria.map((p) => ({ fecha: p.fecha, valor: p.conversiones }))),
@@ -743,10 +746,10 @@ async function seccionGoogleAds(
       deCache: deCache ? "Datos del último snapshot disponible (la API no respondió)." : null,
       insight: insightAds(delta(costoActual, costoAnterior, true), delta(actual.conversiones, anterior.conversiones)),
       kpis: [
-        { etiqueta: "Sesiones pagas", valor: fmtNumero(actual.sesiones), delta: delta(actual.sesiones, anterior.sesiones) },
-        { etiqueta: "Conversiones", valor: fmtNumero(actual.conversiones), delta: delta(actual.conversiones, anterior.conversiones) },
-        { etiqueta: "Tasa de conversión", valor: fmtPct(tasaConv), delta: delta(tasaConv, tasaConvAnt) },
-        { etiqueta: "Costo por conversión", valor: fmtMoneda(costoActual, "CLP"), delta: delta(costoActual, costoAnterior, true) },
+        { etiqueta: "Sesiones pagas", valor: fmtNumero(actual.sesiones), delta: delta(actual.sesiones, anterior.sesiones), actualNum: actual.sesiones, anteriorNum: anterior.sesiones },
+        { etiqueta: "Conversiones", valor: fmtNumero(actual.conversiones), delta: delta(actual.conversiones, anterior.conversiones), actualNum: actual.conversiones, anteriorNum: anterior.conversiones },
+        { etiqueta: "Tasa de conversión", valor: fmtPct(tasaConv), delta: delta(tasaConv, tasaConvAnt), actualNum: tasaConv * 100, anteriorNum: tasaConvAnt * 100 },
+        { etiqueta: "Costo por conversión", valor: fmtMoneda(costoActual, "CLP"), delta: delta(costoActual, costoAnterior, true), actualNum: costoActual, anteriorNum: costoAnterior },
       ],
       serie: rellenarDias(desde, hasta, serieDiaria.map((p) => ({ fecha: p.fecha, valor: p.sesiones }))),
       hitos,
@@ -766,7 +769,15 @@ async function seccionGoogleAds(
  */
 export async function obtenerResultadosCliente(clientId: string, rango: RangoResultados): Promise<ResultadosCliente | null> {
   const { actual, anterior } = calcularRangos(rango);
+  return obtenerResultadosPeriodo(clientId, rango, actual, anterior);
+}
 
+/**
+ * Mismas secciones que la pestaña Resultados pero para un período explícito
+ * (el informe mensual fija sus propias ventanas en vez de "los últimos N
+ * días"). `rango` solo se arrastra como etiqueta del resultado.
+ */
+export async function obtenerResultadosPeriodo(clientId: string, rango: RangoResultados, actual: RangoFechas, anterior: RangoFechas): Promise<ResultadosCliente | null> {
   const [[cliente], servicios, hitosPorTipo] = await Promise.all([
     sql<
       {

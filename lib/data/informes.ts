@@ -1,5 +1,6 @@
 import { sql } from "@/lib/db";
 import type { InformeAdsCombinadoContenido, InformeMarketingContenido, InformeSeoContenido } from "@/lib/informes/tipos";
+import type { InformeV2Contenido } from "@/lib/informes/v2/tipos";
 import type { ServicioTipo } from "@/lib/data/cliente-detalle";
 
 export type { ServicioTipo };
@@ -35,7 +36,8 @@ export interface InformeCompleto {
   clienteEmpresa: string;
   contactoNombre: string;
   sitioWeb: string | null;
-  contenido: InformeSeoContenido | InformeMarketingContenido | InformeAdsCombinadoContenido;
+  contenido: InformeSeoContenido | InformeMarketingContenido | InformeAdsCombinadoContenido | InformeV2Contenido;
+  industria: string | null;
 }
 
 export async function listarInformesPorCliente(clientId: string): Promise<InformeResumen[]> {
@@ -69,7 +71,8 @@ export async function obtenerInforme(id: string): Promise<InformeCompleto | null
       estado: "borrador" | "listo" | "enviado";
       enviado_en: string | null;
       destinatario: string | null;
-      contenido_json: InformeSeoContenido | InformeMarketingContenido | InformeAdsCombinadoContenido;
+      contenido_json: InformeSeoContenido | InformeMarketingContenido | InformeAdsCombinadoContenido | InformeV2Contenido;
+      industria: string | null;
       cliente_nombre: string;
       cliente_empresa: string;
       contacto_nombre: string;
@@ -78,7 +81,7 @@ export async function obtenerInforme(id: string): Promise<InformeCompleto | null
   >`
     select r.id, r.client_id, r.service_id, r.tipo, r.periodo_mes, r.periodo_anio, r.estado, r.enviado_en,
            r.destinatario, r.contenido_json,
-           c.nombre as cliente_nombre, c.empresa as cliente_empresa, c.contacto_nombre, c.sitio_web
+           c.industria, c.nombre as cliente_nombre, c.empresa as cliente_empresa, c.contacto_nombre, c.sitio_web
     from reports r
     join clients c on c.id = r.client_id
     where r.id = ${id}
@@ -99,5 +102,6 @@ export async function obtenerInforme(id: string): Promise<InformeCompleto | null
     contactoNombre: row.contacto_nombre,
     sitioWeb: row.sitio_web,
     contenido: row.contenido_json,
+    industria: row.industria,
   };
 }

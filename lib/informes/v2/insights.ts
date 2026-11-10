@@ -1,0 +1,131 @@
+/**
+ * Insights del informe v2: Kaizen arma un prompt con los datos del período,
+ * la persona lo pega en Claude (claude.ai o la extensión del navegador, con
+ * su suscripción — la API de Anthropic no se usa) y pega de vuelta la
+ * respuesta, que se separa en 3 frases por servicio. Mismo patrón que el
+ * briefing de las optimizaciones de Ads.
+ */
+import type { KpiResultado } from "@/lib/data/resultados";
+import type { ReportTipo } from "@/lib/data/informes";
+import { INSIGHTS_POR_SECCION, LARGO_INSIGHT_OBJETIVO, type InformeV2Contenido, type SeccionInsight } from "@/lib/informes/v2/tipos";
+import { rangoLargo } from "@/lib/informes/v2/slides";
+
+export const ETIQUETA_SECCION: Record<SeccionInsight, string> = {
+  seo: "SEO · AEO · GEO",
+  meta: "Meta Ads",
+  googleAds: "Google Ads",
+};
+
+/** Secciones de insights que corresponden a este tipo de informe y tienen datos. */
+export function seccionesDeInsights(tipo: ReportTipo, c: InformeV2Contenido): SeccionInsight[] {
+  const out: SeccionInsight[] = [];
+  if (tipo === "seo_aeo_geo" && (c.datos.seo?.disponible || c.datos.aeo?.disponible)) out.push("seo");
+  if ((tipo === "meta_ads" || tipo === "ads_combinado") && c.datos.meta?.disponible) out.push("meta");
+  if ((tipo === "google_ads" || tipo === "ads_combinado") && c.datos.googleAds?.disponible) out.push("googleAds");
+  return out;
+}
+
+function lineaKpi(k: KpiResultado): string {
+  const cambio = k.delta ? (k.delta.pct === null ? "sin dato anterior" : `${k.delta.pct > 0 ? "+" : ""}${Math.round(k.delta.pct * 10) / 10}%`) : "sin comparación";
+  const antes = k.anteriorNum !== undefined ? ` (antes: ${k.anteriorNum.toLocaleString("es-CL", { maximumFractionDigits: 2 })})` : "";
+  return `- ${k.etiqueta}: ${k.valor}${antes}, cambio ${cambio}`;
+}
+
+function bloqueDatos(seccion: SeccionInsight, c: InformeV2Contenido): string {
+  const partes: string[] = [];
+  if (seccion === "seo") {
+    const seo = c.datos.seo;
+    if (seo?.disponible) {
+      partes.push("Search Console y Analytics (SEO):", ...seo.kpis.map(lineaKpi));
+      if (seo.funnel) partes.push(`- Embudo: ${seo.funnel.impresiones} apariciones → ${seo.funnel.clics} clics → ${seo.funnel.conversiones} conversiones`);
+      if (seo.distribucionPosiciones) {
+        const d = seo.distribucionPosiciones;
+        partes.push(`- Consultas medidas: ${d.total}; en el top 3: ${d.top3}; en el top 10: ${d.top3 + d.top10}; entre el puesto 11 y el 20: ${d.top20}; más allá del 50: ${d.mas50}`);
+      }
+      if (seo.keywords.length) {
+        partes.push("Búsquedas con más clics (clics, puesto medio, cambio de puestos vs. período anterior):");
+        for (const k of seo.keywords.slice(0, 8)) partes.push(`- "${k.termino}": ${k.clics} clics, puesto ${k.posicion.toFixed(1)}, ${k.deltaPosicion === null ? "nueva" : `${k.deltaPosicion > 0 ? "subió" : k.deltaPosicion < 0 ? "bajó" : "igual"} ${Math.abs(k.deltaPosicion)}`}`);
+      }
+    }
+    const aeo = c.datos.aeo;
+    if (aeo?.disponible) {
+      partes.push("", "Visitas desde asistentes de IA (GA4):", `- Total: ${aeo.totalSesiones} visitas${aeo.deltaSesiones?.pct != null ? `, cambio ${aeo.deltaSesiones.pct}%` : ""}${aeo.tasaConversion !== null ? `, tasa de conversión ${(aeo.tasaConversion * 100).toFixed(1)}%` : ""}`);
+      for (const p of aeo.paginasDestino.slice(0, 4)) partes.push(`- Llegan a ${p.pagina}: ${p.sesiones} visitas, ${p.conversiones} conversiones`);
+    }
+  } else {
+    const s = seccion === "meta" ? c.datos.meta : c.datos.googleAds;
+    if (s?.disponible) {
+      partes.push(`${ETIQUETA_SECCION[seccion]}:`, ...s.kpis.map(lineaKpi));
+      const moneda = seccion === "meta" ? c.datos.meta?.moneda : (c.datos.googleAds?.moneda ?? "CLP");
+      if (s.campanas.length) {
+        partes.push(`Campañas (${moneda}):`);
+        for (const f of s.campanas.slice(0, 6)) partes.push(`- "${f.nombre}": ${f.interacciones} clics/visitas, ${f.conversiones} conversiones, costo por conversión ${f.costoPorConversion !== null ? Math.round(f.costoPorConversion * 100) / 100 : "sin dato"}`);
+      }
+    }
+  }
+  return partes.join("\n");
+}
+
+/** Prompt completo para pegar en Claude. Pide 3 frases por servicio en un formato fijo que `parsearInsights` entiende. */
+export function construirPromptInsights(o: { clienteNombre: string; industria?: string | null; mesAnioLabel: string; tipo: ReportTipo; contenido: InformeV2Contenido }): string {
+  const c = o.contenido;
+  const secciones = seccionesDeInsights(o.tipo, c);
+  const formato = secciones.map((s) => `## ${ETIQUETA_SECCION[s]}\n- (frase 1)\n- (frase 2)\n- (frase 3)`).join("\n\n");
+  const datos = secciones.map((s) => `### ${ETIQUETA_SECCION[s]}\n${bloqueDatos(s, c)}`).join("\n\n");
+  const hechos = c.hechos.filter((h) => h.trim()).map((h) => `- ${h}`).join("\n");
+
+  return `Eres analista de marketing digital senior en Bigbuda, una agencia de Santiago. Vas a escribir los INSIGHTS del informe mensual de nuestro cliente. Los lee el dueño del negocio: no es técnico, así que habla de clientes, ventas y contactos, no de métricas internas.
+
+CLIENTE: ${o.clienteNombre}${o.industria ? ` (${o.industria})` : ""}
+INFORME: ${o.mesAnioLabel}
+PERÍODO: ${rangoLargo(c.periodo.desde, c.periodo.hasta)}, comparado con ${rangoLargo(c.periodo.anteriorDesde, c.periodo.anteriorHasta)}
+
+REGLAS
+- Escribe EXACTAMENTE ${INSIGHTS_POR_SECCION} frases por servicio.
+- Cada frase de unos ${LARGO_INSIGHT_OBJETIVO} caracteres (nunca más de ${LARGO_INSIGHT_OBJETIVO + 15}). Cuéntalas: tienen que caber en una tarjeta.
+- Cada frase es una idea distinta: (1) qué pasó, con la cifra concreta; (2) por qué le importa al negocio; (3) qué haremos o qué esperar.
+- Usa solo las cifras de los datos de abajo. No inventes números, causas ni hechos.
+- Si algo empeoró, dilo con honestidad y di qué haremos. No exageres lo bueno.
+- Español de Chile, sin emojis, sin jerga (di "visitas", no "sesiones"; "puesto en Google", no "posición media").
+
+DATOS DEL PERÍODO
+${datos}
+${hechos ? `\nLO QUE HICIMOS ESTE PERÍODO (contexto)\n${hechos}\n` : ""}
+FORMATO DE RESPUESTA (respeta los títulos y los guiones; nada más)
+${formato}`;
+}
+
+const SECCION_POR_TITULO: [RegExp, SeccionInsight][] = [
+  [/google\s*ads/i, "googleAds"],
+  [/meta/i, "meta"],
+  [/seo|aeo|geo|posicionamiento/i, "seo"],
+];
+
+function limpiar(texto: string): string {
+  return texto
+    .replace(/\*\*(.+?)\*\*/g, "$1")
+    .replace(/^["“«]+|["”»]+$/g, "")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+/** Separa la respuesta de Claude en frases por servicio. Tolera títulos con o sin `#`/negritas y viñetas `-`, `*`, `•` o `1.`. */
+export function parsearInsights(texto: string): Partial<Record<SeccionInsight, string[]>> {
+  const out: Partial<Record<SeccionInsight, string[]>> = {};
+  let actual: SeccionInsight | null = null;
+  for (const bruta of texto.split(/\r?\n/)) {
+    const linea = bruta.trim();
+    if (!linea) continue;
+    const esViñeta = /^([-*•]|\d+[.)])\s+/.test(linea);
+    if (!esViñeta) {
+      const titulo = linea.replace(/^#+\s*/, "").replace(/[*_:]/g, "").trim();
+      const hit = SECCION_POR_TITULO.find(([re]) => re.test(titulo));
+      if (hit && titulo.length <= 40) actual = hit[1];
+      continue;
+    }
+    if (!actual) continue;
+    const frase = limpiar(linea.replace(/^([-*•]|\d+[.)])\s+/, ""));
+    if (frase && !/^\(frase \d\)$/i.test(frase)) (out[actual] ??= []).push(frase);
+  }
+  return out;
+}
