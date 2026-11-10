@@ -73,7 +73,7 @@ export function construirPromptInsights(o: { clienteNombre: string; industria?: 
   const datos = secciones.map((s) => `### ${ETIQUETA_SECCION[s]}\n${bloqueDatos(s, c)}`).join("\n\n");
   const bitacora = (c.bitacora ?? "").trim();
 
-  return `/paid_media_senior
+  return `/paid-media-senior
 
 Vas a escribir el contenido de texto del informe mensual de nuestro cliente. Lo lee el dueño del negocio: no es técnico, así que habla de clientes, ventas y contactos, no de métricas internas.
 
