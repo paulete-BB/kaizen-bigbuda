@@ -107,6 +107,20 @@ function parseResumen(row: Record<string, unknown> | undefined): ResumenInsights
 export interface ConfigMeta {
   adAccountId: string;
   metaTokenKey: string | null;
+  /** Fragmentos del nombre de campaña a excluir (la cuenta publicitaria puede traer campañas que no son nuestras, ej. de familiares del cliente). */
+  excluirCampanas?: string[];
+}
+
+/** "siria, familia" → ["siria", "familia"] (texto guardado en `clients.meta_excluir_campanas`). */
+export function parseExcluirCampanas(texto: string | null | undefined): string[] {
+  return (texto ?? "").split(",").map((t) => t.trim()).filter(Boolean);
+}
+
+/** Parámetro `filtering` de Meta Insights: una condición NOT_CONTAIN por fragmento (se combinan con AND). */
+function filtroExcluir(config: ConfigMeta): Record<string, string> {
+  const fragmentos = config.excluirCampanas ?? [];
+  if (fragmentos.length === 0) return {};
+  return { filtering: JSON.stringify(fragmentos.map((value) => ({ field: "campaign.name", operator: "NOT_CONTAIN", value }))) };
 }
 
 /** Resumen de cuenta para un período — usado en el pre-llenado de "¿Cómo vamos?" del informe de Ads y en la pestaña Resultados (§3.15). */
@@ -115,7 +129,7 @@ export async function obtenerResumenMeta(config: ConfigMeta, since: string, unti
   if (!token) throw new Error(config.metaTokenKey ? `META_TOKEN_${config.metaTokenKey} no configurado` : "META_TOKEN no configurado");
 
   const fields = "spend,impressions,clicks,ctr,cpc,cpm,reach,actions,account_currency";
-  const data = await metaFetch(`/act_${config.adAccountId}/insights`, { fields, time_range: timeRange(since, until), level: "account" }, token);
+  const data = await metaFetch(`/act_${config.adAccountId}/insights`, { fields, time_range: timeRange(since, until), level: "account", ...filtroExcluir(config) }, token);
   return parseResumen(data.data?.[0]);
 }
 
@@ -150,7 +164,7 @@ export async function obtenerSerieDiariaMeta(config: ConfigMeta, since: string, 
   if (!token) throw new Error(config.metaTokenKey ? `META_TOKEN_${config.metaTokenKey} no configurado` : "META_TOKEN no configurado");
 
   const fields = "spend,impressions,clicks,actions";
-  const data = await metaFetch(`/act_${config.adAccountId}/insights`, { fields, time_range: timeRange(since, until), time_increment: "1", level: "account", limit: "500" }, token);
+  const data = await metaFetch(`/act_${config.adAccountId}/insights`, { fields, time_range: timeRange(since, until), time_increment: "1", level: "account", limit: "500", ...filtroExcluir(config) }, token);
   const num = (v: unknown) => (typeof v === "string" ? parseFloat(v) || 0 : 0);
   return (data.data ?? []).map((row: Record<string, unknown>) => ({
     fecha: String(row.date_start ?? ""),
@@ -169,7 +183,7 @@ export async function obtenerCampanasMeta(config: ConfigMeta, since: string, unt
   const fields = "campaign_id,campaign_name,spend,impressions,clicks,ctr,cpc,actions";
   const data = await metaFetch(
     `/act_${config.adAccountId}/insights`,
-    { fields, time_range: timeRange(since, until), level: "campaign", sort: "spend_descending", limit: String(limite) },
+    { fields, time_range: timeRange(since, until), level: "campaign", sort: "spend_descending", limit: String(limite), ...filtroExcluir(config) },
     token,
   );
   const num = (v: unknown) => (typeof v === "string" ? parseFloat(v) || 0 : 0);

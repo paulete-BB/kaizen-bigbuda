@@ -1,7 +1,7 @@
 import type Anthropic from "@anthropic-ai/sdk";
 import { z } from "zod";
 import { sql } from "@/lib/db";
-import { obtenerCampanasMeta, obtenerResumenMeta, obtenerSerieDiariaMeta, type ConfigMeta } from "@/lib/meta/client";
+import { obtenerCampanasMeta, obtenerResumenMeta, obtenerSerieDiariaMeta, parseExcluirCampanas, type ConfigMeta } from "@/lib/meta/client";
 import { obtenerCampanasMetaGA4, obtenerCampanasPagadoGA4, obtenerTraficoPagadoDiarioGA4, obtenerTraficoPagadoGA4 } from "@/lib/google/ga4";
 import { cargarHistorial, formatearHistorial, type DatosSesion } from "@/lib/agente/contexto";
 import type { EventoAgente, ItemPlan } from "@/lib/agente/tipos";
@@ -156,7 +156,7 @@ function acotar(valor: unknown): string {
 
 function configMeta(datos: DatosSesion): ConfigMeta {
   if (!datos.metaAdAccountId) throw new Error("El cliente no tiene Meta Ad Account ID configurado en su ficha.");
-  return { adAccountId: datos.metaAdAccountId, metaTokenKey: datos.metaTokenKey };
+  return { adAccountId: datos.metaAdAccountId, metaTokenKey: datos.metaTokenKey, excluirCampanas: parseExcluirCampanas(datos.metaExcluirCampanas) };
 }
 
 function exigirGa4(datos: DatosSesion): string {

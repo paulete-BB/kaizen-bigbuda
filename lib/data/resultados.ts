@@ -22,7 +22,7 @@ import {
   type ResumenTraficoIA,
   type ResumenTraficoPagado,
 } from "@/lib/google/ga4";
-import { obtenerCampanasMeta, obtenerResumenMeta, obtenerSerieDiariaMeta, type ResumenInsightsMeta } from "@/lib/meta/client";
+import { obtenerCampanasMeta, obtenerResumenMeta, obtenerSerieDiariaMeta, parseExcluirCampanas, type ResumenInsightsMeta } from "@/lib/meta/client";
 import type { ServicioTipo } from "@/lib/data/cliente-detalle";
 import type { ReportTipo } from "@/lib/data/informes";
 import { calcularRangosResultados, RANGOS_RESULTADOS, type RangoResultados } from "@/lib/resultados-rango";
@@ -570,11 +570,12 @@ async function seccionMeta(
   desdeAnt: string,
   hastaAnt: string,
   hitos: Hito[],
+  excluirCampanas?: string | null,
 ): Promise<SeccionMeta> {
   if (!metaAdAccountId) {
     return { disponible: false, motivo: "Configura el Ad Account ID de Meta en la ficha del cliente.", insight: null, kpis: [], serie: [], serieConversiones: [], hitos: [], campanas: [], moneda: "USD" };
   }
-  const config = { adAccountId: metaAdAccountId, metaTokenKey };
+  const config = { adAccountId: metaAdAccountId, metaTokenKey, excluirCampanas: parseExcluirCampanas(excluirCampanas) };
   try {
     const [{ datos: actual, deCache }, { datos: anterior }, serieDiaria, campanas, campanasGa4, conversionesPaidSocialDiaria] = await Promise.all([
       conCacheDeSnapshot<ResumenInsightsMeta>({ clientId, serviceId, fuente: "meta", periodoInicio: desde, periodoFin: hasta, fetchLive: () => obtenerResumenMeta(config, desde, hasta) }),
@@ -777,8 +778,9 @@ export async function obtenerResultadosCliente(clientId: string, rango: RangoRes
         meta_ad_account_id: string | null;
         meta_token_key: string | null;
         google_ads_customer_id: string | null;
+        meta_excluir_campanas: string | null;
       }[]
-    >`select nombre, gsc_property, ga4_property_id, google_ads_ga4_property_id, meta_ads_ga4_property_id, meta_ad_account_id, meta_token_key, google_ads_customer_id from clients where id = ${clientId}`,
+    >`select nombre, gsc_property, ga4_property_id, google_ads_ga4_property_id, meta_ads_ga4_property_id, meta_ad_account_id, meta_token_key, google_ads_customer_id, meta_excluir_campanas from clients where id = ${clientId}`,
     sql<{ id: string; tipo: ServicioTipo }[]>`select id, tipo from services where client_id = ${clientId} and not pausado`,
     obtenerTodosLosHitos(clientId, actual.desde, actual.hasta),
   ]);
@@ -821,6 +823,7 @@ export async function obtenerResultadosCliente(clientId: string, rango: RangoRes
           anterior.desde,
           anterior.hasta,
           hitosPorTipo.meta_ads,
+          cliente.meta_excluir_campanas,
         )
       : ({ disponible: false, motivo: "Este cliente no tiene Meta Ads contratado.", insight: null, kpis: [], serie: [], serieConversiones: [], hitos: [], campanas: [], moneda: "USD" } as SeccionMeta),
     servicioIdPorTipo.has("google_ads")

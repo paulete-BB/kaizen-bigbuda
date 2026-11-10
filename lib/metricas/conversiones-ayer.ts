@@ -1,8 +1,9 @@
 import { sql } from "@/lib/db";
 import { addDaysIso, hoySantiago, toIso } from "@/lib/dates";
 import { conCacheDeSnapshot } from "./snapshot";
-import { obtenerResumenMeta, type ResumenInsightsMeta } from "@/lib/meta/client";
+import { obtenerResumenMeta, parseExcluirCampanas, type ResumenInsightsMeta } from "@/lib/meta/client";
 import { obtenerTraficoPagadoGA4, type ResumenTraficoPagado } from "@/lib/google/ga4";
+import { obtenerResumenAds, type ResumenAds } from "@/lib/google/ads-datos";
 
 const LOTE = 50;
 
@@ -36,10 +37,12 @@ export async function snapshotConversionesAyer(): Promise<ResultadoSnapshotConve
       meta_ad_account_id: string | null;
       meta_token_key: string | null;
       google_ads_ga4_property_id: string | null;
+      google_ads_customer_id: string | null;
+      meta_excluir_campanas: string | null;
     }[]
   >`
     select s.id as service_id, s.client_id, s.tipo,
-      c.meta_ad_account_id, c.meta_token_key, c.google_ads_ga4_property_id
+      c.meta_ad_account_id, c.meta_token_key, c.google_ads_ga4_property_id, c.google_ads_customer_id, c.meta_excluir_campanas
     from services s join clients c on c.id = s.client_id
     where s.tipo in ('meta_ads', 'google_ads') and not s.pausado
     limit ${LOTE}
@@ -56,7 +59,18 @@ export async function snapshotConversionesAyer(): Promise<ResultadoSnapshotConve
           fuente: "meta",
           periodoInicio: ayer,
           periodoFin: ayer,
-          fetchLive: () => obtenerResumenMeta({ adAccountId: s.meta_ad_account_id!, metaTokenKey: s.meta_token_key }, ayer, ayer),
+          fetchLive: () => obtenerResumenMeta({ adAccountId: s.meta_ad_account_id!, metaTokenKey: s.meta_token_key, excluirCampanas: parseExcluirCampanas(s.meta_excluir_campanas) }, ayer, ayer),
+        });
+      } else if (s.google_ads_customer_id) {
+        // Con ID de cuenta de Google Ads, "ayer" sale de la API de Ads (los números oficiales de la cuenta).
+        // `ResumenAds` también trae `conversiones`, que es la clave que lee la alerta del dashboard.
+        await conCacheDeSnapshot<ResumenAds>({
+          clientId: s.client_id,
+          serviceId: s.service_id,
+          fuente: "google_ads",
+          periodoInicio: ayer,
+          periodoFin: ayer,
+          fetchLive: () => obtenerResumenAds(s.google_ads_customer_id!, ayer, ayer),
         });
       } else {
         if (!s.google_ads_ga4_property_id) continue;

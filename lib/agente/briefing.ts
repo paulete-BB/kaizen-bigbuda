@@ -1,6 +1,6 @@
 import { sql } from "@/lib/db";
 import { addDaysIso, fmtFecha, hoySantiago, toIso } from "@/lib/dates";
-import { obtenerCampanasMeta, obtenerResumenMeta } from "@/lib/meta/client";
+import { obtenerCampanasMeta, obtenerResumenMeta, parseExcluirCampanas } from "@/lib/meta/client";
 import {
   obtenerAnunciosAds,
   obtenerCambiosRecientesAds,
@@ -37,7 +37,7 @@ async function cifrasCuenta(datos: DatosSesion, desde: string, hasta: string): P
   if (datos.tipo === "meta_ads") {
     const partes: string[] = [];
     if (datos.metaAdAccountId) {
-      const cfg = { adAccountId: datos.metaAdAccountId, metaTokenKey: datos.metaTokenKey };
+      const cfg = { adAccountId: datos.metaAdAccountId, metaTokenKey: datos.metaTokenKey, excluirCampanas: parseExcluirCampanas(datos.metaExcluirCampanas) };
       partes.push(await seguro(`Meta · resumen de la cuenta (${rango})`, () => obtenerResumenMeta(cfg, desde, hasta)));
       partes.push(await seguro(`Meta · campañas (${rango}; "resultados" es el criterio propio de Meta)`, () => obtenerCampanasMeta(cfg, desde, hasta, 30)));
     } else partes.push("### Meta\n(el cliente no tiene Meta Ad Account ID en su ficha)");

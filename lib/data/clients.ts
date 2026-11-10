@@ -142,7 +142,7 @@ export async function listClientesResumen(): Promise<ClienteResumen[]> {
     ) ms_gsc on true
     left join lateral (
       select datos_json, periodo_inicio from metric_snapshots ms
-      where ms.service_id = s.id and ms.fuente = 'ga4' and ms.periodo_inicio = ms.periodo_fin
+      where ms.service_id = s.id and ms.fuente in ('ga4', 'google_ads') and ms.periodo_inicio = ms.periodo_fin
       order by ms.obtenido_en desc limit 1
     ) ms_ga4 on true
     left join budgets b on b.service_id = s.id and b.mes = extract(month from current_date) and b.anio = extract(year from current_date)
