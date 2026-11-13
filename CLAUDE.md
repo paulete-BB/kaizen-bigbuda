@@ -3722,3 +3722,24 @@ ajustes de Paulete al probar el formato nuevo:
   al pegar la respuesta. El prellenado automático desde `optimizations` sigue, pero queda vacío si el servicio
   no tiene optimizaciones registradas en Kaizen (caso SEO: las lleva Marcel fuera de Kaizen) — para eso sirve el
   prompt. Verificado con Postgres local + `next dev` + Playwright (octubre = 1–31, fechas a mano, prompt).
+
+**Dashboard "Mi día" + pestaña "Cartera" (pantalla de inicio de trabajo)** — pedido de Paulete, diseñado con la
+skill de paid media (propuesta A: cola de trabajo priorizada, con la cartera completa en una pestaña). Decisiones
+del usuario: SEO fuera, ordenar de la más atrasada a la de hoy y no mostrar lo que está al día, solo lo de la persona
+logueada, y el riesgo se marca con "sin conversiones ayer".
+
+- **`lib/data/mi-dia.ts`** (`getMiDia`, `getCarteraAds`): todo desde Postgres, consultas secuenciales, sin llamadas en
+  vivo — "ayer" sale del snapshot de un solo día que ya guardan los crons (`gasto`/`costo`, `resultados`/`conversiones`,
+  `cpa`). **Una fila por servicio** de Ads: su optimización abierta más antigua (`estado` programada/atrasada/bloqueada,
+  fecha ≤ hoy, `responsable_id` = usuario), con "N semanas más sin cerrar" si acumula; al cerrarla aparece la siguiente.
+  Motivos de cada fila: sin conversiones ayer (rojo), pacing fuera de rango según `settings.umbralPacingPct` (sobregasto
+  rojo, subgasto ámbar), bloqueada / aprobación sin respuesta (ámbar), atrasada (ámbar). Semáforo = rojo si hay algún
+  motivo rojo. También trae lo que quedó pendiente de la última optimización realizada (`proximos_pasos`).
+- **UI**: `/dashboard` (Mi día) muestra 4 números (hoy, atrasadas, en riesgo, con aprobación pendiente), la cola con
+  botón "Iniciar optimización" (o "Continuar" si ya hay briefing) y "Esta semana" plegado. `/dashboard?vista=cartera`
+  muestra la tabla de todos los servicios de Ads del equipo (riesgo primero, los sanos atenuados) y debajo los paneles que
+  tenía el dashboard (cumplimiento, vigencias, hoy/semana, alertas administrativas) — esos solo se calculan en esa pestaña.
+- Sin migración nueva. Verificado con Postgres local + `next dev` + Playwright (snapshots de ayer sembrados y luego
+  borrados): cola de 3 servicios con sus motivos, una sola fila por servicio, cartera con el semáforo; sin errores de
+  consola. No probado con datos reales de producción. **Falta**: comparar "ayer" contra la semana anterior (flecha) —
+  hoy solo se muestra el número de ayer.
