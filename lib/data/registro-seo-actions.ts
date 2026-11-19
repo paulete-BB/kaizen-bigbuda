@@ -4,13 +4,13 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { after } from "next/server";
 import { sql } from "@/lib/db";
-import { requireUser } from "@/lib/auth/server";
+import { requireWriter } from "@/lib/auth/server";
 import { cerrarTareaOptimizacionEnClickUp, syncLogEntryToClickUp, syncOptimizationTaskToClickUp } from "@/lib/clickup/client";
 import { crearInformeInterno } from "@/lib/data/informes-actions";
 import { hoySantiago } from "@/lib/dates";
 
 export async function toggleChecklistItemSeo(formData: FormData) {
-  await requireUser();
+  await requireWriter();
   const itemId = String(formData.get("itemId") ?? "");
   const optimizationId = String(formData.get("optimizationId") ?? "");
   if (!itemId) return;
@@ -23,7 +23,7 @@ export async function toggleChecklistItemSeo(formData: FormData) {
 }
 
 export async function guardarRegistroSeo(formData: FormData) {
-  const session = await requireUser();
+  const session = await requireWriter();
   const optimizationId = String(formData.get("optimizationId") ?? "");
   const serviceId = String(formData.get("serviceId") ?? "");
   const clientId = String(formData.get("clientId") ?? "");

@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { sql } from "@/lib/db";
-import { requireUser } from "@/lib/auth/server";
+import { requireWriter } from "@/lib/auth/server";
 import { CATEGORIAS_PROMPT, type PromptCategoria } from "@/lib/data/prompts";
 
 export interface AccionPromptResultado {
@@ -24,7 +24,7 @@ function esCategoriaValida(v: string): v is PromptCategoria {
 }
 
 export async function crearPrompt(formData: FormData): Promise<void> {
-  const session = await requireUser();
+  const session = await requireWriter();
   const titulo = String(formData.get("titulo") ?? "").trim();
   const categoria = String(formData.get("categoria") ?? "");
   const contenido = String(formData.get("contenido") ?? "").trim();
@@ -49,7 +49,7 @@ export async function crearPrompt(formData: FormData): Promise<void> {
  * de `prompts` siempre es la versión actual, nunca un snapshot histórico.
  */
 export async function editarPrompt(formData: FormData): Promise<AccionPromptResultado> {
-  const session = await requireUser();
+  const session = await requireWriter();
   const id = String(formData.get("id") ?? "");
   const titulo = String(formData.get("titulo") ?? "").trim();
   const categoria = String(formData.get("categoria") ?? "");
@@ -82,7 +82,7 @@ export async function editarPrompt(formData: FormData): Promise<AccionPromptResu
 
 /** Restaura una versión anterior — cuenta como una edición más (archiva la vigente, sube el número de versión), nunca reescribe el historial. */
 export async function restaurarVersionPrompt(formData: FormData): Promise<AccionPromptResultado> {
-  const session = await requireUser();
+  const session = await requireWriter();
   const id = String(formData.get("id") ?? "");
   const version = Number(formData.get("version") ?? 0);
   if (!id || !version) return { ok: false, error: "Datos inválidos." };
@@ -104,7 +104,7 @@ export async function restaurarVersionPrompt(formData: FormData): Promise<Accion
 
 /** Borrado real (distinto del versionado): solo admin, mismo criterio que otras acciones destructivas de la plataforma. */
 export async function eliminarPrompt(formData: FormData): Promise<AccionPromptResultado> {
-  const session = await requireUser();
+  const session = await requireWriter();
   const id = String(formData.get("id") ?? "");
   if (!id) return { ok: false, error: "Prompt inválido." };
   if (session.rol !== "admin") return { ok: false, error: "Solo un administrador puede eliminar un prompt." };

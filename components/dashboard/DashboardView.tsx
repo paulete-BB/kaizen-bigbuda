@@ -17,12 +17,15 @@ export function DashboardView({
   cartera,
   data,
   usuario,
+  soloCartera = false,
 }: {
   vista: VistaDashboard;
   miDia?: MiDiaData;
   cartera?: FilaAds[];
   data?: DashboardData;
   usuario: SidebarUsuario;
+  /** Usuario de solo lectura: sin "Mi día", solo la cartera. */
+  soloCartera?: boolean;
 }) {
   const primerNombre = usuario.nombre.split(" ")[0];
   const tab = (activa: boolean) => ({
@@ -43,10 +46,12 @@ export function DashboardView({
         </header>
 
         <div className="flex w-full max-w-[1360px] flex-col gap-5 px-[26px] pb-10 pt-[22px]">
+          {!soloCartera && (
           <div className="flex w-fit overflow-hidden rounded-[9px] border border-border">
             <Link href="/dashboard" className="px-4 py-2 text-[12.5px] font-semibold" style={tab(vista === "mi-dia")}>Mi día</Link>
             <Link href="/dashboard?vista=cartera" className="border-l border-border px-4 py-2 text-[12.5px] font-semibold" style={tab(vista === "cartera")}>Cartera</Link>
           </div>
+          )}
 
           {vista === "mi-dia" && miDia && <MiDiaView data={miDia} />}
 

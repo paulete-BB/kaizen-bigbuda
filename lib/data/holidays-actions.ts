@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { after } from "next/server";
 import { sql } from "@/lib/db";
-import { requireUser } from "@/lib/auth/server";
+import { requireWriter } from "@/lib/auth/server";
 import { diaHabilSiguiente, viernesAnteriorHabil } from "@/lib/scheduling/holidays";
 import { MAX_SEO_POR_VIERNES } from "@/lib/scheduling/seo";
 import type { Holiday } from "@/lib/scheduling/types";
@@ -70,7 +70,7 @@ async function reprogramarOptimizacionesPorFeriado(fecha: string, session: { use
 }
 
 export async function crearFeriado(formData: FormData): Promise<FeriadoResultado> {
-  const session = await requireUser();
+  const session = await requireWriter();
   if (session.rol !== "admin") return { ok: false, error: "Solo un administrador puede editar los feriados." };
 
   const fecha = String(formData.get("fecha") ?? "");
@@ -95,7 +95,7 @@ export async function crearFeriado(formData: FormData): Promise<FeriadoResultado
 }
 
 export async function eliminarFeriado(formData: FormData): Promise<FeriadoResultado> {
-  const session = await requireUser();
+  const session = await requireWriter();
   if (session.rol !== "admin") return { ok: false, error: "Solo un administrador puede editar los feriados." };
 
   const feriadoId = String(formData.get("feriadoId") ?? "");

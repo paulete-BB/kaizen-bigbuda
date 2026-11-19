@@ -2,10 +2,10 @@
 
 import { revalidatePath } from "next/cache";
 import { sql } from "@/lib/db";
-import { requireUser } from "@/lib/auth/server";
+import { requireWriter } from "@/lib/auth/server";
 
 export async function agendarReunion(formData: FormData) {
-  const session = await requireUser();
+  const session = await requireWriter();
   const clientId = String(formData.get("clientId") ?? "");
   const titulo = String(formData.get("titulo") ?? "").trim();
   const fecha = String(formData.get("fecha") ?? "");
@@ -21,7 +21,7 @@ export async function agendarReunion(formData: FormData) {
 }
 
 export async function guardarNotasReunion(formData: FormData) {
-  await requireUser();
+  await requireWriter();
   const id = String(formData.get("id") ?? "");
   const clientId = String(formData.get("clientId") ?? "");
   const notas = String(formData.get("notas") ?? "");

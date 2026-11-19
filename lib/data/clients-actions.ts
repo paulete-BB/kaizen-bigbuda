@@ -4,7 +4,7 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { after } from "next/server";
 import { sql } from "@/lib/db";
-import { requireUser } from "@/lib/auth/server";
+import { requireWriter } from "@/lib/auth/server";
 import { addMeses } from "@/lib/dates";
 import { instanciarOnboarding } from "@/lib/data/onboarding";
 import { instanciarOffboarding } from "@/lib/data/offboarding";
@@ -56,7 +56,7 @@ export interface CrearClienteResultado {
  * agendar trabajo real antes de tener accesos/contrato listos (§3.8).
  */
 export async function crearCliente(formData: FormData): Promise<CrearClienteResultado> {
-  await requireUser();
+  await requireWriter();
 
   const nombre = String(formData.get("nombre") ?? "").trim();
   const empresa = String(formData.get("empresa") ?? "").trim();
@@ -106,7 +106,7 @@ export async function crearCliente(formData: FormData): Promise<CrearClienteResu
 }
 
 export async function extenderServicio(formData: FormData) {
-  const session = await requireUser();
+  const session = await requireWriter();
   const serviceId = String(formData.get("serviceId") ?? "");
   const nuevaFecha = String(formData.get("nuevaFecha") ?? "");
   const notas = String(formData.get("notas") ?? "").trim();
@@ -121,7 +121,7 @@ export async function extenderServicio(formData: FormData) {
 }
 
 export async function agregarDescuento(formData: FormData) {
-  await requireUser();
+  await requireWriter();
   const clientId = String(formData.get("clientId") ?? "");
   const descripcion = String(formData.get("descripcion") ?? "").trim();
   const valor = Number(formData.get("valor") ?? 0);
@@ -166,7 +166,7 @@ export interface RegistrarSalidaResultado {
  * completarse después desde la ficha.
  */
 export async function registrarSalidaCliente(formData: FormData): Promise<RegistrarSalidaResultado> {
-  const session = await requireUser();
+  const session = await requireWriter();
   const clientId = String(formData.get("clientId") ?? "");
   if (!clientId) return { ok: false, error: "Cliente inválido." };
   if (session.rol !== "admin") {
@@ -205,7 +205,7 @@ export async function registrarSalidaCliente(formData: FormData): Promise<Regist
  * sus datos de nuevo.
  */
 export async function reactivarCliente(formData: FormData): Promise<RegistrarSalidaResultado> {
-  const session = await requireUser();
+  const session = await requireWriter();
   const clientId = String(formData.get("clientId") ?? "");
   if (!clientId) return { ok: false, error: "Cliente inválido." };
   if (session.rol !== "admin") {

@@ -1,12 +1,12 @@
 "use server";
 
 import { sql } from "@/lib/db";
-import { requireUser } from "@/lib/auth/server";
+import { requireWriter } from "@/lib/auth/server";
 import { ErrorGoogleAds, probarConexionGoogleAds } from "@/lib/google/ads";
 
 /** Prueba de conexión con la cuenta de Google Ads guardada en la ficha del cliente (lee solo datos básicos de la cuenta). */
 export async function probarConexionAds(clientId: string): Promise<{ ok: boolean; mensaje: string }> {
-  await requireUser();
+  await requireWriter();
   const [c] = await sql<{ google_ads_customer_id: string | null }[]>`select google_ads_customer_id from clients where id = ${clientId}`;
   if (!c?.google_ads_customer_id) return { ok: false, mensaje: "Guarda primero el ID de la cuenta de Google Ads." };
   try {

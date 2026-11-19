@@ -2,7 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { sql } from "@/lib/db";
-import { requireUser } from "@/lib/auth/server";
+import { requireWriter } from "@/lib/auth/server";
 
 export interface AusenciaResultado {
   ok: boolean;
@@ -11,7 +11,7 @@ export interface AusenciaResultado {
 
 /** Registrar una ausencia (§3.2 D: "cada usuario puede registrar períodos de vacaciones/licencia"). Cualquier miembro autenticado puede registrar la suya; un admin puede registrar la de cualquiera. */
 export async function crearAusencia(formData: FormData): Promise<AusenciaResultado> {
-  const session = await requireUser();
+  const session = await requireWriter();
   const userId = String(formData.get("userId") ?? "");
   const fechaInicio = String(formData.get("fechaInicio") ?? "");
   const fechaFin = String(formData.get("fechaFin") ?? "");
@@ -32,7 +32,7 @@ export async function crearAusencia(formData: FormData): Promise<AusenciaResulta
 
 /** Eliminar una ausencia — el propio usuario o un admin. */
 export async function eliminarAusencia(formData: FormData): Promise<AusenciaResultado> {
-  const session = await requireUser();
+  const session = await requireWriter();
   const ausenciaId = String(formData.get("ausenciaId") ?? "");
   if (!ausenciaId) return { ok: false, error: "Falta el id." };
 

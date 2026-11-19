@@ -3743,3 +3743,21 @@ logueada, y el riesgo se marca con "sin conversiones ayer".
   borrados): cola de 3 servicios con sus motivos, una sola fila por servicio, cartera con el semáforo; sin errores de
   consola. No probado con datos reales de producción. **Falta**: comparar "ayer" contra la semana anterior (flecha) —
   hoy solo se muestra el número de ayer.
+
+**Rol `lector` (solo lectura)** — pedido de Marcel: poder mirar lo que pasa con las campañas de cada cliente desde
+Kaizen sin poder cambiar nada. Kaizen **no tiene una API de lectura**; se resolvió con un tercer rol de usuario.
+
+- Migración `0024_rol_lector.sql`: agrega `lector` al enum `user_rol`. **Pendiente de aplicar en producción** solo para
+  poder crear el usuario — el código no depende de ella (`listResponsables` compara `rol::text`, a propósito, para no
+  fallar con "invalid input value for enum" si el código llega antes que la migración).
+- `requireWriter()` (`lib/auth/server.ts`) reemplazó a `requireUser()` en las 18 `lib/data/*-actions.ts`: un `lector`
+  que dispare cualquier acción de escritura es llevado a `/solo-lectura` (página que explica el motivo), sin cambiar nada.
+  Las páginas siguen con `requireUser()`, así que ve Dashboard, Calendario, Clientes, fichas, Resultados e informes. Las
+  rutas que ya exigían admin siguen cerradas para él, y el chat del agente responde 403.
+- El `lector` entra directo a la **Cartera** (sin la pestaña "Mi día", que es una cola personal) y no aparece como
+  responsable asignable. Sidebar: "Solo lectura".
+- No hay pantalla de usuarios: `npm run usuario:crear -- <email> "<Nombre>" <admin|miembro|lector> [password]`
+  (`scripts/crear-usuario.ts`; sin password genera una al azar). **Ojo**: usa `.env.local`, que apunta a producción.
+- Verificado con Postgres local + `next dev` + Playwright: el lector entra a la cartera, navega calendario, clientes,
+  ficha y resultados (200), y "Pausar servicio" lo manda a `/solo-lectura` sin pausar nada (confirmado en la base).
+  Typecheck, lint y 82 tests en verde.

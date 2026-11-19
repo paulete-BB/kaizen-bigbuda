@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { after } from "next/server";
 import { sql } from "@/lib/db";
-import { requireUser } from "@/lib/auth/server";
+import { requireWriter } from "@/lib/auth/server";
 import { syncLogEntryToClickUp } from "@/lib/clickup/client";
 
 /**
@@ -36,7 +36,7 @@ async function registrarBitacora(opts: { clientId: string; titulo: string; tipo:
 }
 
 export async function toggleOffboardingItem(formData: FormData) {
-  const session = await requireUser();
+  const session = await requireWriter();
   const itemId = String(formData.get("itemId") ?? "");
   const clientId = String(formData.get("clientId") ?? "");
   if (!itemId || !clientId) return;
@@ -74,7 +74,7 @@ export interface AccionOffboardingResultado {
 }
 
 export async function marcarRetencionDatos(formData: FormData): Promise<AccionOffboardingResultado> {
-  const session = await requireUser();
+  const session = await requireWriter();
   const clientId = String(formData.get("clientId") ?? "");
   const nota = String(formData.get("nota") ?? "").trim();
   if (!clientId) return { ok: false, error: "Cliente inválido." };
@@ -102,7 +102,7 @@ export async function marcarRetencionDatos(formData: FormData): Promise<AccionOf
  * intacto — solo se anonimizan los campos de contacto directo.
  */
 export async function eliminarDatosContactoCliente(formData: FormData): Promise<AccionOffboardingResultado> {
-  const session = await requireUser();
+  const session = await requireWriter();
   const clientId = String(formData.get("clientId") ?? "");
   if (!clientId) return { ok: false, error: "Cliente inválido." };
   if (session.rol !== "admin") {

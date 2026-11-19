@@ -13,7 +13,7 @@ export default async function InformePage({ params }: { params: Promise<{ id: st
   const informe = await obtenerInforme(id);
   if (!informe) notFound();
 
-  const usuario = { nombre: session.nombre, iniciales: session.nombre.slice(0, 2).toUpperCase(), rolLabel: session.rol === "admin" ? "Admin" : "Miembro del equipo" };
+  const usuario = { nombre: session.nombre, iniciales: session.nombre.slice(0, 2).toUpperCase(), rolLabel: session.rol === "admin" ? "Admin" : session.rol === "lector" ? "Solo lectura" : "Miembro del equipo" };
 
   if (esInformeV2(informe.contenido)) {
     return <InformeEditorV2 informe={informe} contenidoInicial={informe.contenido} usuario={usuario} />;

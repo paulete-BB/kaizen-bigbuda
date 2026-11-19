@@ -9,6 +9,7 @@
     "lint": "eslint",
     "test": "vitest run",
     "db:migrate": "tsx --env-file=.env.local scripts/migrate.ts",
+    "usuario:crear": "tsx --env-file=.env.local scripts/crear-usuario.ts",
     "db:seed": "tsx --env-file=.env.local scripts/seed.ts"
   },
   "dependencies": {

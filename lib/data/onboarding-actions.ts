@@ -4,7 +4,7 @@ import { OPTIMIZACIONES_SEO_EN_KAIZEN } from "@/lib/config";
 import { revalidatePath } from "next/cache";
 import { after } from "next/server";
 import { sql } from "@/lib/db";
-import { requireUser } from "@/lib/auth/server";
+import { requireWriter } from "@/lib/auth/server";
 import { hoySantiago, toIso } from "@/lib/dates";
 import { syncLogEntryToClickUp, syncOptimizationTaskToClickUp } from "@/lib/clickup/client";
 import { asignarViernesOrdinal, generarOptimizacionesSeoDelMes } from "@/lib/scheduling/seo";
@@ -12,7 +12,7 @@ import { asignarDiaSemanaAds, generarOptimizacionesAdsDelMes } from "@/lib/sched
 import type { Holiday, OptimizacionGenerada, ServicioActivo, ServicioTipo } from "@/lib/scheduling/types";
 
 export async function toggleOnboardingItem(formData: FormData) {
-  const session = await requireUser();
+  const session = await requireWriter();
   const itemId = String(formData.get("itemId") ?? "");
   const clientId = String(formData.get("clientId") ?? "");
   if (!itemId || !clientId) return;
