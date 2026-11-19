@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { after } from "next/server";
 import { sql } from "@/lib/db";
-import { requireUser } from "@/lib/auth/server";
+import { requireWriter } from "@/lib/auth/server";
 import { syncLogEntryToClickUp } from "@/lib/clickup/client";
 import { addMeses, fmtFecha } from "@/lib/dates";
 import { normalizarCustomerId } from "@/lib/google/ads";
@@ -54,7 +54,7 @@ async function registrarBitacora(opts: {
 }
 
 export async function actualizarVigenciaServicio(formData: FormData) {
-  const session = await requireUser();
+  const session = await requireWriter();
   const serviceId = String(formData.get("serviceId") ?? "");
   const clientId = String(formData.get("clientId") ?? "");
   const nuevaFecha = String(formData.get("nuevaFecha") ?? "");
@@ -81,7 +81,7 @@ export async function actualizarVigenciaServicio(formData: FormData) {
 }
 
 export async function guardarNuevoDescuento(formData: FormData) {
-  const session = await requireUser();
+  const session = await requireWriter();
   const clientId = String(formData.get("clientId") ?? "");
   const nombre = String(formData.get("nombre") ?? "").trim();
   const pct = Number(formData.get("pct") ?? 10);
@@ -100,7 +100,7 @@ export async function guardarNuevoDescuento(formData: FormData) {
 }
 
 export async function editarDescuento(formData: FormData) {
-  const session = await requireUser();
+  const session = await requireWriter();
   const discountId = String(formData.get("discountId") ?? "");
   const clientId = String(formData.get("clientId") ?? "");
   const nombre = String(formData.get("nombre") ?? "");
@@ -126,7 +126,7 @@ export interface AccionDescuentoResultado {
 }
 
 export async function terminarDescuento(formData: FormData): Promise<AccionDescuentoResultado> {
-  const session = await requireUser();
+  const session = await requireWriter();
   const discountId = String(formData.get("discountId") ?? "");
   const clientId = String(formData.get("clientId") ?? "");
   const nombre = String(formData.get("nombre") ?? "");
@@ -150,7 +150,7 @@ export async function terminarDescuento(formData: FormData): Promise<AccionDescu
 }
 
 export async function agregarTareaCliente(formData: FormData) {
-  const session = await requireUser();
+  const session = await requireWriter();
   const clientId = String(formData.get("clientId") ?? "");
   const titulo = String(formData.get("titulo") ?? "").trim();
   const destino = String(formData.get("destino") ?? "checklist") as "checklist" | "recurrente";
@@ -178,7 +178,7 @@ export async function agregarTareaCliente(formData: FormData) {
 }
 
 export async function eliminarTareaCliente(formData: FormData) {
-  await requireUser();
+  await requireWriter();
   const tareaId = String(formData.get("tareaId") ?? "");
   const clientId = String(formData.get("clientId") ?? "");
   if (!tareaId) return;
@@ -192,7 +192,7 @@ export interface EditarClienteResultado {
 }
 
 export async function editarCliente(formData: FormData): Promise<EditarClienteResultado> {
-  const session = await requireUser();
+  const session = await requireWriter();
   const clientId = String(formData.get("clientId") ?? "");
   const nombre = String(formData.get("nombre") ?? "").trim();
   const empresa = String(formData.get("empresa") ?? "").trim();
@@ -231,7 +231,7 @@ export interface AgregarServicioResultado {
 }
 
 export async function agregarServicio(formData: FormData): Promise<AgregarServicioResultado> {
-  const session = await requireUser();
+  const session = await requireWriter();
   const clientId = String(formData.get("clientId") ?? "");
   const tipo = String(formData.get("tipo") ?? "") as ServicioTipo;
   const fechaInicio = String(formData.get("fechaInicio") ?? "") || new Date().toISOString().slice(0, 10);
@@ -262,7 +262,7 @@ export async function agregarServicio(formData: FormData): Promise<AgregarServic
 }
 
 export async function pausarServicio(formData: FormData) {
-  const session = await requireUser();
+  const session = await requireWriter();
   const serviceId = String(formData.get("serviceId") ?? "");
   const clientId = String(formData.get("clientId") ?? "");
   const nombreServicio = String(formData.get("nombreServicio") ?? "el servicio");
@@ -280,7 +280,7 @@ export async function pausarServicio(formData: FormData) {
 }
 
 export async function reactivarServicio(formData: FormData) {
-  const session = await requireUser();
+  const session = await requireWriter();
   const serviceId = String(formData.get("serviceId") ?? "");
   const clientId = String(formData.get("clientId") ?? "");
   const nombreServicio = String(formData.get("nombreServicio") ?? "el servicio");
@@ -298,7 +298,7 @@ export async function reactivarServicio(formData: FormData) {
 }
 
 export async function eliminarDescuento(formData: FormData): Promise<AccionDescuentoResultado> {
-  const session = await requireUser();
+  const session = await requireWriter();
   const discountId = String(formData.get("discountId") ?? "");
   const clientId = String(formData.get("clientId") ?? "");
   const nombre = String(formData.get("nombre") ?? "");
@@ -333,7 +333,7 @@ export interface AccionConfigApisResultado {
  * espera el proxy/env var (`META_TOKEN_{KEY}`).
  */
 export async function guardarConfigApis(formData: FormData): Promise<AccionConfigApisResultado> {
-  await requireUser();
+  await requireWriter();
   const clientId = String(formData.get("clientId") ?? "");
   if (!clientId) return { ok: false, error: "Cliente inválido." };
 

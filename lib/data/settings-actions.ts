@@ -2,7 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { sql } from "@/lib/db";
-import { requireUser } from "@/lib/auth/server";
+import { requireWriter } from "@/lib/auth/server";
 import { syncOptimizationTaskToClickUp, type ServicioTipoClickUp } from "@/lib/clickup/client";
 import { hoySantiago, toIso } from "@/lib/dates";
 import { limitesSemana } from "@/lib/scheduling/ads-semanal";
@@ -13,7 +13,7 @@ export interface GuardarAjustesResultado {
 }
 
 export async function guardarAjustes(formData: FormData): Promise<GuardarAjustesResultado> {
-  const session = await requireUser();
+  const session = await requireWriter();
   if (session.rol !== "admin") {
     return { ok: false, error: "Solo un administrador puede modificar los ajustes." };
   }
@@ -72,7 +72,7 @@ export interface ResincronizarResultado {
  * (actualiza por `clickup_task_id`), así que repetirlo no duplica nada.
  */
 export async function resincronizarTareasClickUp(desde: number): Promise<ResincronizarResultado> {
-  const session = await requireUser();
+  const session = await requireWriter();
   if (session.rol !== "admin") {
     return { ok: false, error: "Solo un administrador puede resincronizar las tareas.", revisadas: 0, actualizadas: 0, fallidas: 0, restantes: 0 };
   }

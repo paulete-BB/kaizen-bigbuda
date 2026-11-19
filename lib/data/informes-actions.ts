@@ -4,7 +4,7 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { after } from "next/server";
 import { sql } from "@/lib/db";
-import { requireUser } from "@/lib/auth/server";
+import { requireWriter } from "@/lib/auth/server";
 import { hoySantiago } from "@/lib/dates";
 import { syncLogEntryToClickUp } from "@/lib/clickup/client";
 import {
@@ -167,7 +167,7 @@ export interface InformeCreado {
  * llenen solos"): el hook en `guardarRegistroSeo` para SEO-AEO-GEO (el mismo
  * día que se registra la optimización mensual) y el cron de Ads
  * (`generarInformesAutomaticos`, primera semana del mes). Ninguno de los dos
- * llama `requireUser()` acá — cada llamador resuelve su propia
+ * llama `requireWriter()` acá — cada llamador resuelve su propia
  * autenticación (sesión de usuario o `CRON_SECRET`).
  *
  * Idempotente respecto al índice único (client_id, tipo, periodo_mes,
@@ -344,7 +344,7 @@ async function crearInformeAdsCombinadoInterno(
 
 /** Wrapper del formulario manual "Crear borrador" (ficha de cliente → Informes) sobre `crearInformeInterno`. */
 export async function crearInforme(formData: FormData): Promise<void> {
-  await requireUser();
+  await requireWriter();
   const clientId = String(formData.get("clientId") ?? "");
   const tipo = String(formData.get("tipo") ?? "") as ReportTipo;
   const periodoMes = Number(formData.get("periodoMes"));
@@ -365,7 +365,7 @@ export async function crearInforme(formData: FormData): Promise<void> {
 }
 
 export async function guardarContenidoInforme(reportId: string, contenido: InformeSeoContenido | InformeMarketingContenido | InformeAdsCombinadoContenido | InformeV2Contenido): Promise<AccionInformeResultado> {
-  await requireUser();
+  await requireWriter();
   const [reporte] = await sql<{ estado: string; client_id: string }[]>`select estado, client_id from reports where id = ${reportId}`;
   if (!reporte) return { ok: false, error: "Informe no encontrado." };
   if (reporte.estado === "enviado") return { ok: false, error: "Este informe ya se envió y no se puede editar." };
@@ -376,7 +376,7 @@ export async function guardarContenidoInforme(reportId: string, contenido: Infor
 }
 
 export async function cambiarEstadoInforme(formData: FormData): Promise<AccionInformeResultado> {
-  await requireUser();
+  await requireWriter();
   const reportId = String(formData.get("reportId") ?? "");
   const estado = String(formData.get("estado") ?? "");
   if (estado !== "borrador" && estado !== "listo") return { ok: false, error: "Estado inválido." };
@@ -392,7 +392,7 @@ export async function cambiarEstadoInforme(formData: FormData): Promise<AccionIn
 
 /** Registra el envío (§3.4) y lo deja en la bitácora del cliente — igual que el registro de una optimización. */
 export async function registrarEnvioInforme(formData: FormData): Promise<AccionInformeResultado> {
-  const session = await requireUser();
+  const session = await requireWriter();
   const reportId = String(formData.get("reportId") ?? "");
   const medio = String(formData.get("medio") ?? "").trim();
   const destinatario = String(formData.get("destinatario") ?? "").trim();
@@ -446,7 +446,7 @@ export async function registrarEnvioInforme(formData: FormData): Promise<AccionI
  * insights, lo que hicimos, lo que viene y el link de agenda.
  */
 export async function actualizarDatosInforme(reportId: string, rango?: { desde: string; hasta: string } | null): Promise<AccionInformeResultado & { contenido?: InformeV2Contenido }> {
-  await requireUser();
+  await requireWriter();
   const [reporte] = await sql<{ estado: string; client_id: string; tipo: ReportTipo; periodo_mes: number; periodo_anio: number; contenido_json: unknown }[]>`
     select estado, client_id, tipo, periodo_mes, periodo_anio, contenido_json from reports where id = ${reportId}
   `;

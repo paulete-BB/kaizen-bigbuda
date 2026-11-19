@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { after } from "next/server";
 import { sql } from "@/lib/db";
-import { requireUser } from "@/lib/auth/server";
+import { requireWriter } from "@/lib/auth/server";
 import { fridaysOfMonth } from "@/lib/scheduling/dates";
 import { MAX_SEO_POR_VIERNES } from "@/lib/scheduling/seo";
 import { syncOptimizationTaskToClickUp } from "@/lib/clickup/client";
@@ -20,7 +20,7 @@ export async function reasignarViernesSeo(
   year: number,
   month: number,
 ): Promise<ReasignarResultado> {
-  const session = await requireUser();
+  const session = await requireWriter();
 
   const [ocupacion] = await sql<{ total: string }[]>`
     select count(*) as total from services

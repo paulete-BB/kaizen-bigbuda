@@ -14,6 +14,16 @@ export async function requireUser(): Promise<SessionPayload> {
   return session;
 }
 
+/**
+ * Para toda acción que escribe: el rol `lector` (solo lectura) no puede. En vez de
+ * fallar con un error genérico, lo lleva a una página que explica por qué.
+ */
+export async function requireWriter(): Promise<SessionPayload> {
+  const session = await requireUser();
+  if (session.rol === "lector") redirect("/solo-lectura");
+  return session;
+}
+
 export async function requireAdmin(): Promise<SessionPayload> {
   const session = await requireUser();
   if (session.rol !== "admin") redirect("/dashboard");

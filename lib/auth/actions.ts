@@ -18,7 +18,7 @@ export async function login(formData: FormData): Promise<LoginResult> {
     return { error: "Ingresa tu email y tu contraseña." };
   }
 
-  const rows = await sql<{ id: string; nombre: string; rol: "admin" | "miembro"; password_hash: string }[]>`
+  const rows = await sql<{ id: string; nombre: string; rol: "admin" | "miembro" | "lector"; password_hash: string }[]>`
     select id, nombre, rol, password_hash from users where email = ${email}
   `;
   const user = rows[0];

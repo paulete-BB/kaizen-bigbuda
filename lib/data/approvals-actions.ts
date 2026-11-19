@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { after } from "next/server";
 import { sql } from "@/lib/db";
-import { requireUser } from "@/lib/auth/server";
+import { requireWriter } from "@/lib/auth/server";
 import { syncLogEntryToClickUp } from "@/lib/clickup/client";
 import { TIPOS_APROBACION, TIPO_APROBACION_LABEL, type ApprovalTipo } from "@/lib/approvals-tipos";
 
@@ -40,7 +40,7 @@ async function registrarBitacoraAprobacion(opts: { clientId: string; titulo: str
 }
 
 export async function crearAprobacion(formData: FormData): Promise<AccionAprobacionResultado> {
-  const session = await requireUser();
+  const session = await requireWriter();
   const clientId = String(formData.get("clientId") ?? "");
   const tipo = String(formData.get("tipo") ?? "");
   const descripcion = String(formData.get("descripcion") ?? "").trim();
@@ -75,7 +75,7 @@ export async function crearAprobacion(formData: FormData): Promise<AccionAprobac
 }
 
 export async function resolverAprobacion(formData: FormData): Promise<AccionAprobacionResultado> {
-  const session = await requireUser();
+  const session = await requireWriter();
   const id = String(formData.get("id") ?? "");
   const clientId = String(formData.get("clientId") ?? "");
   const decision = String(formData.get("decision") ?? "");
@@ -114,7 +114,7 @@ export async function resolverAprobacion(formData: FormData): Promise<AccionApro
 
 /** §3.11: "opción de registrar el recordatorio enviado" — no cambia el estado, solo deja constancia. */
 export async function registrarRecordatorioAprobacion(formData: FormData): Promise<AccionAprobacionResultado> {
-  await requireUser();
+  await requireWriter();
   const id = String(formData.get("id") ?? "");
   const clientId = String(formData.get("clientId") ?? "");
   if (!id || !clientId) return { ok: false, error: "Datos inválidos." };
@@ -125,7 +125,7 @@ export async function registrarRecordatorioAprobacion(formData: FormData): Promi
 }
 
 export async function eliminarAprobacion(formData: FormData): Promise<AccionAprobacionResultado> {
-  const session = await requireUser();
+  const session = await requireWriter();
   const id = String(formData.get("id") ?? "");
   const clientId = String(formData.get("clientId") ?? "");
   if (!id || !clientId) return { ok: false, error: "Aprobación inválida." };

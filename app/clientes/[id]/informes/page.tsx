@@ -22,7 +22,7 @@ export default async function InformesClientePage({
       cliente={cliente}
       informes={informes}
       errorCreando={errorCreando === "1"}
-      usuario={{ nombre: session.nombre, iniciales: session.nombre.slice(0, 2).toUpperCase(), rolLabel: session.rol === "admin" ? "Admin" : "Miembro del equipo" }}
+      usuario={{ nombre: session.nombre, iniciales: session.nombre.slice(0, 2).toUpperCase(), rolLabel: session.rol === "admin" ? "Admin" : session.rol === "lector" ? "Solo lectura" : "Miembro del equipo" }}
     />
   );
 }

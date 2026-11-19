@@ -16,7 +16,7 @@ export default async function PromptsPage({ searchParams }: { searchParams: Prom
       usuario={{
         nombre: session.nombre,
         iniciales: session.nombre.slice(0, 2).toUpperCase(),
-        rolLabel: session.rol === "admin" ? "Admin" : "Miembro del equipo",
+        rolLabel: session.rol === "admin" ? "Admin" : session.rol === "lector" ? "Solo lectura" : "Miembro del equipo",
       }}
       prompts={prompts}
       q={q}

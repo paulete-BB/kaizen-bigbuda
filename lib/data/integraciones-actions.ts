@@ -2,7 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { sql } from "@/lib/db";
-import { requireUser } from "@/lib/auth/server";
+import { requireWriter } from "@/lib/auth/server";
 
 export interface ResultadoImportacionConfig {
   ok: boolean;
@@ -31,7 +31,7 @@ interface ClienteExportado {
  * existen, para no duplicar el alta real de un cliente.
  */
 export async function importarConfigDashboard(formData: FormData): Promise<ResultadoImportacionConfig> {
-  const session = await requireUser();
+  const session = await requireWriter();
   if (session.rol !== "admin") return { ok: false, error: "Solo un administrador puede importar configuración." };
 
   const contenido = String(formData.get("json") ?? "");

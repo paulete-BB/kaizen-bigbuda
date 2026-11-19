@@ -22,7 +22,7 @@ export default async function AjustesPage({ searchParams }: { searchParams: Prom
       usuario={{
         nombre: session.nombre,
         iniciales: session.nombre.slice(0, 2).toUpperCase(),
-        rolLabel: session.rol === "admin" ? "Admin" : "Miembro del equipo",
+        rolLabel: session.rol === "admin" ? "Admin" : session.rol === "lector" ? "Solo lectura" : "Miembro del equipo",
       }}
       esAdmin={session.rol === "admin"}
       usuarioActualId={session.userId}

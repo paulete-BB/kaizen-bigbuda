@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { sql } from "@/lib/db";
-import { requireUser } from "@/lib/auth/server";
+import { requireWriter } from "@/lib/auth/server";
 import { construirMensajeInicial, cargarDatosSesion } from "@/lib/agente/contexto";
 import { completarOptimizacionAds } from "@/lib/data/optimizacion-ads-completar";
 import { hoySantiago, toIso } from "@/lib/dates";
@@ -15,7 +15,7 @@ const TIPO_LABEL = { meta_ads: "Meta Ads", google_ads: "Google Ads" } as const;
 
 /** Crea (o retoma) la sesión del agente de una optimización de Ads y lleva a su pantalla. */
 export async function iniciarOptimizacion(formData: FormData) {
-  const session = await requireUser();
+  const session = await requireWriter();
   const optimizationId = String(formData.get("optimizationId") ?? "");
   if (!optimizationId) return;
 
@@ -45,7 +45,7 @@ export async function iniciarOptimizacion(formData: FormData) {
 }
 
 export async function actualizarEstadoItemPlan(sessionId: string, itemId: string, estado: EstadoItemPlan): Promise<{ ok: boolean }> {
-  await requireUser();
+  await requireWriter();
   const [s] = await sql<{ plan: ItemPlan[]; estado: string }[]>`select plan, estado from agent_sessions where id = ${sessionId}`;
   if (!s || s.estado === "cerrada") return { ok: false };
   const plan = s.plan.map((it) => (it.id === itemId ? { ...it, estado } : it));
@@ -68,7 +68,7 @@ function proximosPasosDesdePlan(plan: ItemPlan[]): string {
 
 /** Cierra la optimización con el resumen revisado por la persona: va a la bitácora (interna + ClickUp) y genera la próxima semana. */
 export async function cerrarOptimizacionConAgente(input: { sessionId: string; resumen: string; hallazgos: string }): Promise<{ ok: boolean; error?: string }> {
-  const user = await requireUser();
+  const user = await requireWriter();
   const resumen = input.resumen.trim();
   if (resumen.length < 10) return { ok: false, error: "Escribe el resumen de la optimización antes de cerrar." };
 
@@ -118,7 +118,7 @@ export async function cargarRespuestaManual(
   sessionId: string,
   texto: string,
 ): Promise<{ ok: true; plan: ItemPlan[]; resumen: string; hallazgos: string; avisos: string[] } | { ok: false; error: string }> {
-  await requireUser();
+  await requireWriter();
   if (texto.length > 60000) return { ok: false, error: "El texto es demasiado largo." };
   const [s] = await sql<{ plan: ItemPlan[]; estado: string; resumen_borrador: string | null; hallazgos_borrador: string | null }[]>`
     select plan, estado, resumen_borrador, hallazgos_borrador from agent_sessions where id = ${sessionId}

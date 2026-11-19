@@ -16,6 +16,7 @@ export const dynamic = "force-dynamic";
 export async function POST(request: Request, { params }: { params: Promise<{ sessionId: string }> }) {
   const session = await getSession();
   if (!session) return new Response("No autenticado", { status: 401 });
+  if (session.rol === "lector") return new Response("Usuario de solo lectura", { status: 403 });
   if (!agenteIntegradoActivo()) return new Response("El agente integrado está desactivado (modo manual)", { status: 403 });
 
   const { sessionId } = await params;

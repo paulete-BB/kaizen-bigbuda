@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { after } from "next/server";
 import { sql } from "@/lib/db";
-import { requireUser } from "@/lib/auth/server";
+import { requireWriter } from "@/lib/auth/server";
 import { syncOptimizationTaskToClickUp, type ServicioTipoClickUp } from "@/lib/clickup/client";
 
 export interface ReasignarResponsableResultado {
@@ -19,7 +19,7 @@ export interface ReasignarResponsableResultado {
  * función nueva solo para el assignee.
  */
 export async function reasignarResponsableOptimizacion(formData: FormData): Promise<ReasignarResponsableResultado> {
-  await requireUser();
+  await requireWriter();
   const optimizationId = String(formData.get("optimizationId") ?? "");
   const responsableId = String(formData.get("responsableId") ?? "");
   if (!optimizationId || !responsableId) return { ok: false, error: "Falta seleccionar un responsable." };

@@ -16,7 +16,7 @@ export default async function ReunionPage({ params }: { params: Promise<{ id: st
       usuario={{
         nombre: session.nombre,
         iniciales: session.nombre.slice(0, 2).toUpperCase(),
-        rolLabel: session.rol === "admin" ? "Admin" : "Miembro del equipo",
+        rolLabel: session.rol === "admin" ? "Admin" : session.rol === "lector" ? "Solo lectura" : "Miembro del equipo",
       }}
     />
   );

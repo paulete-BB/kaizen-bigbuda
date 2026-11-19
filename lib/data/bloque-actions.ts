@@ -2,12 +2,12 @@
 
 import { revalidatePath } from "next/cache";
 import { sql } from "@/lib/db";
-import { requireUser } from "@/lib/auth/server";
+import { requireWriter } from "@/lib/auth/server";
 import { completarOptimizacionAds } from "@/lib/data/optimizacion-ads-completar";
 import { hoySantiago, toIso } from "@/lib/dates";
 
 export async function toggleChecklistItemBloque(formData: FormData) {
-  await requireUser();
+  await requireWriter();
   const itemId = String(formData.get("itemId") ?? "");
   const fecha = String(formData.get("fecha") ?? "");
   if (!itemId) return;
@@ -20,7 +20,7 @@ export async function toggleChecklistItemBloque(formData: FormData) {
 }
 
 export async function guardarAvanceBloque(formData: FormData) {
-  await requireUser();
+  await requireWriter();
   const optimizationId = String(formData.get("optimizationId") ?? "");
   const fecha = String(formData.get("fecha") ?? "");
   const notas = String(formData.get("notas") ?? "");
@@ -74,7 +74,7 @@ export async function guardarAvanceBloque(formData: FormData) {
  *    editar la fecha propuesta en su registro).
  */
 export async function completarServicioBloque(formData: FormData) {
-  const session = await requireUser();
+  const session = await requireWriter();
   const optimizationId = String(formData.get("optimizationId") ?? "");
   const fecha = String(formData.get("fecha") ?? "");
   const clientId = String(formData.get("clientId") ?? "");

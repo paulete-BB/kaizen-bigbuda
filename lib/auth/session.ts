@@ -12,7 +12,7 @@ export const SESSION_TTL_SECONDS = 60 * 60 * 24 * 7; // 7 días
 
 export interface SessionPayload {
   userId: string;
-  rol: "admin" | "miembro";
+  rol: "admin" | "miembro" | "lector";
   nombre: string;
   exp: number;
 }
