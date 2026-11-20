@@ -3761,3 +3761,18 @@ Kaizen sin poder cambiar nada. Kaizen **no tiene una API de lectura**; se resolv
 - Verificado con Postgres local + `next dev` + Playwright: el lector entra a la cartera, navega calendario, clientes,
   ficha y resultados (200), y "Pausar servicio" lo manda a `/solo-lectura` sin pausar nada (confirmado en la base).
   Typecheck, lint y 82 tests en verde.
+
+**API de lectura con llave (`/api/lectura/*`)** — el consumidor de Marcel no es una persona sino su sistema manejado
+por Claude: no tiene correo ni contraseña, así que no sirve el rol `lector` (que queda disponible para personas).
+Solo `GET`, nunca escribe:
+
+- Auth: `Authorization: Bearer <llave>` contra la variable de entorno **`KAIZEN_LECTURA_API_KEY`** (Vercel; sin ella
+  responde 503). Comparación por hash con `timingSafeEqual` (`lib/auth/api-lectura.ts`). `proxy.ts` deja pasar
+  `/api/lectura` sin cookie de sesión (mismo patrón que webhook y crons). Sin llave o llave mala: 401. Otros métodos: 405.
+- `GET /api/lectura/clientes` — clientes con servicios y vigencia; **sin datos de contacto** (nombre/correo/teléfono).
+- `GET /api/lectura/cartera` — estado de cada servicio de Ads (semáforo, motivos, cifras de ayer, pendientes); de la
+  base, sin llamadas en vivo.
+- `GET /api/lectura/clientes/{id}/resultados?rango=7|14|28|90|mes` — las mismas secciones que la pestaña Resultados
+  (SEO, AEO, Meta Ads, Google Ads); consulta Google/Meta en vivo (`maxDuration` 60 s).
+- Sin límite de frecuencia propio. Verificado con Postgres local + `next dev` + curl: 401 sin llave y con llave mala,
+  405 en POST, 400 con id inválido y 200 con los datos en los tres endpoints. No requiere migración.
